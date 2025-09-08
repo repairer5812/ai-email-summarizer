@@ -1,0 +1,89 @@
+# 민감한 정보
+config.json
+config_secure.enc
+*.enc
+.security_key
+
+# 로그 파일
+logs/
+*.log
+
+# 개인 설정
+.env
+.env.local
+
+# 캐시
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 가상환경
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# 테스트 관련
+tests/
+test_*.py
+*_test.py
+
+# 백업 파일
+*_backup.py
+*_fix.py
+*.bak
+*.backup
+
+# 임시 파일
+*.tmp
+*.temp
+temp/
+tmp/
+
+# 출력 폴더 (사용자가 생성하는 폴더들)
+Daily/
+DailyEmails/
+Topics/
+DailyMails/
+TopicsEmail/
+output/
+
+# 처리된 메일 인덱스
+processed_index.json
+
+# Obsidian 관련
+.obsidian/

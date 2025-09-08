@@ -1,0 +1,20 @@
+# 웹메일요약 시스템 필수 라이브러리
+
+# GUI 프레임워크
+customtkinter>=5.2.0
+
+# 웹 자동화
+playwright>=1.40.0
+
+# AI API
+google-generativeai>=0.3.0
+openai>=1.0.0
+
+# 암호화
+cryptography>=41.0.0
+
+# 스케줄링
+schedule>=1.2.0
+
+# 기타 유틸리티
+pathlib2>=2.3.7; python_version < "3.4"
