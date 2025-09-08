@@ -1,6 +1,20 @@
-# 🤖 웹메일 요약 시스템 (AI-Powered Email Summarizer)
+# 🤖 AI-Powered Email Summarizer
+
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![Playwright](https://img.shields.io/badge/Playwright-1.40+-green.svg)](https://playwright.dev)
+[![Gemini AI](https://img.shields.io/badge/Gemini-AI-orange.svg)](https://ai.google.dev)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Dauoffice 웹메일에서 메일을 자동으로 수집하고, **Gemini AI**를 활용해 분류 및 요약하는 지능형 자동화 프로그램입니다.
+
+## 🌟 포트폴리오 하이라이트
+
+- **AI 통합**: Gemini AI를 활용한 스마트 메일 분류 및 요약
+- **웹 자동화**: Playwright 기반 고급 웹 스크래핑
+- **GUI 애플리케이션**: CustomTkinter로 구현한 사용자 친화적 인터페이스
+- **보안 강화**: 암호화된 설정 파일 관리
+- **자동화**: 스케줄링을 통한 완전 자동화
+- **확장성**: 모듈화된 아키텍처로 쉬운 확장
 
 ## ✨ 주요 기능
 
@@ -128,6 +142,30 @@ cp config.example.json config.json
 - **모든 메일 처리**: 중복 포함하여 모든 메일 처리
 - **테스트 모드**: 최대 5개 메일만 처리 (테스트용)
 - **실행과정 관찰하기**: 브라우저 창을 열어서 진행 상황 확인
+
+## 🛠️ 기술 스택
+
+### Backend
+- **Python 3.8+** - 메인 프로그래밍 언어
+- **Playwright** - 웹 자동화 및 스크래핑
+- **Asyncio** - 비동기 프로그래밍
+
+### AI & Machine Learning
+- **Google Gemini AI** - 메일 분류 및 요약
+- **OpenAI API** - 백업 AI 서비스
+
+### Frontend
+- **CustomTkinter** - 모던 GUI 프레임워크
+- **Tkinter** - 기본 GUI 컴포넌트
+
+### Security & Data
+- **Cryptography** - 설정 파일 암호화
+- **JSON** - 설정 및 데이터 관리
+- **Pathlib** - 파일 시스템 관리
+
+### Automation & Scheduling
+- **Schedule** - 자동 실행 스케줄링
+- **Threading** - 백그라운드 작업
 
 ## 📁 파일 구조
 
