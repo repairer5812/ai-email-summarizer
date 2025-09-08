@@ -131,7 +131,7 @@ class SecurityManager:
             merged_config = self._merge_configs(base_config, sensitive_data)
             
             # 병합 결과 디버깅
-            logger.info(f"병합 결과: password = {merged_config.get('dauoffice', {}).get('password', 'None')[:20]}...")
+            logger.info(f"병합 결과: password = [암호화됨]")
             
             return merged_config
             
@@ -184,7 +184,7 @@ class SecurityManager:
                     base_config = json.load(f)
                     
                     # 디버깅: 로드된 설정 출력
-                    logger.info(f"기본 설정 로드됨: dauoffice.password = {base_config.get('dauoffice', {}).get('password', 'None')[:20]}...")
+                    logger.info(f"기본 설정 로드됨: dauoffice.password = [암호화됨]")
                     return base_config
             except Exception as e:
                 logger.error(f"기본 설정 로드 실패: {e}")

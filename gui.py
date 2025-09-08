@@ -38,7 +38,7 @@ class MailClassifierGUI:
         # 메인 윈도우 설정
         self.root = ctk.CTk()
         self.root.title("Dauoffice 메일 분류 시스템")
-        self.root.geometry("800x600")  # 높이를 700에서 600으로 줄임
+        self.root.geometry("900x800")  # 창 크기를 늘려서 모든 버튼이 보이도록 함
         
         # 테마 설정
         ctk.set_appearance_mode("light")
@@ -501,7 +501,7 @@ class MailClassifierGUI:
             self.schedule_hour.set(time_parts[0])
             self.schedule_minute.set(time_parts[1] if len(time_parts) > 1 else "00")
             
-            print(f"Debug: 로드된 설정 - ID: {self.config['dauoffice']['username']}, API: {self.config['gemini']['api_key'][:10] if self.config['gemini']['api_key'] else 'None'}..., Path: {self.config.get('output', {}).get('path', 'None')}")  # 디버깅용
+            print(f"Debug: 로드된 설정 - ID: {self.config['dauoffice']['username']}, API: [암호화됨], Path: {self.config.get('output', {}).get('path', 'None')}")  # 디버깅용
             
         except Exception as e:
             print(f"Debug: 설정 로드 오류: {e}")  # 디버깅용
