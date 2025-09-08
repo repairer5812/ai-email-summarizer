@@ -319,13 +319,13 @@ class MailCollector:
         max_process = 5 if test_mode else float('inf')  # 테스트 모드일 때 최대 5개까지
         test_attempt_count = 0  # 테스트 모드에서 시도한 메일 개수
         
-        logger.info(f"🔍 진실의 방: 루프 시작 - 총 {len(mail_rows)}개 행, 테스트 모드: {test_mode}, 최대 처리: {max_process}")
+        logger.debug(f"루프 시작 - 총 {len(mail_rows)}개 행, 테스트 모드: {test_mode}")
         
         # 테스트 모드에서는 5개만 처리하도록 루프 제한
         max_loop = 5 if test_mode else len(mail_rows)
         
         for row_index in range(max_loop):
-            logger.info(f"🔍 진실의 방: 루프 {row_index + 1}/{max_loop} 시작")
+            logger.debug(f"루프 {row_index + 1}/{max_loop} 시작")
             try:
                 # 메일 목록이 로드되었는지 먼저 확인
                 if frame_content:
@@ -335,22 +335,22 @@ class MailCollector:
                 
                 # 각 루프마다 새로운 행 요소 찾기 (DOM 변경 대응)
                 try:
-                    logger.info(f"🔍 진실의 방: 루프 {row_index + 1} - 새로운 행 검색 시작")
+                    logger.debug(f"새로운 행 검색 시작")
                     
                     # iframe에서 현재 인덱스의 행을 다시 찾기
                     if frame_content:
                         current_rows = await frame_content.query_selector_all("table.mail_list.list_mail001 tbody tr[id*='&']")
-                        logger.info(f"🔍 진실의 방: iframe에서 {len(current_rows)}개 행 발견")
+                        logger.debug(f"iframe에서 {len(current_rows)}개 행 발견")
                     else:
                         current_rows = await page.query_selector_all("table.mail_list.list_mail001 tbody tr[id*='&']")
-                        logger.info(f"🔍 진실의 방: 메인 페이지에서 {len(current_rows)}개 행 발견")
+                        logger.debug(f"메인 페이지에서 {len(current_rows)}개 행 발견")
                     
                     if row_index >= len(current_rows):
-                        logger.warning(f"🔍 진실의 방: 행 인덱스 {row_index}가 현재 행 수 {len(current_rows)}를 초과 - 스킵")
+                        logger.warning(f"행 인덱스 {row_index}가 현재 행 수 {len(current_rows)}를 초과 - 스킵")
                         continue
                     
                     row = current_rows[row_index]
-                    logger.info(f"🔍 진실의 방: 루프 {row_index + 1} - 행 요소 선택 완료")
+                    logger.debug(f"행 요소 선택 완료")
                     
                     # 요소 유효성 확인
                     # DOM 존재 여부로 가시성 확인 (is_visible() 대신)
@@ -358,31 +358,31 @@ class MailCollector:
                     try:
                         row_id = await row.get_attribute('id')
                         if row_id:  # ID가 존재하면 DOM에 요소가 존재하는 것으로 판단
-                            logger.info(f"🔍 진실의 방: 루프 {row_index + 1} - DOM에 행 존재 확인, 처리 진행")
+                            logger.debug(f"DOM에 행 존재 확인, 처리 진행")
                         else:
-                            logger.warning(f"🔍 진실의 방: 루프 {row_index + 1} - 행 ID 없음 - 스킵")
+                            logger.warning(f"행 ID 없음 - 스킵")
                             continue
                     except Exception as e:
-                        logger.warning(f"🔍 진실의 방: 루프 {row_index + 1} - 행 접근 실패: {e} - 스킵")
+                        logger.warning(f"행 접근 실패: {e} - 스킵")
                         continue
                     
-                    logger.info(f"🔍 진실의 방: 루프 {row_index + 1} - 메일 ID 추출 시도")
+                    logger.debug(f"메일 ID 추출 시도")
                     mail_id = await row.get_attribute('id')
                     if not mail_id:
-                        logger.warning(f"🔍 진실의 방: 루프 {row_index + 1} - 메일 ID를 가져올 수 없음 - 스킵")
+                        logger.warning(f"메일 ID를 가져올 수 없음 - 스킵")
                         continue
                     
-                    logger.info(f"🔍 진실의 방: 루프 {row_index + 1} - 메일 ID 추출 성공: {mail_id}")
+                    logger.debug(f"메일 ID 추출 성공: {mail_id}")
                         
                 except Exception as e:
-                    logger.warning(f"🔍 진실의 방: 루프 {row_index + 1} - 요소 접근 실패: {e}")
+                    logger.warning(f"요소 접근 실패: {e}")
                     continue
                     
-                logger.info(f"메일 행 처리 중: ID={mail_id}")
+                logger.debug(f"메일 행 처리 중: ID={mail_id}")
                 
                 # 날짜 헤더 스킵 (dateDesc_로 시작하는 ID는 날짜 헤더)
                 if mail_id and mail_id.startswith('dateDesc_'):
-                    logger.info(f"날짜 헤더 스킵: {mail_id}")
+                    logger.debug(f"날짜 헤더 스킵: {mail_id}")
                     continue
                 
                 # 중복 체크 개선 - 테스트 모드에서는 중복도 처리
@@ -396,13 +396,13 @@ class MailCollector:
                     logger.info(f"중복 메일 스킵: {mail_id} (최근 100개 중 발견)")
                     continue  # 중복 메일은 processed_count에 포함하지 않음
                 elif process_all:
-                    logger.info(f"모든 메일 처리 모드: {mail_id}")
+                    logger.debug(f"모든 메일 처리 모드: {mail_id}")
                 elif test_mode:
                     test_attempt_count += 1  # 먼저 증가
-                    logger.info(f"🔍 진실의 방: 테스트 모드 - {mail_id} (시도 {test_attempt_count}/5)")
-                    logger.info(f"🔍 진실의 방: 현재 카운트 - test_attempt_count: {test_attempt_count}, processed_count: {processed_count}")
+                    logger.debug(f"테스트 모드 - {mail_id} (시도 {test_attempt_count}/5)")
+                    logger.debug(f"현재 카운트 - test_attempt_count: {test_attempt_count}, processed_count: {processed_count}")
                 else:
-                    logger.info(f"신규 메일 처리: {mail_id}")
+                    logger.debug(f"신규 메일 처리: {mail_id}")
                 
                 # 메일 상세 페이지로 이동하여 정보 추출
                 mail_data = None
@@ -464,13 +464,13 @@ class MailCollector:
                 
                 # 테스트 모드에서는 루프가 5개로 제한되어 있으므로 별도 중단 조건 불필요
                 
-                logger.info(f"🔍 진실의 방: 루프 {row_index + 1} 완료 - 다음 루프로 진행")
+                logger.debug(f"루프 {row_index + 1} 완료 - 다음 루프로 진행")
                 
             except Exception as e:
-                logger.warning(f"🔍 진실의 방: 루프 {row_index + 1} 예외 발생: {e}")
+                logger.warning(f"루프 {row_index + 1} 예외 발생: {e}")
                 continue
         
-        logger.info(f"🔍 진실의 방: 최종 결과 - 총 {len(mail_rows)}개 행 중 {processed_count}개 수집 완료")
+        logger.info(f"최종 결과 - 총 {len(mail_rows)}개 행 중 {processed_count}개 수집 완료")
         return mails
     
     async def _recover_from_frame_detached(self, page):
@@ -974,27 +974,54 @@ class MailCollector:
             # 본문 추출 (강화된 추출 로직)
             content_text = ""
             try:
-                # 디버깅: 페이지 구조 확인
-                logger.info("=== 메일 본문 추출 디버깅 시작 ===")
+                logger.info("📧 메일 본문 추출 시작...")
                 
-                # 1. iframe 내용 먼저 시도
-                content_frame = page.frame('messageContentFrame')
-                if content_frame:
-                    logger.info("messageContentFrame iframe 발견")
-                    content_elem = await content_frame.query_selector('#message-container')
-                    if content_elem:
-                        content_text = await content_elem.inner_text()
-                        logger.info(f"iframe에서 본문 추출 성공: {len(content_text)}자")
-                    else:
-                        logger.warning("iframe 내부에서 #message-container 요소를 찾을 수 없음")
-                else:
-                    logger.warning("messageContentFrame iframe을 찾을 수 없음")
+                # 1. 모든 iframe 검색 및 본문 추출
+                iframes = await target_page.query_selector_all("iframe")
+                logger.info(f"발견된 iframe 수: {len(iframes)}")
                 
-                # 2. 직접 선택자들 시도 (Dauoffice 특화 선택자 추가)
+                for i, iframe_element in enumerate(iframes):
+                    try:
+                        frame_content = await iframe_element.content_frame()
+                        if frame_content:
+                            logger.info(f"iframe[{i}] 접근 성공")
+                            
+                            # iframe 내부에서 본문 선택자들 시도
+                            content_selectors = [
+                                '#message-container',
+                                '#readContentMessageWrap',
+                                '#messageContent',
+                                '.mail_content',
+                                '.message_content',
+                                '.content',
+                                '.mail_body',
+                                '.message_body',
+                                'div[class*="content"]',
+                                'div[class*="body"]',
+                                'div[class*="message"]'
+                            ]
+                            
+                            for selector in content_selectors:
+                                try:
+                                    content_elem = await frame_content.query_selector(selector)
+                                    if content_elem:
+                                        iframe_content = await content_elem.inner_text()
+                                        if iframe_content and len(iframe_content.strip()) > 20:
+                                            content_text = iframe_content.strip()
+                                            logger.info(f"✅ iframe[{i}]에서 본문 추출 성공: {len(content_text)}자 (선택자: {selector})")
+                                            break
+                                except:
+                                    continue
+                            if content_text:
+                                break
+                    except Exception as e:
+                        logger.debug(f"iframe[{i}] 처리 실패: {e}")
+                        continue
+                
+                # 2. 메인 페이지에서 직접 본문 추출 시도
                 if not content_text:
-                    logger.info("직접 선택자로 본문 추출 시도...")
+                    logger.info("메인 페이지에서 본문 추출 시도...")
                     content_selectors = [
-                        # Dauoffice 특화 선택자들
                         '#readContentMessageWrap', 
                         '#messageContent',
                         '.mail_content', 
@@ -1002,67 +1029,18 @@ class MailCollector:
                         '.content', 
                         '.mail_body',
                         '.message_body',
-                        '.email_content',
-                        '.email_body',
-                        '.msg_content',
-                        '.msg_body',
-                        # 일반적인 선택자들
                         'div[class*="content"]',
                         'div[class*="body"]',
-                        'div[class*="message"]',
-                        'div[class*="mail"]',
-                        # iframe 내부 선택자들
-                        'iframe[src*="mail"]',
-                        'iframe[name*="content"]',
-                        'iframe[name*="message"]',
-                        # 테이블 기반 선택자들
-                        'table[class*="content"]',
-                        'td[class*="content"]',
-                        'div[class*="read"]',
-                        'div[class*="view"]'
+                        'div[class*="message"]'
                     ]
-                    content_text = await self._extract_text_from_selectors(page, content_selectors)
+                    content_text = await self._extract_text_from_selectors(target_page, content_selectors)
                     if content_text:
-                        logger.info(f"직접 선택자에서 본문 추출 성공: {len(content_text)}자")
-                    else:
-                        logger.warning("직접 선택자로 본문을 찾을 수 없음")
+                        logger.info(f"✅ 메인 페이지에서 본문 추출 성공: {len(content_text)}자")
                 
-                # 3. iframe 내부에서 더 광범위하게 검색
-                if not content_text:
-                    logger.info("모든 iframe에서 본문 검색 시도...")
-                    iframes = await page.query_selector_all("iframe")
-                    logger.info(f"발견된 iframe 수: {len(iframes)}")
-                    
-                    for i, iframe_element in enumerate(iframes):
-                        try:
-                            frame_content = await iframe_element.content_frame()
-                            if frame_content:
-                                logger.info(f"iframe[{i}] 접근 성공")
-                                # iframe 내부에서 본문 선택자들 시도
-                                for selector in content_selectors:
-                                    try:
-                                        content_elem = await frame_content.query_selector(selector)
-                                        if content_elem:
-                                            iframe_content = await content_elem.inner_text()
-                                            if iframe_content and len(iframe_content.strip()) > 10:
-                                                content_text = iframe_content
-                                                logger.info(f"iframe[{i}]에서 본문 추출 성공: {len(content_text)}자 (선택자: {selector})")
-                                                break
-                                    except Exception as e:
-                                        logger.debug(f"iframe[{i}] 선택자 {selector} 실패: {e}")
-                                        continue
-                                if content_text:
-                                    break
-                            else:
-                                logger.warning(f"iframe[{i}] 접근 실패")
-                        except Exception as e:
-                            logger.warning(f"iframe[{i}] 처리 실패: {e}")
-                            continue
-                
-                # 4. 전체 페이지에서 텍스트가 많은 div 찾기 (최후 수단)
+                # 3. 최후 수단: 전체 페이지에서 가장 긴 텍스트 찾기
                 if not content_text:
                     logger.info("전체 페이지에서 본문 검색 시도...")
-                    all_divs = await page.query_selector_all("div")
+                    all_divs = await target_page.query_selector_all("div")
                     max_length = 0
                     for div in all_divs:
                         try:
@@ -1076,14 +1054,14 @@ class MailCollector:
                             continue
                     
                     if content_text:
-                        logger.info(f"전체 페이지 검색에서 본문 추출 성공: {len(content_text)}자")
+                        logger.info(f"✅ 전체 페이지 검색에서 본문 추출 성공: {len(content_text)}자")
                     
             except Exception as e:
                 logger.warning(f"본문 추출 실패: {e}")
                 
             # 본문이 여전히 비어있으면 최소한의 정보라도 저장
             if not content_text or len(content_text.strip()) < 10:
-                logger.warning("본문 추출 실패 - 기본 메시지 설정")
+                logger.warning("❌ 본문 추출 실패 - 제목만 사용")
                 content_text = f"[본문 추출 실패] 제목: {mail_data.get('subject', 'N/A')}, 발신자: {mail_data.get('sender', 'N/A')}"
             
             mail_data['content'] = content_text
@@ -1238,18 +1216,18 @@ class MailCollector:
                     try:
                         # 모든 메일 행의 클래스 확인
                         all_rows = await frame_content.query_selector_all("table.mail_list.list_mail001 tbody tr[id*='&']")
-                        logger.info(f"🔍 진실의 방: 전체 {len(all_rows)}개 행의 클래스 확인 중...")
+                        logger.debug(f"전체 {len(all_rows)}개 행의 클래스 확인 중...")
                         
                         for i, row in enumerate(all_rows[:5]):  # 처음 5개만 확인
                             try:
                                 row_class = await row.get_attribute('class')
                                 row_id = await row.get_attribute('id')
                                 is_visible = await row.is_visible()
-                                logger.info(f"🔍 진실의 방: 행 {i+1} - ID: {row_id}, 클래스: '{row_class}', 보임: {is_visible}")
+                                logger.debug(f"행 {i+1} - ID: {row_id}, 클래스: '{row_class}', 보임: {is_visible}")
                                 
                                 # 선택된 것으로 보이는 행 찾기 (클래스에 특정 키워드 포함)
                                 if row_class and any(keyword in row_class.lower() for keyword in ['select', 'active', 'on', 'current', 'focus', 'highlight']):
-                                    logger.info(f"🔍 진실의 방: 선택된 행 발견 - {row_id} (클래스: {row_class})")
+                                    logger.debug(f"선택된 행 발견 - {row_id} (클래스: {row_class})")
                                     # 빈 공간 클릭으로 선택 해제 시도
                                     try:
                                         # 메일 목록 테이블의 빈 공간 클릭
@@ -1411,7 +1389,7 @@ class MailCollector:
     
     async def _discover_available_elements(self, page):
         """현재 페이지와 iframe에서 사용 가능한 요소들을 탐색"""
-        logger.info("🔍 DOM 요소 탐색 시작...")
+        logger.debug("🔍 DOM 요소 탐색 시작...")
         
         try:
             # iframe 탐색
@@ -1474,7 +1452,7 @@ class MailCollector:
                 except:
                     continue
             
-            logger.info("🔍 DOM 요소 탐색 완료\n")
+            logger.debug("🔍 DOM 요소 탐색 완료")
             
         except Exception as e:
             logger.warning(f"DOM 요소 탐색 중 오류: {e}")
