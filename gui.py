@@ -196,6 +196,22 @@ class MailClassifierGUI:
         ctk.CTkButton(api_frame, text="테스트", width=80,
                      command=self.test_gemini_api).pack(side="left", padx=5)
         
+        # OpenAI API 설정 프레임
+        openai_frame = ctk.CTkFrame(self.tab_settings)
+        openai_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(openai_frame, text="🔗 OpenAI API 설정 (선택사항)",
+                    font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w", padx=5, pady=3)
+        
+        openai_api_frame = ctk.CTkFrame(openai_frame)
+        openai_api_frame.pack(fill="x", padx=5, pady=3)
+        ctk.CTkLabel(openai_api_frame, text="API Key:", width=100).pack(side="left", padx=5)
+        self.openai_api = ctk.CTkEntry(openai_api_frame, width=300, show="*")
+        self.openai_api.pack(side="left", padx=5)
+        
+        ctk.CTkButton(openai_api_frame, text="테스트", width=80,
+                     command=self.test_openai_api).pack(side="left", padx=5)
+        
         # 결과 저장 설정 프레임
         output_frame = ctk.CTkFrame(self.tab_settings)
         output_frame.pack(fill="x", padx=10, pady=10)
@@ -363,6 +379,27 @@ class MailClassifierGUI:
         except Exception as e:
             messagebox.showerror("오류", f"API 테스트 중 오류: {e}")
     
+    def test_openai_api(self):
+        """OpenAI API 연결 테스트"""
+        api_key = self.openai_api.get().strip()
+        if not api_key:
+            messagebox.showwarning("경고", "API Key를 입력해주세요.")
+            return
+        
+        try:
+            # OpenAI API 키로 AIClassifier 테스트
+            classifier = AIClassifier()
+            # OpenAI API 키를 임시로 설정하여 테스트
+            classifier.config["openai"]["api_key"] = api_key
+            classifier._initialize_openai()
+            
+            if classifier.openai_client:
+                messagebox.showinfo("성공", "OpenAI API 연결 성공!")
+            else:
+                messagebox.showerror("실패", "OpenAI API 연결 실패")
+        except Exception as e:
+            messagebox.showerror("오류", f"API 테스트 중 오류: {e}")
+    
     def save_settings(self):
         """설정 저장"""
         try:
@@ -378,6 +415,10 @@ class MailClassifierGUI:
             # Gemini 설정
             api_key = self.gemini_api.get().strip()
             self.config["gemini"]["api_key"] = api_key
+            
+            # OpenAI 설정
+            openai_key = self.openai_api.get().strip()
+            self.config["openai"]["api_key"] = openai_key
             
             # 출력 설정 (안전성 보장)
             if "output" not in self.config:
@@ -425,6 +466,7 @@ class MailClassifierGUI:
             self.dauoffice_pw.delete(0, 'end')
             self.target_folder.delete(0, 'end')
             self.gemini_api.delete(0, 'end')
+            self.openai_api.delete(0, 'end')
             self.output_path.delete(0, 'end')
             
             # Dauoffice 설정
@@ -434,6 +476,9 @@ class MailClassifierGUI:
             
             # Gemini 설정
             self.gemini_api.insert(0, self.config["gemini"]["api_key"])
+            
+            # OpenAI 설정
+            self.openai_api.insert(0, self.config.get("openai", {}).get("api_key", ""))
             
             # 출력 설정
             self.output_path.insert(0, self.config.get("output", {}).get("path", ""))
@@ -560,6 +605,17 @@ class MailClassifierGUI:
         else:
             api_status = "❌ API 키 미설정"
         status_info.append(f"🤖 Gemini API: {api_status}")
+        
+        # OpenAI API 상태
+        openai_key = self.config.get("openai", {}).get("api_key", "")
+        if openai_key:
+            if len(openai_key) > 20 and openai_key.startswith("sk-"):
+                openai_status = "✅ API 키 설정됨"
+            else:
+                openai_status = "⚠️ API 키 형식 의심스러움"
+        else:
+            openai_status = "❌ API 키 미설정 (선택사항)"
+        status_info.append(f"🔗 OpenAI API: {openai_status}")
         
         # 스케줄 상태
         schedule_status = "✅ 활성화" if self.config["schedule"]["enabled"] else "❌ 비활성화"
