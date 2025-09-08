@@ -388,10 +388,12 @@ class MailClassifierGUI:
         
         try:
             # OpenAI API 키로 AIClassifier 테스트
-            classifier = AIClassifier()
-            # OpenAI API 키를 임시로 설정하여 테스트
-            classifier.config["openai"]["api_key"] = api_key
-            classifier._initialize_openai()
+            test_config = {
+                "gemini": {"api_key": ""},
+                "openai": {"api_key": api_key},
+                "api": {"primary": "gemini", "fallback": "openai"}
+            }
+            classifier = AIClassifier(config_dict=test_config)
             
             if classifier.openai_client:
                 messagebox.showinfo("성공", "OpenAI API 연결 성공!")
