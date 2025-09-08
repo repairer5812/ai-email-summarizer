@@ -18,7 +18,7 @@ class EnhancedFileManager:
         
         # 디렉토리 구조 정의 (필요할 때만 생성)
         self.topics_dir = self.base_path / "Topics"
-        self.daily_dir = self.base_path / "Daily"
+        self.daily_dir = self.base_path / "DailyEmails"
         
         # 중복 방지용 인덱스 파일
         self.processed_index_file = self.base_path / "processed_index.json"

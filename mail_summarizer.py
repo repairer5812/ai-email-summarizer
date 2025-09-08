@@ -22,8 +22,8 @@ class MailSummarizer:
         # 기본 디렉토리 생성
         self.base_path.mkdir(parents=True, exist_ok=True)
         
-        # DailyMails 디렉토리 (날짜별 요약) - 필요할 때만 생성
-        self.daily_dir = self.base_path / "DailyMails"
+        # DailyEmails 디렉토리 (날짜별 요약) - 필요할 때만 생성
+        self.daily_dir = self.base_path / "DailyEmails"
         
         # TopicsEmail 디렉토리 (주제별 누적 요약) - 필요할 때만 생성
         self.topics_dir = self.base_path / "TopicsEmail"

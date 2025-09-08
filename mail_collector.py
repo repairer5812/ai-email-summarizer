@@ -404,11 +404,11 @@ class MailCollector:
                 else:
                     logger.info(f"신규 메일 처리: {mail_id}")
                 
-                # 메일 목록에서 직접 정보 추출 (상세보기 클릭 생략)
+                # 메일 상세 페이지로 이동하여 정보 추출
                 mail_data = None
                 try:
-                    # 메일 목록에서 직접 정보 추출
-                    mail_data = await self._extract_mail_info_from_list_row_safe(page, row, mail_id, frame_content)
+                    # 메일 클릭하여 상세 페이지로 이동
+                    mail_data = await self._extract_mail_info(page, row, mail_id, frame_content)
 
                 except Exception as mail_e:
                     logger.warning(f"메일 추출 오류: {mail_e}")
@@ -974,43 +974,70 @@ class MailCollector:
             # 본문 추출 (강화된 추출 로직)
             content_text = ""
             try:
+                # 디버깅: 페이지 구조 확인
+                logger.info("=== 메일 본문 추출 디버깅 시작 ===")
+                
                 # 1. iframe 내용 먼저 시도
                 content_frame = page.frame('messageContentFrame')
                 if content_frame:
+                    logger.info("messageContentFrame iframe 발견")
                     content_elem = await content_frame.query_selector('#message-container')
                     if content_elem:
                         content_text = await content_elem.inner_text()
                         logger.info(f"iframe에서 본문 추출 성공: {len(content_text)}자")
+                    else:
+                        logger.warning("iframe 내부에서 #message-container 요소를 찾을 수 없음")
+                else:
+                    logger.warning("messageContentFrame iframe을 찾을 수 없음")
                 
-                # 2. 직접 선택자들 시도 (더 많은 선택자 추가)
+                # 2. 직접 선택자들 시도 (Dauoffice 특화 선택자 추가)
                 if not content_text:
+                    logger.info("직접 선택자로 본문 추출 시도...")
                     content_selectors = [
+                        # Dauoffice 특화 선택자들
                         '#readContentMessageWrap', 
+                        '#messageContent',
                         '.mail_content', 
                         '.message_content',
                         '.content', 
                         '.mail_body',
                         '.message_body',
-                        '#messageContent',
                         '.email_content',
                         '.email_body',
                         '.msg_content',
                         '.msg_body',
+                        # 일반적인 선택자들
                         'div[class*="content"]',
                         'div[class*="body"]',
-                        'div[class*="message"]'
+                        'div[class*="message"]',
+                        'div[class*="mail"]',
+                        # iframe 내부 선택자들
+                        'iframe[src*="mail"]',
+                        'iframe[name*="content"]',
+                        'iframe[name*="message"]',
+                        # 테이블 기반 선택자들
+                        'table[class*="content"]',
+                        'td[class*="content"]',
+                        'div[class*="read"]',
+                        'div[class*="view"]'
                     ]
                     content_text = await self._extract_text_from_selectors(page, content_selectors)
                     if content_text:
                         logger.info(f"직접 선택자에서 본문 추출 성공: {len(content_text)}자")
+                    else:
+                        logger.warning("직접 선택자로 본문을 찾을 수 없음")
                 
                 # 3. iframe 내부에서 더 광범위하게 검색
                 if not content_text:
+                    logger.info("모든 iframe에서 본문 검색 시도...")
                     iframes = await page.query_selector_all("iframe")
+                    logger.info(f"발견된 iframe 수: {len(iframes)}")
+                    
                     for i, iframe_element in enumerate(iframes):
                         try:
                             frame_content = await iframe_element.content_frame()
                             if frame_content:
+                                logger.info(f"iframe[{i}] 접근 성공")
                                 # iframe 내부에서 본문 선택자들 시도
                                 for selector in content_selectors:
                                     try:
@@ -1019,13 +1046,17 @@ class MailCollector:
                                             iframe_content = await content_elem.inner_text()
                                             if iframe_content and len(iframe_content.strip()) > 10:
                                                 content_text = iframe_content
-                                                logger.info(f"iframe[{i}]에서 본문 추출 성공: {len(content_text)}자")
+                                                logger.info(f"iframe[{i}]에서 본문 추출 성공: {len(content_text)}자 (선택자: {selector})")
                                                 break
-                                    except:
+                                    except Exception as e:
+                                        logger.debug(f"iframe[{i}] 선택자 {selector} 실패: {e}")
                                         continue
                                 if content_text:
                                     break
-                        except:
+                            else:
+                                logger.warning(f"iframe[{i}] 접근 실패")
+                        except Exception as e:
+                            logger.warning(f"iframe[{i}] 처리 실패: {e}")
                             continue
                 
                 # 4. 전체 페이지에서 텍스트가 많은 div 찾기 (최후 수단)
