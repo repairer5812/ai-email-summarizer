@@ -25,8 +25,8 @@ class MailSummarizer:
         # DailyEmails 디렉토리 (날짜별 요약) - 필요할 때만 생성
         self.daily_dir = self.base_path / "DailyEmails"
         
-        # TopicsEmail 디렉토리 (주제별 누적 요약) - 필요할 때만 생성
-        self.topics_dir = self.base_path / "TopicsEmail"
+        # TopicEmails 디렉토리 (주제별 누적 요약) - 필요할 때만 생성
+        self.topics_dir = self.base_path / "TopicEmails"
         
     def create_summary_report(self, classified_mails):
         """메일들을 요약하고 주제별로 분류하여 마크다운 보고서 생성"""
@@ -233,8 +233,8 @@ class MailSummarizer:
         
         # 카테고리 우선순위로 정렬
         category_priority = {
-            '업무지시': 1, '공지사항': 2, '미팅일정': 3, '보고서': 4,
-            '기술동향': 5, '경제뉴스': 6, '기타': 7
+            'AI': 1, '에듀테크': 2, '경제뉴스': 3, '행사': 4,
+            '개인적인 연락': 5, '기타': 6
         }
         
         sorted_categories = sorted(categorized_mails.items(), 
