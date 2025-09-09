@@ -1103,6 +1103,33 @@ class MailCollector:
             except Exception as e:
                 logger.warning(f"본문 추출 실패: {e}")
                 
+            # 본문에서 날짜 부분 제거 (첫 번째 줄이 날짜인 경우)
+            if content_text:
+                lines = content_text.split('\n')
+                if len(lines) > 1:
+                    # 첫 번째 줄이 날짜 형식인지 확인 (YYYY-MM-DD, YYYY/MM/DD, MM/DD 등)
+                    first_line = lines[0].strip()
+                    import re
+                    date_patterns = [
+                        r'\d{4}[-/]\d{1,2}[-/]\d{1,2}',  # YYYY-MM-DD, YYYY/MM/DD
+                        r'\d{1,2}[-/]\d{1,2}[-/]\d{4}',  # MM/DD/YYYY, MM-DD-YYYY
+                        r'\d{1,2}[-/]\d{1,2}',           # MM/DD, MM-DD
+                        r'\d{4}년\s*\d{1,2}월\s*\d{1,2}일',  # YYYY년 MM월 DD일
+                        r'\d{1,2}월\s*\d{1,2}일',        # MM월 DD일
+                        r'오늘|어제|내일|월요일|화요일|수요일|목요일|금요일|토요일|일요일'
+                    ]
+                    
+                    is_date_line = any(re.search(pattern, first_line) for pattern in date_patterns)
+                    
+                    if is_date_line:
+                        logger.info(f"📅 첫 번째 줄이 날짜로 감지됨, 제거: {first_line}")
+                        content_text = '\n'.join(lines[1:]).strip()
+                        # 본문 내용 미리보기 업데이트
+                        preview = content_text[:200] + "..." if len(content_text) > 200 else content_text
+                        preview_lines = preview.split('\n')[:2]
+                        preview_text = '\n'.join(preview_lines)
+                        logger.info(f"📧 날짜 제거 후 본문 미리보기:\n{preview_text}")
+            
             # 본문이 여전히 비어있으면 최소한의 정보라도 저장
             if not content_text or len(content_text.strip()) < 10:
                 logger.warning("❌ 본문 추출 실패 - 제목만 사용")
