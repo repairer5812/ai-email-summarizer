@@ -1,0 +1,1 @@
+var GoogleAnalytics=function(e,t){this.trackingID=e,this.isInit=!1,this.userId=t,this.init=function(e){function t(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],t("js",new Date),t("config",e)},this.sendPageView=function(e){if(!this.trackingID||!this.isInit)return;gtag("create",this.trackingID,{userId:this.userId}),gtag("send",{hitType:"pageview",page:e})}};

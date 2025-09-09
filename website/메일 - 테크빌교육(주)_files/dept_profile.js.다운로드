@@ -1,0 +1,1 @@
+(function(){define(["backbone"],function(e){var t=e.Model.extend({urlRoot:"/api/department/profile/"},{get:function(e){var n=null;return n=new t,n.set("id",e,{silent:!0}),n.fetch({async:!1}),n}});return{init:function(e){return new t(e)},read:function(e){return t.get(e)}}})}).call(this);

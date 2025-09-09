@@ -372,6 +372,11 @@ class MailCollector:
                         logger.warning(f"메일 ID를 가져올 수 없음 - 스킵")
                         continue
                     
+                    # 첫 번째 행(allSelectTr)은 날짜 행이므로 건너뛰기
+                    if mail_id == "allSelectTr":
+                        logger.info(f"📅 날짜 행 건너뛰기: {mail_id}")
+                        continue
+                    
                     logger.debug(f"메일 ID 추출 성공: {mail_id}")
                         
                 except Exception as e:
@@ -863,10 +868,12 @@ class MailCollector:
         """개별 메일 정보 추출 (새창 팝업 대응)"""
         try:
             # 메일 클릭하여 상세 보기 - 새창/동일창 감지
+            logger.info(f"📧 메일 클릭 시도: {mail_id}")
             click_result = await self._safe_click_mail_row(page, row, frame_content)
             if not click_result:
-                logger.error(f"메일 클릭 실패 (ID: {mail_id})")
+                logger.error(f"❌ 메일 클릭 실패 (ID: {mail_id})")
                 return None
+            logger.info(f"✅ 메일 클릭 성공: {click_result}")
             
             target_page = page  # 기본값
             popup_page = None
@@ -976,6 +983,28 @@ class MailCollector:
             try:
                 logger.info("📧 메일 본문 추출 시작...")
                 
+                # 0. 먼저 data-preview 속성에서 본문 일부 확인
+                try:
+                    preview_selectors = [
+                        'span.subject[data-preview]',
+                        '.subject[data-preview]',
+                        '[data-preview]'
+                    ]
+                    for selector in preview_selectors:
+                        preview_element = await target_page.query_selector(selector)
+                        if preview_element:
+                            preview_text = await preview_element.get_attribute('data-preview')
+                            if preview_text and len(preview_text.strip()) > 20:
+                                content_text = preview_text.strip()
+                                preview = content_text[:200] + "..." if len(content_text) > 200 else content_text
+                                preview_lines = preview.split('\n')[:2]
+                                preview_text = '\n'.join(preview_lines)
+                                logger.info(f"✅ data-preview에서 본문 추출 성공: {len(content_text)}자")
+                                logger.info(f"📧 본문 미리보기:\n{preview_text}")
+                                break
+                except Exception as e:
+                    logger.debug(f"data-preview 추출 실패: {e}")
+                
                 # 1. 모든 iframe 검색 및 본문 추출
                 iframes = await target_page.query_selector_all("iframe")
                 logger.info(f"발견된 iframe 수: {len(iframes)}")
@@ -1008,7 +1037,12 @@ class MailCollector:
                                         iframe_content = await content_elem.inner_text()
                                         if iframe_content and len(iframe_content.strip()) > 20:
                                             content_text = iframe_content.strip()
+                                            # 본문 내용 미리보기 (1-2줄)
+                                            preview = content_text[:200] + "..." if len(content_text) > 200 else content_text
+                                            preview_lines = preview.split('\n')[:2]
+                                            preview_text = '\n'.join(preview_lines)
                                             logger.info(f"✅ iframe[{i}]에서 본문 추출 성공: {len(content_text)}자 (선택자: {selector})")
+                                            logger.info(f"📧 본문 미리보기:\n{preview_text}")
                                             break
                                 except:
                                     continue
@@ -1035,7 +1069,12 @@ class MailCollector:
                     ]
                     content_text = await self._extract_text_from_selectors(target_page, content_selectors)
                     if content_text:
+                        # 본문 내용 미리보기 (1-2줄)
+                        preview = content_text[:200] + "..." if len(content_text) > 200 else content_text
+                        preview_lines = preview.split('\n')[:2]
+                        preview_text = '\n'.join(preview_lines)
                         logger.info(f"✅ 메인 페이지에서 본문 추출 성공: {len(content_text)}자")
+                        logger.info(f"📧 본문 미리보기:\n{preview_text}")
                 
                 # 3. 최후 수단: 전체 페이지에서 가장 긴 텍스트 찾기
                 if not content_text:
@@ -1054,7 +1093,12 @@ class MailCollector:
                             continue
                     
                     if content_text:
+                        # 본문 내용 미리보기 (1-2줄)
+                        preview = content_text[:200] + "..." if len(content_text) > 200 else content_text
+                        preview_lines = preview.split('\n')[:2]
+                        preview_text = '\n'.join(preview_lines)
                         logger.info(f"✅ 전체 페이지 검색에서 본문 추출 성공: {len(content_text)}자")
+                        logger.info(f"📧 본문 미리보기:\n{preview_text}")
                     
             except Exception as e:
                 logger.warning(f"본문 추출 실패: {e}")

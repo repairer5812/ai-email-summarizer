@@ -1,0 +1,1 @@
+(function(){define(function(){function e(){this.policies={}}return e.prototype.addPolicy=function(e,t){this.policies[e]=t},e.prototype.removePolicy=function(e){delete this.policies[e]},e.prototype.allow=function(){try{for(name in this.policies){var e=this.policies[name];if(!e())return!1}}catch(t){return!0}return!0},e})})();

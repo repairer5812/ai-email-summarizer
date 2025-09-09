@@ -1,0 +1,1 @@
+(function(){define(["views/layouts/default"],function(e){var t=e.extend({name:"fullpage",className:"full_page go_full_screen",_init:function(){this.setUseSide(!1),this.setUseContentWrapper(!1)}},{__instance__:null});return t})})();

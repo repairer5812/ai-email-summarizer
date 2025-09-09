@@ -1,0 +1,65 @@
+@charset "UTF-8";
+/*한글 전체 noto sans kr 적용*/
+/*v3.1.4부터 noto sans KR 로컬 폰트 사용 금지시킴 : local(☺)*/
+/* noto-sans-kr-300 - latin_korean */
+ @font-face {
+  font-family: 'Noto Sans KR';
+  font-style: normal;
+  font-weight: 300;
+  font-display: block;
+  src: local(☺),
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-300.eot') format('embedded-opentype'), /* IE9 Compat Modes */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-300.woff2') format('woff2'), /* Super Modern Browsers */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-300.woff') format('woff'), /* Modern Browsers */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-300.ttf') format('truetype'), /* Safari, Android, iOS */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-300.svg#NotoSansKR') format('svg'); /* Legacy iOS */
+}
+/* noto-sans-kr-regular - latin_korean */
+@font-face {
+   font-family: 'Noto Sans KR';
+   font-style: normal;
+   font-weight: 400;
+   font-display: block;
+   src: local(☺),
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-regular.eot') format('embedded-opentype'), /* IE9 Compat Modes */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-regular.woff2') format('woff2'), /* Super Modern Browsers */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-regular.woff') format('woff'), /* Modern Browsers */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-regular.ttf') format('truetype'), /* Safari, Android, iOS */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-regular.svg#NotoSansKR') format('svg'); /* Legacy iOS */   
+}
+
+/* noto-sans-kr-500 - latin_korean */
+@font-face {
+   font-family: 'Noto Sans KR';
+   font-style: normal;
+   font-weight: bold; font-weight: 500; 
+   font-display: block;
+   src: local(☺),
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-500.eot') format('embedded-opentype'), /* IE9 Compat Modes */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-500.woff2') format('woff2'), /* Super Modern Browsers */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-500.woff') format('woff'), /* Modern Browsers */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-500.ttf') format('truetype'), /* Safari, Android, iOS */
+         url('../../fonts/notosans/noto-sans-kr-v25-latin_korean-500.svg#NotoSansKR') format('svg'); /* Legacy iOS */
+}
+
+/*역슬래시 맑은고딕 적용*/
+
+@font-face {
+ font-family: 'Noto Sans KR';
+ font-style: normal;
+ font-weight: 400; font-weight: normal!important; /*normal*/
+ font-display: block;
+ src: local('Malgun Gothic'),local('맑은 고딕');
+ unicode-range: U+005C; /*역슬래시 코드 포인트*/
+}
+
+@font-face {
+  font-family: 'Noto Sans KR';
+  font-style: normal;
+  font-weight: 500;  font-weight: bold!important;  /*bold*/
+  font-display: block;
+  src: local('Malgun Gothic'),local('맑은 고딕');
+  unicode-range: U+005C; /*역슬래시 코드 포인트*/
+ }
+
+

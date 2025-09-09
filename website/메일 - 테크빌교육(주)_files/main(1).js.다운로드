@@ -1,0 +1,1 @@
+(function(){define(["backbone","components/inlineUpload/views/editor_inlineImgUploadLayer","jquery.go-validation"],function(e,t){var n=e.View.extend({initialize:function(e){this.options=e||{}},render:function(){var e=new t({elPlaceHolder:this.options.elPlaceHolder});return e.render(),this}});return{render:function(e){return(new n(e)).render()}}})}).call(this);

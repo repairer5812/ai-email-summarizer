@@ -1,0 +1,1 @@
+define("admin/collections/favorite_menus",function(require){var e=require("backbone"),t=require("admin/models/layout/side_menu"),n=e.Collection.extend({model:t,initialize:function(){},url:function(){return"/ad/api/menu/favorites"}});return n});

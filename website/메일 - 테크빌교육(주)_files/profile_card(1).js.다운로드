@@ -1,0 +1,1 @@
+(function(){define(["backbone"],function(e){var t=null,n=e.Model.extend({url:function(){return"/api/user/profile/"+this.get("userId")},hasDepartment:function(){return this.getDeptMembers().length>0},getDeptMembers:function(){return this.get("deptMembers")}},{get:function(e){return t=new n,t.set("userId",e,{silent:!0}),t.fetch({async:!1,reset:!0}),t}});return n})}).call(this);

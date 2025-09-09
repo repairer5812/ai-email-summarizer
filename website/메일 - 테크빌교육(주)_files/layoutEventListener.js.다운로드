@@ -1,0 +1,1 @@
+(function(){var e=$("body");e.on("nav:showSetting",function(){})})();

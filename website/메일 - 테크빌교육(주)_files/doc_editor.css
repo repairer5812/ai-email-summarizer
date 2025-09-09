@@ -1,0 +1,94 @@
+@charset "UTF-8";
+@import url('approvalRoom.css');
+#content { word-break:break-all}
+#dext_body {cursor: inherit;}
+form.editor_form table {border-collapse:collapse; padding: 0;}
+select.editor_slt {padding: 0 2px; background-color: #f9f9f9; min-width: auto; border: 1px solid #ccc; height:26px; line-height:26px; box-shadow: none; box-sizing: border-box; border-radius: 0}
+textarea.txta_editor, input.ipt_editor {width: 100%; border: 1px solid #ccc; background: #f9f9f9; height:26px; line-height:26px; box-shadow: none; box-sizing: border-box; border-radius: 0}
+form.editor_form table, textarea.txta_editor, input.ipt_editor {font-size: 13px}
+
+div.editor_wrap {margin:0 199px 0 0; height:100%}
+p, input {margin: 0; padding: 0}
+/* editor */
+div.editor_wrap {border:1px solid #B5B5B5}
+/* pallet_icons */
+span.ic_pallet {display:inline-block; background:url(../img/ic_pallet.gif) no-repeat; width:19px; height:19px}
+span.ic_pallet_title {background-position:0 0}
+/* editor */
+div.editor_wrap {border:1px solid #B5B5B5}
+textarea.txta_editor {height: 110px}
+textarea.txta_editor:hover, input.ipt_editor:hover {border-color:#1c99a0}
+/* form.editor_form table_doc */
+form.editor_form table tbody  tr th, form.editor_form table tbody tr td {padding: 4px 5px}
+form.editor_form table tbody tr td ul.list_opt {margin:5px 0}
+form.editor_form table tbody tr td ul.list_opt li {margin-bottom: 4px}
+form.editor_form table tbody tr td select {display: inline-block; margin-right: 10px}
+form.editor_form table tbody tr td span.wrap_opt {display: inline-block; vertical-align: top; margin-top:5px}
+form.editor_form table tbody tr td span.txt {line-height:1.5}
+/* form_doc_editor */
+form.form_doc_editor table tbody tr td {min-height:18px}
+form.form_doc_editor table.tb_sign_type1 tbody tr td {padding: 0!important}
+/* component */
+span.wrap_opt label {vertical-align: top}
+ul.list_opt li {margin-bottom: 8px}
+ul.list_opt li.last {margin-bottom: 0}
+input.ipt_editor_date {background: #f9f9f9 url(../images/ic_editor.png) no-repeat 3px 4px; width: 122px; text-indent: 25px}
+
+input.editor_opt {vertical-align: middle!important; margin: 1px 4px 0 0!important}
+label.editor_label {display: inline-block; vertical-align: middle; margin: 0 10px 0 0; font-size: inherit; font-family: inherit}
+
+.wrap_editor_opt {display: inline-block; margin: 2px 10px 2px 0}
+.wrap_editor_opt input.editor_opt {margin: 0 4px 0 0!important; vertical-align: middle!important}
+.wrap_editor_opt label.editor_label {display: inline!important; margin: 0; vertical-align: middle; line-height: 17px}
+/* sign_type2 */
+span.sign_type2 span.sign_member {border: 1px solid #000; padding: 4px; display:block; margin: 0 0 -1px}
+span.sign_type2 span.sign_member span.name {color: #333}
+span.sign_type2 span.sign_member span.part {margin: 0 2px}
+span.sign_type2 span.sign_member span.date {margin: 0 0 0 5px}
+span.sign_type2 span.sign_member span.rank {margin: 0 0 0 4px}
+/* editor_currency */
+span.editor_currency {}
+input.ipt_editor_currency {display: inline-block; width: 100px; text-align: right; margin-right: 2px}
+/* editor_num */
+input.ipt_editor_num {width: 70px; text-align: right;padding-right:1px; box-sizing:border-box }
+.comp_editor {display: inline-block; background: #eee; height: 26px; line-height: 26px!important; font-size: 12px!important; font-style: italic; color: #888; text-align: center; box-sizing: border-box;}
+.comp_wrap {display:inline-block; position:relative; vertical-align: top}
+.comp_wrap .comp_item {display: inline-block; background: #eee; padding: 0 4px; font-style: italic; box-sizing: border-box; color: #888}
+.comp_wrap .comp_hover, .comp_wrap .comp_cover {display: none}
+.comp_wrap:hover .comp_hover, .comp_wrap:hover .comp_cover {display:block}
+.comp_wrap .comp_hover, .comp_wrap .comp_active {position:absolute; top:-3px; left:-3px; padding:2px; width:100%; height:100%; border:1px solid #21bec6;}
+.comp_cover {display: block; position:absolute; top:-3px; left:-3px; padding:2px; width:100%; height:100%; z-index:10}
+.comp_hover {display: block; position:absolute; top:-3px; left:-3px; padding:2px; width:100%; height:100%; z-index:10}
+.comp_wrap .comp_active {background:rgba(33,190,198,0.2); z-index:10}
+.comp_wrap .comp_active>span {z-index:1}
+.comp_wrap .comp_active .Active_dot1,
+.comp_wrap .comp_active .Active_dot2,
+.comp_wrap .comp_active .Active_dot3,
+.comp_wrap .comp_active .Active_dot4 {position:absolute; width:5px; height:5px; background:#fff; border:1px solid #21bec6; box-sizing:border-box;}
+.comp_wrap .comp_active .Active_dot1 {top:-3px; left:-3px;}
+.comp_wrap .comp_active .Active_dot2 {bottom:-3px; left:-3px;}
+.comp_wrap .comp_active .Active_dot3 {top:-3px; right:-3px}
+.comp_wrap .comp_active .Active_dot4 {bottom:-3px; right:-3px;}
+.comp_wrap .comp_hover .ic_prototype_trash {position:absolute; top:-1px; right:-1px}
+.comp_wrap input.ipt_editor_date {background-position: 3px 4px}
+.ic_prototype {display: inline-block; background:url(../images/ic_prototype.png) no-repeat}
+.ic_prototype.ic_prototype_trash				{background-position: -350px -100px; width: 19px; height: 19px}
+ul.name_tag>li {display:inline-block; padding:0px 8px; background:#e2f5f6; border-radius:13px; border:1px solid #c2dde6; height:21px; line-height: 20px!important}
+ul.name_tag li span.name {display:inline-block; cursor:default; font-size: 12px}
+@media \0screen {ul.name_tag li {height:20px}}/* IE8 hack */
+ul.calendar_tag {padding-left:12px; margin:5px 0 20px 0; max-width:720px; height:26px; overflow: hidden; white-space: nowrap; text-overflow:ellipsis}
+header.content_top ul.calendar_tag {margin-bottom:0}
+/* data_result */
+div.data_result ul.name_tag li span.name {vertical-align:middle; clear:both !important}
+div.data_result ul.name_tag li span.btn_wrap span.ic_del {background:url(../images/admin/ic_adm.png) no-repeat -150px -250px!important; width:8px; height:8px}
+
+/* IE8 hack */
+@media \0screen {
+	}
+/* IE9 hack */
+	:root .comp_wrap .wrap_editor_opt input.editor_opt {margin-top: -3px\0/IE9 !important}
+/* IE11 */
+ @media all and (-ms-high-contrast:none) {
+	 *::-ms-backdrop, .wrap_editor_opt input.editor_opt {margin-top: -1px!important}
+	 *::-ms-backdrop, .comp_wrap .wrap_editor_opt input.editor_opt {margin-top: 1px!important}
+	 }
