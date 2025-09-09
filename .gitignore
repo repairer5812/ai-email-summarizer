@@ -87,3 +87,6 @@ processed_index.json
 
 # Obsidian 관련
 .obsidian/
+
+# 기타 파일
+website/
