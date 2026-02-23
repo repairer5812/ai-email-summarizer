@@ -1,0 +1,80 @@
+webmail-summary (Daouoffice IMAP -> Obsidian) 지금 할 일
+
+0) 보안 먼저(권장)
+- PRD.txt에 비밀번호가 들어가 있으면 즉시 변경하고, 파일에서 제거하세요.
+- 이 도구는 비밀번호를 config.json에 저장하지 않고, Windows 자격 증명 관리자에 저장합니다.
+
+1) 준비: 터미널을 프로젝트 루트에서 열기
+- 폴더: C:\Users\User\Desktop\CODE\02_Tekville\웹메일요약(webmail_summary)
+- 방법(예): 탐색기에서 해당 폴더 열기 -> 주소창에 cmd 입력 -> Enter
+
+2) 개발/테스트용 설치(현재 단계)
+아래는 "개발용" 설치입니다. 나중에 배포(exe)할 때는 이 과정을 일반 사용자는 할 필요가 없습니다.
+
+2-1) 가상환경 만들기(처음 1회)
+  python -m venv .venv
+
+2-2) 의존성 + 패키지 설치
+  .venv\Scripts\pip install -U pip
+  .venv\Scripts\pip install -r requirements.txt
+  .venv\Scripts\pip install -e .
+
+2-3) 설치 확인
+  .venv\Scripts\webmail-summary -h
+
+3) init 실행(설정 + 비밀번호 저장)
+아래를 실행하면 질문이 나오고, 입력한 IMAP 비밀번호는 Windows 자격 증명 관리자에 저장됩니다.
+
+  .venv\Scripts\webmail-summary.exe init
+
+init은 초보자용 "번호 선택"(객관식) 위주로 진행됩니다.
+- 메일함(IMAP folder)은 서버 목록에서 선택(권장)하거나 직접 입력할 수 있습니다.
+- 발신자 필터는 기본값으로 hslee@tekville.com(사장님) 선택지가 있으며, 필요하면 직접 입력할 수 있습니다.
+- Obsidian 볼트 경로는 직접 붙여넣거나, 폴더 선택(GUI)로 고를 수 있습니다.
+
+설정/상태 저장 위치:
+- %APPDATA%\WebmailSummary\config.json
+- %APPDATA%\WebmailSummary\state.json
+
+4) "z이형세" 메일함 폴더명 확인(중요)
+IMAP에서 해당 메일함이 어떤 폴더명으로 보이는지 확인합니다.
+
+  .venv\Scripts\webmail-summary.exe list-folders
+
+출력 목록에서 "z이형세"에 해당하는 폴더명을 찾아서,
+init에서 IMAP folder에 그 값을 넣어주세요.
+
+5) 1회 실행(요약 -> MD 저장 -> 읽음 처리)
+
+  .venv\Scripts\webmail-summary.exe run-once
+
+결과:
+- Obsidian 볼트 아래 output_subdir/YYYY-MM/ 폴더에 md 파일이 생성됩니다.
+- 성공적으로 md 파일을 쓴 뒤에만 해당 메일을 IMAP에서 \\Seen(읽음) 처리합니다.
+
+6) "읽음 처리"가 웹 UI에도 반영되는지 확인
+1) 다우오피스 웹메일에서 동일 메일이 "읽음"으로 바뀌었는지 확인하세요.
+2) 만약 IMAP에서는 \\Seen이 들어가는데도 웹 UI에서 안 바뀐다면,
+   그때는 Playwright 웹 자동화로 읽음 처리를 UI에서 강제하는 fallback을 추가해야 합니다.
+
+7) 문제가 있을 때(빠른 진단)
+
+  .venv\Scripts\webmail-summary.exe doctor
+
+자주 발생하는 원인:
+- IMAP이 계정에서 비활성화됨(다우오피스 설정에서 IMAP 사용 체크 필요)
+- IMAP host가 테넌트별로 다름(설정 화면의 서버 주소 그대로 사용)
+- OTP/2FA가 켜져 있고 IMAP 로그인에 앱 비밀번호/예외가 없어서 실패
+
+8) 매일 아침 자동 실행(선택)
+작업 스케줄러에 "로그온 시 1회 실행"으로 등록합니다.
+
+  .venv\Scripts\webmail-summary.exe install-startup
+
+삭제:
+  .venv\Scripts\webmail-summary uninstall-startup
+  .venv\Scripts\webmail-summary.exe uninstall-startup
+
+참고:
+- 지금은 개발/테스트 단계라 venv 기반으로 돌아갑니다.
+- 배포 단계에서는 PyInstaller로 exe로 묶어서, 일반 사용자는 venv 없이 실행하게 만들 계획입니다.

@@ -1,0 +1,47 @@
+PowerShell 오류 해결 가이드 (venv/설치)
+
+문제 요약
+1) 현재 위치가 ...\src\webmail_summary 라서 requirements.txt/pyproject.toml이 없는 폴더에서 설치를 시도함
+2) PowerShell에서 경로에 괄호 (webmail_summary)가 있으면 따옴표/호출 연산자(&) 없이 실행 시 토큰이 잘려서 에러가 날 수 있음
+
+권장 해결(루트에서 다시 설치)
+
+아래 명령은 PowerShell에서 그대로 복사/붙여넣기 하세요.
+
+1) 프로젝트 루트로 이동
+cd "C:\Users\User\Desktop\CODE\02_Tekville\웹메일요약(webmail_summary)"
+
+2) (선택) 방금 잘못 만든 venv 삭제
+# Remove-Item -Recurse -Force ".\src\webmail_summary\.venv"
+
+3) 루트에 venv 생성
+python -m venv .venv
+
+4) venv의 python으로 pip 업그레이드 (경로는 반드시 따옴표 + &)
+& ".\.venv\Scripts\python.exe" -m pip install -U pip
+
+5) 의존성 설치
+& ".\.venv\Scripts\pip.exe" install -r requirements.txt
+
+6) 패키지 설치(개발용 editable)
+& ".\.venv\Scripts\pip.exe" install -e .
+
+7) 동작 확인
+& ".\.venv\Scripts\webmail-summary.exe" -h
+
+실행
+init:
+& ".\.venv\Scripts\webmail-summary.exe" init
+
+run-once:
+& ".\.venv\Scripts\webmail-summary.exe" run-once
+
+참고: 경로에 괄호가 있을 때
+전체 경로로 실행해야 한다면 반드시 이렇게 따옴표 + & 로 호출하세요.
+예)
+& "C:\Users\User\Desktop\CODE\02_Tekville\웹메일요약(webmail_summary)\.venv\Scripts\python.exe" -m pip install -U pip
+
+opencode에서 Ctrl+C 관련
+- opencode에서 Ctrl+C는 현재 실행 중인 프로그램(파이썬/설치/스크립트)을 중단시키는 동작입니다.
+- 설치/실행 중 Ctrl+C를 누르면 해당 명령이 취소되니, 명령이 끝날 때까지 기다리거나,
+  실행이 길어지는 경우에만 중단 후 다시 실행하세요.

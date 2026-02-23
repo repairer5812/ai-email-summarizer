@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid--center">
+  <section class="panel">
+    <div class="setup-header">
+      <h2>{{ t(request, 'setup.title') }}</h2>
+      <p class="muted">{{ t(request, 'setup.desc') }}</p>
+    </div>
+
+    {% if active and active.sync %}
+      <div class="notice" style="margin-top:12px;">
+        <div><strong>{% if ui_lang(request) == 'ko' %}동기화 진행 중{% else %}Sync running{% endif %}</strong></div>
+        <div class="muted" style="margin-top:6px;">
+          {{ active.sync.message }} ({{ active.sync.current|round|int }}/{{ active.sync.total|round|int }})
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="wizard">
+      <div class="wizard__tabs">
+        <div class="wizard__tab {% if current_tab == 'profile' %}active{% endif %}" data-tab="profile" onclick="switchTab('profile')">
+            <span class="wizard__tab-num">1</span>
+            <span class="wizard__tab-label">{{ t(request, 'setup.tab.profile') }}</span>
+        </div>
+        <div class="wizard__tab {% if current_tab == 'connection' %}active{% endif %}" data-tab="connection" onclick="switchTab('connection')">
+            <span class="wizard__tab-num">2</span>
+            <span class="wizard__tab-label">{{ t(request, 'setup.tab.connection') }}</span>
+        </div>
+        <div class="wizard__tab {% if current_tab == 'ai' %}active{% endif %}" data-tab="ai" onclick="switchTab('ai')">
+            <span class="wizard__tab-num">3</span>
+            <span class="wizard__tab-label">{{ t(request, 'setup.tab.ai') }}</span>
+        </div>
+        <div class="wizard__tab {% if current_tab == 'advanced' %}active{% endif %}" data-tab="advanced" onclick="switchTab('advanced')">
+            <span class="wizard__tab-num">4</span>
+            <span class="wizard__tab-label">{{ t(request, 'setup.tab.advanced') }}</span>
+        </div>
+      </div>
+
+      <div class="wizard__content">
+        <form method="post" action="/setup/save" class="form" id="setup-form">
+          <input type="hidden" name="current_tab" value="{{ current_tab }}" />
+          
+          {# TAB 1: PROFILE #}
+          <div class="tab-panel {% if current_tab == 'profile' %}active{% endif %}" id="panel-profile">
+            <div class="card">
+              <div class="card__title">{{ t(request, 'setup.profile.roles') }}</div>
+              <div class="card__body">
+                <div class="help" style="margin-bottom:15px;">{{ t(request, 'setup.profile.roles.help') }}</div>
+                <div class="role-grid">
+                  {% set roles = [
+                    ('management', 'role.management'),
+                    ('hr', 'role.hr'),
+                    ('finance', 'role.finance'),
+                    ('developer', 'role.developer'),
+                    ('marketing', 'role.marketing'),
+                    ('sales', 'role.sales'),
+                    ('planning', 'role.planning'),
+                    ('design', 'role.design'),
+                    ('legal', 'role.legal'),
+                    ('cs', 'role.cs'),
+                    ('research', 'role.research'),
+                    ('education', 'role.education')
+                  ] %}
+                  {% for id, label_key in roles %}
+                    <label class="role-btn">
+                      <input type="checkbox" name="user_roles" value="{{ id }}" {% if id in defaults.user_roles %}checked{% endif %}>
+                      <span>{{ t(request, label_key) }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:20px;">
+              <div class="card__title">{{ t(request, 'setup.profile.interests') }}</div>
+              <div class="card__body">
+                <textarea name="user_interests" rows="4" style="width:100%; border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,0.2); color: #fff; padding: 10px;" placeholder="예: 최신 AI 기술 동향, 국내외 주식 시장 정보, 교육 IT 트렌드 등...">{{ defaults.user_interests }}</textarea>
+                <div class="help">{{ t(request, 'setup.profile.interests.help') }}</div>
+              </div>
+            </div>
+          </div>
+
+          {# TAB 2: CONNECTION #}
+          <div class="tab-panel {% if current_tab == 'connection' %}active{% endif %}" id="panel-connection">
+            <div class="card">
+              <div class="card__title">{{ t(request, 'setup.imap.card') }}</div>
+              <div class="card__body">
+                <div class="row">
+                  <label>{{ t(request, 'setup.imap.host') }}</label>
+                  <input name="imap_host" value="{{ defaults.imap_host or 'imap.daouoffice.com' }}" />
+                </div>
+                <div class="row">
+                  <label>{{ t(request, 'setup.imap.port') }}</label>
+                  <input name="imap_port" value="{{ defaults.imap_port or '993' }}" />
+                </div>
+                <div class="row">
+                  <label>{{ t(request, 'setup.imap.user') }}</label>
+                  <input name="imap_user" value="{{ defaults.imap_user }}" />
+                </div>
+                <div class="row">
+                  <label>{{ t(request, 'setup.imap.password') }}</label>
+                  <input name="imap_password" type="password" />
+                </div>
+                <div class="actions" style="justify-content: flex-start; margin-top:10px;">
+                  <button type="button" class="btn-inline" id="btn-test-imap">{{ t(request, 'setup.imap.test') }}</button>
+                  <span id="test-status" style="margin-left:10px;"></span>
+                </div>
+                
+                <div class="row" style="margin-top:20px;">
+                  <label>{{ t(request, 'setup.imap.folder') }}</label>
+                  <div id="folder-container">
+                    <div class="help" style="margin-bottom:8px; color: var(--ok);">{% if ui_lang(request) == 'ko' %}AI가 이 폴더에 분류된 이메일을 중점적으로 분석합니다.{% else %}AI will primarily analyze emails classified in this folder.{% endif %}</div>
+                    {% if folders %}
+                      <select name="imap_folder">
+                        {% for f in folders %}
+                          <option value="{{ f }}" {% if f == defaults.imap_folder %}selected{% endif %}>{{ f }}</option>
+                        {% endfor %}
+                      </select>
+                    {% else %}
+                      <input name="imap_folder" value="{{ defaults.imap_folder }}" />
+                      <div class="help">{{ t(request, 'setup.imap.folder.tip') }}</div>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# TAB 3: AI #}
+          <div class="tab-panel {% if current_tab == 'ai' %}active{% endif %}" id="panel-ai">
+            <div class="card">
+              <div class="card__title">{{ t(request, 'setup.llm_backend') }}</div>
+              <div class="card__body">
+                <div class="row">
+                  <label>{{ t(request, 'setup.llm_backend') }}</label>
+                  <select name="llm_backend" id="llm-backend">
+                    <option value="local" {% if defaults.llm_backend == 'local' %}selected{% endif %}>{{ t(request, 'setup.backend.local') }}</option>
+                    <option value="cloud" {% if defaults.llm_backend in ['cloud','openrouter'] %}selected{% endif %}>{{ t(request, 'setup.backend.openrouter') }}</option>
+                  </select>
+                  <div class="help">{{ t(request, 'setup.llm_backend.help') }}</div>
+                </div>
+
+                <div id="local-options" {% if defaults.llm_backend != 'local' %}style="display:none"{% endif %}>
+                  <div class="row">
+                    <label>{{ t(request, 'setup.local_tier') }}</label>
+                    <select name="local_model_id" id="local-model">
+                      {% for m in local_models %}
+                        <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                      {% endfor %}
+                    </select>
+                    <div class="help" id="model-notes"></div>
+                  </div>
+                  <div class="row">
+                    <label>{{ t(request, 'setup.install_local') }}</label>
+                    <div>
+                      <button type="button" id="btn-local-install">{{ t(request, 'setup.install_btn') }}</button>
+                    </div>
+                  </div>
+                  <div class="row">
+                    <label>{{ t(request, 'setup.install_progress') }}</label>
+                    <div>
+                      <div class="bar"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
+                      <div class="muted" id="local-text">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="cloud-options" {% if defaults.llm_backend == 'local' %}style="display:none"{% endif %}>
+                  <div class="row">
+                    <label>Provider</label>
+                    <select name="cloud_provider" id="cloud-provider">
+                      <option value="openai" {% if defaults.cloud_provider == 'openai' %}selected{% endif %}>OpenAI (ChatGPT)</option>
+                      <option value="upstage" {% if defaults.cloud_provider == 'upstage' %}selected{% endif %}>Upstage (Solar)</option>
+                      <option value="google" {% if defaults.cloud_provider == 'google' %}selected{% endif %}>Google (Gemini)</option>
+                      <option value="anthropic" {% if defaults.cloud_provider == 'anthropic' %}selected{% endif %}>Anthropic (Claude)</option>
+                      <option value="openrouter" {% if defaults.cloud_provider == 'openrouter' %}selected{% endif %}>OpenRouter</option>
+                    </select>
+                  </div>
+                  
+                  <div class="row cloud-key" data-provider="openai">
+                    <label>OpenAI API Key</label>
+                    <input name="openai_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openai %}•••••••• (Saved){% else %}sk-...{% endif %}" />
+                  </div>
+                  <div class="row cloud-key" data-provider="upstage">
+                    <label>Upstage API Key</label>
+                    <input name="upstage_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.upstage %}•••••••• (Saved){% else %}up_...{% endif %}" />
+                  </div>
+                  <div class="row cloud-key" data-provider="google">
+                    <label>Google API Key</label>
+                    <input name="google_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.google %}•••••••• (Saved){% endif %}" />
+                  </div>
+                  <div class="row cloud-key" data-provider="anthropic">
+                    <label>Anthropic API Key</label>
+                    <input name="anthropic_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.anthropic %}•••••••• (Saved){% endif %}" />
+                  </div>
+                  <div class="row cloud-key" data-provider="openrouter">
+                    <label>OpenRouter API Key</label>
+                    <input name="openrouter_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openrouter %}•••••••• (Saved){% endif %}" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# TAB 4: ADVANCED #}
+          <div class="tab-panel {% if current_tab == 'advanced' %}active{% endif %}" id="panel-advanced">
+            <div class="card">
+              <div class="card__title">{{ t(request, 'setup.tab.advanced') }}</div>
+              <div class="card__body">
+                <div class="row">
+                  <label>{{ t(request, 'setup.sender_filter') }}</label>
+                  <input name="sender_filter" value="{{ defaults.sender_filter }}" />
+                </div>
+                <div class="row">
+                  <label>{{ t(request, 'setup.obsidian_root') }}</label>
+                  <div class="inline">
+                    <input name="obsidian_root" id="obsidian-root" value="{{ defaults.obsidian_root }}" />
+                    <button type="button" class="btn-inline" id="btn-pick-obsidian">{{ t(request, 'setup.pick') }}</button>
+                  </div>
+                </div>
+                <div class="row">
+                  <label>{{ t(request, 'setup.external_limit') }}</label>
+                  <select name="external_max_bytes">
+                    <option value="10485760" {% if defaults.external_max_bytes == '10485760' %}selected{% endif %}>10MB</option>
+                    <option value="1073741824" {% if defaults.external_max_bytes == '1073741824' %}selected{% endif %}>1GB</option>
+                    <option value="10737418240" {% if defaults.external_max_bytes == '10737418240' %}selected{% endif %}>10GB</option>
+                  </select>
+                </div>
+                <div class="row">
+                    <label>{{ t(request, 'setup.revert_seen') }}</label>
+                    <div class="toggle-card">
+                        <label class="toggle">
+                            <input type="checkbox" name="revert_seen_after_sync" {% if defaults.revert_seen %}checked{% endif %} />
+                            <span class="toggle__box"></span>
+                            <span class="toggle__text">{{ t(request, 'setup.revert_seen.label') }}</span>
+                        </label>
+                    </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="wizard__footer">
+            <button type="submit" class="btn-primary">
+              {% if current_tab == 'advanced' %}{{ t(request, 'setup.wizard.done') }}{% else %} {{ t(request, 'setup.wizard.next') }}{% endif %}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+</div>
+
+<style>
+.wizard { margin-top: 20px; }
+.wizard__tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.wizard__tab { flex: 1; display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; opacity: 0.5; cursor: pointer; transition: all 0.2s; }
+.wizard__tab:hover { opacity: 0.8; background: rgba(255,255,255,0.05); }
+.wizard__tab.active { opacity: 1; background: rgba(96, 165, 250, 0.1); border: 1px solid var(--accent); }
+.wizard__tab-num { width: 24px; height: 24px; border-radius: 50%; background: var(--line); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
+.wizard__tab.active .wizard__tab-num { background: var(--accent); color: #fff; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.role-btn { cursor: pointer; border: 1px solid var(--line); border-radius: 12px; padding: 12px; text-align: center; display: block; transition: all 0.2s; background: rgba(255,255,255,0.02); }
+.role-btn:hover { background: rgba(255,255,255,0.05); }
+.role-btn:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 15px var(--accent); }
+.role-btn input { display: none; }
+.wizard__footer { margin-top: 30px; display: flex; justify-content: flex-end; }
+.btn-primary { padding: 12px 32px; font-size: 16px; background: var(--accent); color: #fff; border: none; border-radius: 12px; cursor: pointer; font-weight: 700; transition: transform 0.1s; }
+.btn-primary:active { transform: scale(0.98); }
+</style>
+
+<script>
+(() => {
+  const modelSelect = document.getElementById('local-model');
+  const notesEl = document.getElementById('model-notes');
+  function syncModelNotes() {
+    if (!notesEl || !modelSelect) return;
+    const opt = modelSelect.options[modelSelect.selectedIndex];
+    notesEl.textContent = opt ? opt.getAttribute('data-notes') : '';
+  }
+  if (modelSelect) modelSelect.addEventListener('change', syncModelNotes);
+  syncModelNotes();
+
+  const backend = document.getElementById('llm-backend');
+  const localOpts = document.getElementById('local-options');
+  const cloudOpts = document.getElementById('cloud-options');
+  function syncBackend() {
+    const v = backend.value;
+    localOpts.style.display = v === 'local' ? 'block' : 'none';
+    cloudOpts.style.display = v === 'cloud' ? 'block' : 'none';
+  }
+  if (backend) backend.addEventListener('change', syncBackend);
+
+  const provider = document.getElementById('cloud-provider');
+  function syncCloudKeys() {
+    const p = provider.value;
+    document.querySelectorAll('.cloud-key').forEach(row => {
+      row.style.display = row.getAttribute('data-provider') === p ? 'grid' : 'none';
+    });
+  }
+  if (provider) provider.addEventListener('change', syncCloudKeys);
+  syncCloudKeys();
+
+  window.switchTab = (tabName) => {
+    location.href = '/setup?tab=' + tabName;
+  };
+
+  const btnPick = document.getElementById('btn-pick-obsidian');
+  if (btnPick) {
+    btnPick.addEventListener('click', async () => {
+      btnPick.disabled = true;
+      try { await fetch('/setup/pick-obsidian', { method: 'POST' }); }
+      finally { location.reload(); }
+    });
+  }
+
+  const btnTest = document.getElementById('btn-test-imap');
+  const testStatus = document.getElementById('test-status');
+  if (btnTest) {
+    btnTest.addEventListener('click', async () => {
+        btnTest.disabled = true;
+        testStatus.textContent = "...";
+        const form = document.getElementById('setup-form');
+        const fd = new FormData(form);
+        const res = await fetch('/setup/test-imap', { method: 'POST', body: fd });
+        location.reload();
+    });
+  }
+})();
+</script>
+{% endblock %}

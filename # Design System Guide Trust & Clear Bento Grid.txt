@@ -1,0 +1,36 @@
+# Design System Guide: Trust & Clear Bento Grid
+
+## Core Concept
+Build a UI using a "Bento Grid" layout focusing on high readability, professionalism, and trust. Use clean white modular cards on a subtle light-grey background with soft drop shadows and clear typographic hierarchy. Ideal for dashboards and learning management systems.
+
+## Color Palette
+- **Main Background:** Light Grey (`#F7F9FC`)
+- **Card Backgrounds (Bento Box):** Pure White (`#FFFFFF`)
+- **Accent/Action Color:** Cobalt Blue (`#2563EB`) or Calm Indigo (`#4F46E5`) for primary buttons, active states, and progress bars.
+- **Primary Text:** Dark Grey (`#1E293B`) for headings and main body.
+- **Secondary Text:** Slate Grey (`#64748B`) for subtitles, placeholders, and meta-information.
+- **Divider/Subtle Border:** Faint Grey (`#E2E8F0`)
+
+## Layout & Structure (Bento Grid)
+- **Grid System:** CSS Grid (3 or 4 columns on desktop, 1 column on mobile).
+- **Modularity:** Span cards across rows/columns to create a bento box effect (e.g., 2x2 for main charts, 1x1 for statistic widgets).
+- **Spacing:** Grid gap `16px` or `20px`. Card internal padding `24px`.
+
+## UI Component Styling
+- **Cards (Containers):**
+  - Border: None, or extremely faint (`1px solid #E2E8F0`).
+  - Border Radius: `16px` or `20px` for a smooth, modern look.
+  - Shadow: Soft, diffused drop shadow for subtle depth (`box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)`).
+- **Buttons:**
+  - Background: `#2563EB`
+  - Text Color: `#FFFFFF`
+  - Border Radius: `8px` or `12px`.
+  - Hover State: Darker blue (`#1D4ED8`) with a smooth transition (`transition: all 0.2s ease-in-out`).
+- **Typography:**
+  - Font: Clean, highly legible Sans-serif (e.g., Pretendard, Inter, or Roboto).
+  - Headings: Semi-bold (`600`), distinct size hierarchy.
+
+## Implementation Rules
+- **Avoid:** Harsh black borders, neo-brutalist hard shadows, or complex gradients.
+- **Focus:** Ample white space (negative space), soft depth, and clear visual separation of information.
+- **Responsiveness:** Maintain structural integrity; ensure complex bento cards stack logically and cleanly on mobile screens.

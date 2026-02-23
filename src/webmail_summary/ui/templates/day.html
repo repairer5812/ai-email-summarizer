@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="detail__head" style="align-items:flex-end;">
+    <div>
+      <div class="muted">{{ t(request, 'day.subtitle') }}</div>
+      <h2 class="detail__title">{{ day }}</h2>
+    </div>
+    <div class="hero__actions" style="align-items:center;">
+      {% if not setup_complete %}
+        <a class="btnlink" href="/setup" style="background: var(--accent); color: #fff; font-weight: bold;">{{ t(request, 'home.btn.setup') }}</a>
+      {% elif active_resum %}
+        {# Progress is already visible #}
+      {% else %}
+        <button class="btn" id="btn-resummarize" type="button">{% if ui_lang(request) == 'ko' %}오류/누락만 다시 요약{% else %}Resummarize (failed only){% endif %}</button>
+        <button class="btn" id="btn-resummarize-all" type="button">{% if ui_lang(request) == 'ko' %}전체 다시 요약{% else %}Resummarize (all){% endif %}</button>
+        <button class="btn" id="btn-resummarize-selected" type="button" disabled>{% if ui_lang(request) == 'ko' %}선택 다시 요약 (0){% else %}Resummarize selected (0){% endif %}</button>
+      {% endif %}
+      <a class="btnlink" href="/">{{ t(request, 'day.back') }}</a>
+    </div>
+  </div>
+
+  <div id="resum-wrap" class="progress" style="display:none; margin-top:10px;">
+    <div class="progress__bar"><div class="progress__fill" id="resum-bar"></div></div>
+    <div class="progress__text" id="resum-text">...</div>
+    <div class="progress__text muted" id="resum-log" style="display:none;"></div>
+    <div class="progress__text" id="resum-current" style="display:none;"></div>
+
+    <div class="stepper" id="resum-stepper">
+      <div class="stepper__track" id="resum-track" style="width:0%"></div>
+      <div class="step" data-step="read">
+        <div class="step__dot">R</div>
+        <div class="step__label">{% if ui_lang(request) == 'ko' %}읽기{% else %}Read{% endif %}</div>
+      </div>
+      <div class="step" data-step="llm">
+        <div class="step__dot">AI</div>
+        <div class="step__label">{% if ui_lang(request) == 'ko' %}요약{% else %}Summarize{% endif %}</div>
+      </div>
+      <div class="step" data-step="save">
+        <div class="step__dot">S</div>
+        <div class="step__label">{% if ui_lang(request) == 'ko' %}저장{% else %}Save{% endif %}</div>
+      </div>
+      <div class="step" data-step="export">
+        <div class="step__dot">E</div>
+        <div class="step__label">{% if ui_lang(request) == 'ko' %}내보내기{% else %}Export{% endif %}</div>
+      </div>
+    </div>
+
+    <div id="resum-sub-wrap" style="display:none; margin-top:14px; padding: 0 10px;">
+      <div class="muted" style="font-size:11px; margin-bottom:6px; display:flex; justify-content:space-between;">
+        <span id="resum-sub-label">{% if ui_lang(request) == 'ko' %}AI 분석 단계{% else %}AI Analysis Stage{% endif %}</span>
+        <span id="resum-sub-pct" class="mono">0.00%</span>
+      </div>
+      <div class="bar" style="height:6px; background: rgba(255,255,255,0.05);"><div class="bar__fill" id="resum-sub-bar" style="width:0%; background: var(--accent); box-shadow: 0 0 10px var(--accent);"></div></div>
+    </div>
+
+    <div class="progress__text muted" id="resum-stage" style="display:none; margin-top:12px; text-align:center; font-size:12px; letter-spacing:0.02em;"></div>
+  </div>
+
+  <div class="list">
+    {% for it in items %}
+      <div class="list__item">
+        <div class="item-head">
+            <div style="flex:0 0 auto; padding-right:10px;">
+              <input type="checkbox" class="msg-select" value="{{ it.id }}" />
+            </div>
+            <div style="flex: 1 1 auto; min-width: 0;">
+              <div class="item-title" title="{{ it.subject }}">{{ it.subject }}</div>
+              <div class="list__meta muted">{{ it.time_full }}{% if it.summarize_ms %} · {% if ui_lang(request) == 'ko' %}요약{% else %}Summarize{% endif %} {{ it.summarize_ms }}{% endif %}</div>
+            </div>
+          <div class="item-actions">
+            {% if it.has_rendered %}
+              <a class="btnlink" href="/m/{{ it.id }}/rendered.html" target="_blank">{{ t(request, 'detail.view_original') }}</a>
+            {% endif %}
+            <a class="btnlink" href="/message/{{ it.id }}">{{ t(request, 'day.open_detail') }}</a>
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <div class="pre summary-content" data-message-id="{{ it.id }}">{{ it.summary or t(request, 'detail.no_summary') }}</div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
+<script>
+(() => {
+  // --- 1. Global Helpers ---
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function formatSummary(text) {
+    if (!text) return '';
+    let lines = String(text).replace(/\r\n/g, '\n').split('\n');
+    let htmlLines = [];
+    lines.forEach(line => {
+      let l = line.trim();
+      if (!l) { htmlLines.push('<div style="height:12px;"></div>'); return; }
+      l = l.replace(/^[^a-zA-Z0-9가-힣#\*\[]+(###|\*\*|\[)/, '$1');
+      let isHeader = false, isCore = false;
+      if (l.match(/^###\s+/)) {
+        const title = l.replace(/^###\s*/, '').trim();
+        l = `<h3 class="summary-h3">${escapeHtml(title)}</h3>`;
+        isHeader = true;
+      }
+      if (l.includes('[핵심 결론]')) {
+        let content = l.replace(/\[핵심 결론\][:\s]*/, '').replace(/\*\*/g, '').trim();
+        l = `<div class="summary-core-box"><b style="color:var(--ok)">[핵심 결론]</b> <span>${escapeHtml(content)}</span></div>`;
+        isCore = true;
+      }
+      if (!isHeader && !isCore) {
+        l = escapeHtml(l);
+        l = l.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        if (l.match(/^[-\s·•\*]+/)) l = l.replace(/^[-\s·•\*]+/, '• ');
+        htmlLines.push(`<div style="margin-bottom:6px; line-height:1.6; padding-left:4px;">${l}</div>`);
+      } else { htmlLines.push(l); }
+    });
+    return htmlLines.join('');
+  }
+
+  function applyFormatting() {
+    document.querySelectorAll('.summary-content').forEach(el => {
+      if (!el.hasAttribute('data-raw')) el.setAttribute('data-raw', el.textContent.trim());
+      el.innerHTML = formatSummary(el.getAttribute('data-raw'));
+    });
+  }
+
+  // --- 2. Elements & State ---
+  const btn = document.getElementById('btn-resummarize');
+  const btnAll = document.getElementById('btn-resummarize-all');
+  const btnSel = document.getElementById('btn-resummarize-selected');
+  const wrap = document.getElementById('resum-wrap'), bar = document.getElementById('resum-bar'), text = document.getElementById('resum-text');
+  const logEl = document.getElementById('resum-log'), curEl = document.getElementById('resum-current'), stageEl = document.getElementById('resum-stage');
+  const stepperEl = document.getElementById('resum-stepper'), trackEl = document.getElementById('resum-track');
+  const subWrap = document.getElementById('resum-sub-wrap'), subBar = document.getElementById('resum-sub-bar'), subPct = document.getElementById('resum-sub-pct');
+  const checkboxes = Array.from(document.querySelectorAll('input.msg-select'));
+
+  const LABEL_FAILED = {{ ("오류/누락만 다시 요약" if ui_lang(request) == 'ko' else "Resummarize (failed only)")|tojson }};
+  const LABEL_ALL = {{ ("전체 다시 요약" if ui_lang(request) == 'ko' else "Resummarize (all)")|tojson }};
+  const LABEL_STOP = {{ ("중단" if ui_lang(request) == 'ko' else "Stop")|tojson }};
+
+  let activeJobId = null, es = null;
+
+  // --- 3. Logic Functions ---
+  function selectedIds() { return checkboxes.filter(cb => cb.checked).map(cb => Number(cb.value || 0)); }
+  function syncSelectedUi() {
+    const ids = selectedIds();
+    if (activeJobId) { if(btnSel) btnSel.disabled = true; checkboxes.forEach(cb => cb.disabled = true); return; }
+    checkboxes.forEach(cb => cb.disabled = false);
+    if(btnSel) { btnSel.disabled = ids.length === 0; btnSel.textContent = LABEL_ALL.replace("전체", "선택").replace("(all)", "selected") + " (" + ids.length + ")"; }
+  }
+
+  function setProgress(pct, msg) {
+    if (!wrap || !bar || !text) return;
+    const p = Math.max(0, Math.min(100, pct));
+    wrap.style.display = ''; bar.style.width = p + '%'; text.textContent = (msg || '...') + ' (' + p + '%)';
+  }
+
+  function setStage(stage, extra) {
+    if (!stageEl || !stepperEl) return;
+    stageEl.style.display = ''; stepperEl.style.display = '';
+    const st = String(stage || ''), ex = String(extra || '');
+    if (subWrap) subWrap.style.display = (st === 'llm' || st === 'synthesis') ? 'block' : 'none';
+    const labels = { read: "읽는 중", llm: "요약 중", synthesis: "합성 중", save: "저장 중", export: "내보내는 중" };
+    stageEl.textContent = (labels[st] || st) + (ex ? ' (' + ex + ')' : '');
+    const stages = ['read', 'llm', 'save', 'export'];
+    const activeIdx = stages.indexOf(st === 'synthesis' ? 'llm' : st);
+    stepperEl.querySelectorAll('.step').forEach((n, idx) => {
+      if (idx < activeIdx) n.setAttribute('data-state', 'completed');
+      else if (idx === activeIdx) n.setAttribute('data-state', 'active');
+      else n.setAttribute('data-state', 'pending');
+    });
+    if (trackEl) trackEl.style.width = activeIdx < 0 ? '0%' : (activeIdx * 33.3) + '%';
+  }
+
+  function setButtonsIdle() {
+    activeJobId = null; 
+    if(btn) { btn.textContent = LABEL_FAILED; btn.disabled = false; }
+    if(btnAll) { btnAll.textContent = LABEL_ALL; btnAll.disabled = false; }
+    syncSelectedUi();
+  }
+
+  function setButtonsRunning(starter) {
+    if (starter === 'failed' && btn) { btn.textContent = LABEL_STOP; btnAll.disabled = true; btnSel.disabled = true; }
+    else if (starter === 'all' && btnAll) { btnAll.textContent = LABEL_STOP; btn.disabled = true; btnSel.disabled = true; }
+    else if (btnSel) { btnSel.textContent = LABEL_STOP; btn.disabled = true; btnAll.disabled = true; }
+    checkboxes.forEach(cb => cb.disabled = true);
+  }
+
+  async function requestCancel() {
+    if (!activeJobId) return;
+    [btn, btnAll, btnSel].forEach(b => { if(b) b.disabled = true; });
+    setProgress(100, "중단 중...");
+    try { await fetch('/api/jobs/' + activeJobId + '/cancel', { method: 'POST' }); } catch(e) {}
+  }
+
+  async function startResummarize(onlyFailed, starter, messageIds, reattachId) {
+    if (reattachId) { activeJobId = reattachId; setButtonsRunning(starter); }
+    else {
+      setButtonsRunning(starter);
+      const res = await fetch('/api/jobs/resummarize-day', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date_key: '{{ day }}', only_failed: !!onlyFailed, message_ids: messageIds }) });
+      const j = await res.json();
+      if (!res.ok) { setProgress(0, "오류: " + (j.error || 'failed')); setButtonsIdle(); return; }
+      activeJobId = j.job_id;
+    }
+    if (es) es.close();
+    es = new EventSource('/api/jobs/' + activeJobId + '/events');
+    es.addEventListener('message_updated', (ev) => {
+      const u = JSON.parse(ev.data);
+      const el = document.querySelector('.summary-content[data-message-id="' + u.message_id + '"]');
+      if (el && u.summary) { el.setAttribute('data-raw', u.summary.trim()); el.innerHTML = formatSummary(u.summary.trim()); }
+    });
+    let subPctTarget = 0, subPctCurrent = 0, subTimer = null;
+    function animate() {
+      if (!subBar || !subPct) return;
+      if (subPctCurrent < subPctTarget) subPctCurrent += Math.max(0.1, (subPctTarget - subPctCurrent) * 0.1); else if (subPctCurrent < 98) subPctCurrent += 0.01;
+      subBar.style.width = subPctCurrent.toFixed(2) + '%'; subPct.textContent = subPctCurrent.toFixed(2) + '%';
+      subTimer = requestAnimationFrame(animate);
+    }
+    es.addEventListener('detail', (ev) => {
+      const d = JSON.parse(ev.data);
+      if (d.type === 'email' && curEl) { curEl.style.display = ''; curEl.textContent = (d.index + '/' + d.total + ' ') + d.subject; subPctCurrent = 0; subPctTarget = 2; if(!subTimer) animate(); }
+      if (d.type === 'stage') { setStage(d.stage, ''); if(d.stage==='synthesis') subPctTarget=95; if(d.stage==='save'||d.stage==='export') subPctTarget=100; }
+      if (d.type === 'chunk') { setStage('llm', 'part '+d.index+'/'+d.total); subPctTarget=(d.index/(d.total+1))*100; if(!subTimer) animate(); }
+    });
+    es.addEventListener('progress', (ev) => {
+      const p = JSON.parse(ev.data); const pct = (Number(p.current||0)/Number(p.total||1))*100;
+      if (p.status === 'cancel_requested') { setProgress(100, "중단 중..."); return; }
+      setProgress(pct.toFixed(2), p.message);
+      if (p.status === 'failed') { es.close(); setButtonsIdle(); setProgress(0, "오류: " + p.message); }
+      if (p.status === 'succeeded' || p.status === 'cancelled') { es.close(); setButtonsIdle(); setTimeout(() => location.reload(), 1200); }
+    });
+  }
+
+  // --- 4. Start ---
+  applyFormatting();
+  checkboxes.forEach(cb => cb.addEventListener('change', syncSelectedUi));
+  const ACTIVE_RESUM = {% if active_resum %}{{ active_resum|tojson }}{% else %}null{% endif %};
+  const GLOBAL_ACTIVE_RESUM = {% if active and active.resummarize %}{{ active.resummarize|tojson }}{% else %}null{% endif %};
+
+  // Immediate UI Sync on Load
+  if (ACTIVE_RESUM) {
+    console.log("Re-attaching to resummarize job:", ACTIVE_RESUM.id);
+    const pct = Math.max(0, Math.min(100, (Number(ACTIVE_RESUM.current || 0) / Number(ACTIVE_RESUM.total || 1)) * 100));
+    
+    // 1. First, make sure the UI elements are visible and updated
+    setProgress(pct.toFixed(2), ACTIVE_RESUM.message);
+    
+    // 2. Identify the type of job to set the correct "Stop" button
+    let starter = 'all';
+    if (ACTIVE_RESUM.message.includes('오류/누락')) starter = 'failed';
+    else if (ACTIVE_RESUM.message.includes('선택')) starter = 'selected';
+    
+    // 3. Connect to the event stream
+    startResummarize(false, starter, null, ACTIVE_RESUM.id);
+  } else if (GLOBAL_ACTIVE_RESUM) {
+    const currentDay = "{{ day }}";
+    const jobDay = GLOBAL_ACTIVE_RESUM.date_key;
+    if (jobDay && jobDay !== currentDay) {
+        if (btn) btn.disabled = true;
+        if (btnAll) btnAll.disabled = true;
+        if (btnSel) btnSel.disabled = true;
+        setProgress(0, "{% if ui_lang(request) == 'ko' %}다른 날짜의 요약 작업이 진행 중입니다.{% else %}Another day's summarization is in progress.{% endif %} (" + jobDay + ")");
+    }
+  }
+
+  if (btn) btn.addEventListener('click', () => activeJobId ? requestCancel() : startResummarize(true, 'failed', null));
+  if (btnAll) btnAll.addEventListener('click', () => activeJobId ? requestCancel() : (confirm("전체 다시 요약하시겠습니까?") && startResummarize(false, 'all', null)));
+  if (btnSel) btnSel.addEventListener('click', () => activeJobId ? requestCancel() : startResummarize(false, 'selected', selectedIds()));
+})();
+</script>
+
+
+{% endblock %}

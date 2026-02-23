@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import bleach
+from bleach.css_sanitizer import CSSSanitizer
+
+
+_ALLOWED_TAGS = [
+    "a",
+    "abbr",
+    "article",
+    "aside",
+    "b",
+    "blockquote",
+    "br",
+    "caption",
+    "code",
+    "col",
+    "colgroup",
+    "dd",
+    "del",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "figure",
+    "figcaption",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "main",
+    "ol",
+    "p",
+    "pre",
+    "section",
+    "span",
+    "strong",
+    "sub",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "th",
+    "thead",
+    "tr",
+    "u",
+    "ul",
+    "video",
+    "source",
+    "audio",
+    "style",
+]
+
+_ALLOWED_ATTRS = {
+    "*": ["class", "id", "title", "style"],
+    "a": ["href", "name", "target", "rel"],
+    "img": ["src", "alt", "width", "height"],
+    "video": ["src", "controls", "poster"],
+    "audio": ["src", "controls"],
+    "source": ["src", "type"],
+    "table": ["border", "cellpadding", "cellspacing"],
+}
+
+_CSS = CSSSanitizer(
+    allowed_css_properties=[
+        "color",
+        "background",
+        "background-color",
+        "background-image",
+        "background-position",
+        "background-repeat",
+        "background-size",
+        "font",
+        "font-size",
+        "font-weight",
+        "font-style",
+        "font-family",
+        "text-decoration",
+        "text-align",
+        "margin",
+        "margin-left",
+        "margin-right",
+        "margin-top",
+        "margin-bottom",
+        "padding",
+        "padding-left",
+        "padding-right",
+        "padding-top",
+        "padding-bottom",
+        "border",
+        "border-radius",
+        "width",
+        "height",
+        "max-width",
+    ]
+)
+
+
+def sanitize_html(html: str) -> str:
+    return bleach.clean(
+        html,
+        tags=_ALLOWED_TAGS,
+        attributes=_ALLOWED_ATTRS,
+        protocols=["http", "https", "mailto"],
+        strip=True,
+        css_sanitizer=_CSS,
+    )
