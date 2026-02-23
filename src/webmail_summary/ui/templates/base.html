@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="{{ ui_lang(request) }}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title or "Webmail Summary" }}</title>
+    <link rel="stylesheet" href="/static/app.css" />
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand__mark">W</div>
+          <div class="brand__text">
+            <div class="brand__name">{{ t(request, 'app.name') }}</div>
+            <div class="brand__sub">{{ t(request, 'app.sub') }}</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <a class="nav__link" href="/">{{ t(request, 'nav.dashboard') }}</a>
+          <a class="nav__link" href="/setup">{{ t(request, 'nav.setup') }}</a>
+          <button class="nav__link" id="btn-lang" type="button">{% if ui_lang(request) == 'ko' %}English{% else %}한국어{% endif %}</button>
+        </nav>
+      </header>
+      <main class="main">
+        {% block content %}{% endblock %}
+      </main>
+      <footer class="footer">{{ t(request, 'footer') }}</footer>
+    </div>
+
+    <script>
+    (() => {
+      const btn = document.getElementById('btn-lang');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        const cur = (document.documentElement.lang || 'ko').toLowerCase();
+        const next = cur.startsWith('ko') ? 'en' : 'ko';
+        document.cookie = 'lang=' + next + '; Path=/; Max-Age=31536000; SameSite=Lax';
+        location.reload();
+      });
+    })();
+    </script>
+  </body>
+</html>

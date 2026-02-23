@@ -1,0 +1,38 @@
+# Design System Guide: Creative & Modern Bento Grid
+
+## Core Concept
+Build a UI using a "Bento Grid" layout with a playful, neo-brutalist, and modern aesthetic. Use modular cards, pastel colors, hard shadows, and distinct black borders.
+
+## Color Palette
+- **Main Background:** Warm Off-White (`#FDFBF7`)
+- **Card Backgrounds (Mix & Match):**
+  - Pastel Mint (`#CCFBF1`)
+  - Soft Yellow (`#FEF08A`)
+  - Light Coral (`#FEE2E2`)
+  - Pure White (`#FFFFFF`) for neutral data
+- **Accent/Action Color:** Vivid Orange (`#F97316`) for primary buttons and badges.
+- **Text & Borders:** Solid Black (`#000000`).
+
+## Layout & Structure (Bento Grid)
+- **Grid System:** CSS Grid (3 or 4 columns on desktop, 1 column on mobile).
+- **Modularity:** Span cards across multiple rows/columns to create an asymmetrical bento box effect.
+- **Spacing:** Grid gap `16px` or `24px`. Card padding `24px`.
+
+## UI Component Styling
+- **Cards (Containers):**
+  - Border: `2px solid #000000`
+  - Border Radius: `16px` or `24px`
+  - Shadow: Hard flat shadow (`box-shadow: 4px 4px 0px #000000`)
+- **Buttons:**
+  - Background: `#F97316`
+  - Border: `2px solid #000000`
+  - Shape: Rounded (`border-radius: 8px` or pill-shaped).
+  - Hover: Translate `Y(-2px)` and increase shadow to `6px 6px 0px #000000`.
+- **Typography:**
+  - Font: Modern, bold Sans-serif (e.g., Poppins, Plus Jakarta Sans, or Inter).
+  - Headings: Heavy font weight (`700` or `800`), high contrast.
+
+## Implementation Rules
+- **Avoid:** Soft, blurred drop shadows or complex gradients. 
+- **Focus:** Flat UI, strict lines, high contrast, and clear visual hierarchy.
+- **Responsiveness:** Ensure grid smoothly collapses into a vertical stack on mobile devices.

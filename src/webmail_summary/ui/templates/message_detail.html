@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <div class="detail__head">
+    <div>
+      <div class="muted">{{ msg.internal_date }}</div>
+      <h2 class="detail__title">{{ msg.subject }}</h2>
+      {% if msg.summarize_ms or msg.summarized_at %}
+        <div class="muted" style="margin-top:6px;">
+          {% if ui_lang(request) == 'ko' %}요약{% else %}Summarize{% endif %}
+          {% if msg.summarize_ms %} · {{ msg.summarize_ms }}{% endif %}
+          {% if msg.summarized_at %} · {{ msg.summarized_at }}{% endif %}
+        </div>
+      {% endif %}
+    </div>
+    <div class="detail__meta">
+      {% if msg.tags and msg.tags|length > 0 %}
+        <div class="chips">
+          {% for t in msg.tags %}
+            <span class="chip">#{{ t }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if msg.topics and msg.topics|length > 0 %}
+        <div class="chips">
+          {% for t in msg.topics %}
+            <span class="chip chip--topic">[[{{ t }}]]</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="detail-grid">
+    <div class="card">
+      <div class="card__title">{{ t(request, 'detail.summary') }}</div>
+      <div class="card__body">
+        <div class="pre summary-content">{{ msg.summary or t(request, 'detail.no_summary') }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__title">{{ t(request, 'detail.original') }}</div>
+      <div class="card__body">
+        {% if msg.has_rendered %}
+          <div class="actions" style="justify-content:flex-start; gap:10px;">
+            <a class="btnlink" href="/m/{{ msg.id }}/rendered.html" target="_blank">{{ t(request, 'detail.view_original') }}</a>
+          </div>
+          <div class="frame">
+            <iframe src="/m/{{ msg.id }}/rendered.html" title="rendered" referrerpolicy="no-referrer"></iframe>
+          </div>
+        {% else %}
+          <div class="muted">{{ t(request, 'detail.no_rendered') }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="actions" style="margin-top:14px; justify-content:flex-start;">
+    <a class="btnlink" href="/">{{ t(request, 'detail.back') }}</a>
+  </div>
+</section>
+
+<script>
+(() => {
+  function formatSummary(text) {
+    if (!text) return '';
+    let lines = String(text).replace(/\r\n/g, '\n').split('\n');
+    let htmlLines = [];
+    lines.forEach(line => {
+      let l = line.trim();
+      if (!l) { htmlLines.push('<div style="height:12px;"></div>'); return; }
+      l = l.replace(/^[^a-zA-Z0-9가-힣#\*\[]+(###|\*\*|\[)/, '$1');
+      let isHeader = false, isCore = false;
+      if (l.match(/^###\s+/)) {
+        l = `<h3 class="summary-h3">${l.replace(/^###\s*/, '').trim()}</h3>`;
+        isHeader = true;
+      }
+      if (l.includes('[핵심 결론]')) {
+        let content = l.replace(/\[핵심 결론\][:\s]*/, '').replace(/\*\*/g, '').trim();
+        l = `<div class="summary-core-box"><b style="color:var(--ok)">[핵심 결론]</b> <span>${content}</span></div>`;
+        isCore = true;
+      }
+      if (!isHeader && !isCore) {
+        l = l.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+        if (l.match(/^[-\s·•\*]+/)) l = l.replace(/^[-\s·•\*]+/, '• ');
+        htmlLines.push(`<div style="margin-bottom:6px; line-height:1.6; padding-left:4px;">${l}</div>`);
+      } else { htmlLines.push(l); }
+    });
+    return htmlLines.join('');
+  }
+  const el = document.querySelector('.summary-content');
+  if (el) {
+    const raw = el.textContent;
+    el.innerHTML = formatSummary(raw);
+  }
+})();
+</script>
+{% endblock %}
