@@ -5,7 +5,7 @@ import time
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from webmail_summary.index.db import get_conn
@@ -195,6 +195,36 @@ def start_resummarize_day(payload: dict):
         ),
     )
     return {"job_id": job_id}
+
+
+@router.post("/jobs/refresh-overviews")
+async def start_refresh_overviews(request: Request):
+    try:
+        payload = {}
+        try:
+            parsed = await request.json()
+            if isinstance(parsed, dict):
+                payload = parsed
+        except Exception:
+            payload = {}
+        date_keys = payload.get("date_keys")
+        force_refresh = bool(payload.get("force_refresh", False))
+        from webmail_summary.jobs.tasks_refresh_overviews import refresh_overviews_task
+
+        job_id = get_runner().enqueue(
+            kind="refresh-overviews",
+            fn=refresh_overviews_task(
+                date_keys=date_keys,
+                force_refresh=force_refresh,
+            ),
+        )
+        return {"job_id": job_id}
+    except (ImportError, ModuleNotFoundError):
+        return JSONResponse({"error": "not implemented"}, status_code=501)
+    except sqlite3.OperationalError as e:
+        if "locked" in str(e).lower():
+            return JSONResponse({"error": "database busy"}, status_code=503)
+        raise
 
 
 @router.get("/jobs/{job_id}")

@@ -24,7 +24,8 @@ from webmail_summary.llm.local_models import (
 from webmail_summary.llm.local_status import check_local_ready
 from webmail_summary.ui.i18n import t as _t
 from webmail_summary.ui.i18n import ui_lang as _ui_lang
-from webmail_summary.ui.timefmt import format_kst, time_kst
+from webmail_summary.ui.timefmt import format_kst, time_kst, format_date_with_weekday_ko
+
 from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
 from webmail_summary.util.jsonish import coerce_summary_text
 
@@ -80,6 +81,17 @@ def _get_active_jobs(conn) -> dict:
         "ORDER BY updated_at DESC LIMIT 1"
     ).fetchone()
 
+    refresh_row = conn.execute(
+        "SELECT id, status, progress_current, progress_total, message "
+        "FROM jobs WHERE kind='refresh-overviews' AND status IN ('queued','running','cancel_requested') "
+        "ORDER BY updated_at DESC LIMIT 1"
+    ).fetchone()
+    install_row = conn.execute(
+        "SELECT id, status, progress_current, progress_total, message "
+        "FROM jobs WHERE kind='local-install' AND status IN ('queued','running','cancel_requested') "
+        "ORDER BY updated_at DESC LIMIT 1"
+    ).fetchone()
+
     def _row_to_dict(row):
         if not row:
             return None
@@ -99,7 +111,12 @@ def _get_active_jobs(conn) -> dict:
             "date_key": date_key,
         }
 
-    return {"sync": _row_to_dict(sync_row), "resummarize": _row_to_dict(resum_row)}
+    return {
+        "sync": _row_to_dict(sync_row),
+        "resummarize": _row_to_dict(resum_row),
+        "refresh_overviews": _row_to_dict(refresh_row),
+        "local_install": _row_to_dict(install_row),
+    }
 
 
 def _get_cloud_keys() -> dict[str, bool]:
@@ -184,6 +201,15 @@ def home(request: Request):
         day_cards = [
             {
                 "day": str(r[0] or ""),
+                "day_display": format_date_with_weekday_ko(str(r[0] or "")),
+                "count": int(r[1] or 0),
+                "overview": get_daily_overview(conn, str(r[0] or "")),
+            }
+            for r in rows_days
+        ]
+
+            {
+                "day": str(r[0] or ""),
                 "count": int(r[1] or 0),
                 "overview": get_daily_overview(conn, str(r[0] or "")),
             }
@@ -198,6 +224,7 @@ def home(request: Request):
         "home.html",
         {
             "request": request,
+            "theme": settings.ui_theme,
             "days": day_cards,
             "flash": {"saved": saved},
             "active": active_jobs,
@@ -234,6 +261,15 @@ def api_get_days():
             ).fetchall()
         )
         return [
+            {
+                "day": str(r[0] or ""),
+                "day_display": format_date_with_weekday_ko(str(r[0] or "")),
+                "count": int(r[1] or 0),
+                "overview": get_daily_overview(conn, str(r[0] or "")),
+            }
+            for r in rows
+        ]
+
             {
                 "day": str(r[0] or ""),
                 "count": int(r[1] or 0),
@@ -300,6 +336,7 @@ def day_view(request: Request, date_key: str):
         "day.html",
         {
             "request": request,
+            "theme": settings.ui_theme,
             "day": dk,
             "items": items,
             "active": active_jobs,
@@ -315,6 +352,7 @@ def message_detail(request: Request, message_id: int):
 
     conn = get_conn(_db_path())
     try:
+        settings = load_settings(conn)
         row = get_message_detail(conn, int(message_id))
         active_jobs = _get_active_jobs(conn)
     finally:
@@ -331,6 +369,16 @@ def message_detail(request: Request, message_id: int):
     summarized_at = str(row[10] or "") if len(row) > 10 else ""
     summarize_ms = row[11] if len(row) > 11 else None
 
+    return_to = str(request.query_params.get("return_to") or "").strip()
+    if len(return_to) == 10 and return_to[4] == "-" and return_to[7] == "-":
+        back_href = f"/day/{return_to}"
+    elif (
+        len(internal_date) >= 10 and internal_date[4] == "-" and internal_date[7] == "-"
+    ):
+        back_href = f"/day/{internal_date[:10]}"
+    else:
+        back_href = "/"
+
     try:
         tags = json.loads(tags_json)
     except Exception:
@@ -344,6 +392,7 @@ def message_detail(request: Request, message_id: int):
         "message_detail.html",
         {
             "request": request,
+            "theme": settings.ui_theme,
             "msg": {
                 "id": int(row[0]),
                 "subject": subject,
@@ -356,6 +405,7 @@ def message_detail(request: Request, message_id: int):
                 if summarized_at
                 else "",
                 "summarize_ms": _fmt_summarize_ms(summarize_ms),
+                "back_href": back_href,
             },
             "active": active_jobs,
         },
@@ -407,6 +457,7 @@ def setup_get(request: Request):
         local_ready = check_local_ready(model_id=settings.local_model_id)
         ctx = {
             "request": request,
+            "theme": settings.ui_theme,
             "current_tab": tab,
             "defaults": {
                 "imap_host": settings.imap_host or "imap.daouoffice.com",
@@ -423,6 +474,7 @@ def setup_get(request: Request):
                 "revert_seen": settings.revert_seen_after_sync,
                 "user_roles": settings.user_roles,
                 "user_interests": settings.user_interests,
+                "ui_theme": settings.ui_theme,
             },
             "active": active_jobs,
             "cloud": {
@@ -482,6 +534,7 @@ def setup_test_imap(
         local_ready = check_local_ready(model_id=settings.local_model_id)
         ctx = {
             "request": request,
+            "theme": settings.ui_theme,
             "active": active_jobs,
             "current_tab": "connection",
             "defaults": {
@@ -503,6 +556,7 @@ def setup_test_imap(
                 or "0",
                 "user_roles": settings.user_roles,
                 "user_interests": settings.user_interests,
+                "ui_theme": settings.ui_theme,
             },
             "folders": folders,
             "status": {"status": status, "error": error},
@@ -544,6 +598,7 @@ def setup_save(
     revert_seen_after_sync: str = Form("0"),
     user_roles: list[str] = Form([]),
     user_interests: str = Form(""),
+    ui_theme: str = Form("trust"),
     current_tab: str = Form("profile"),
 ):
     from webmail_summary.index.db import get_conn
@@ -577,6 +632,8 @@ def setup_save(
             _set_setting(conn, "openrouter_model", openrouter_model.strip())
         if external_max_bytes:
             _set_setting(conn, "external_max_bytes", external_max_bytes.strip())
+        if ui_theme:
+            _set_setting(conn, "ui_theme", ui_theme)
 
         if user_roles:
             _set_setting(conn, "user_roles", json.dumps(user_roles))

@@ -1,156 +1,262 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero">
-  <div class="hero__inner">
-    {% if flash and flash.saved %}
-      <div class="notice notice--ok" id="flash-saved">
-        <div><strong>{{ t(request, 'home.notice.saved.title') }}</strong> {{ t(request, 'home.notice.saved.body') }}</div>
-      </div>
-      <script>
-      (() => {
-        try {
-          const u = new URL(location.href);
-          u.searchParams.delete('saved');
-          history.replaceState(null, '', u.toString());
-        } catch (e) {}
-      })();
-      </script>
-    {% endif %}
-    <div class="hero__row">
-      <div>
-        <h1>{{ t(request, 'home.hero.title') }}</h1>
-        <p class="muted">{{ t(request, 'home.hero.sub') }}</p>
-      </div>
-      <div class="hero__actions">
-        <button id="btn-sync" {% if not ai.ready %}disabled{% endif %}>{{ t(request, 'home.btn.sync') }}</button>
-        <a class="btnlink" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
-      </div>
+  {% if flash and flash.saved %}
+    <div class="notice notice--ok" id="flash-saved">
+      <div><strong>{{ t(request, 'home.notice.saved.title') }}</strong> {{ t(request, 'home.notice.saved.body') }}</div>
     </div>
-
-    {% if not ai.setup_complete %}
-      <div class="notice notice--err" style="margin-top:12px; padding: 20px; text-align: center;">
-        <div style="font-size: 18px; margin-bottom: 10px;"><strong>{{ t(request, 'setup.ai.not_ready.title') }}</strong></div>
-        <p>{{ t(request, 'setup.ai.not_ready.body') }}</p>
-        <div style="margin-top:20px;">
-            <a class="btnlink" href="/setup" style="background: var(--accent); color: #fff; padding: 12px 24px; font-weight: bold; font-size: 16px;">{{ t(request, 'home.btn.setup') }}</a>
-        </div>
-      </div>
-    {% endif %}
-
-    <div class="card">
-      <div class="card__title">{{ t(request, 'home.card.progress') }}</div>
-      <div class="card__body">
-        <div id="sync-progress-box">
-          <div class="bar"><div class="bar__fill" id="sync-bar" style="width:0%"></div></div>
-          <div class="muted" id="sync-text">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
-
-          <div class="stepper" id="sync-stepper" style="display:none; margin-top:16px;">
-            <div class="stepper__track" id="sync-track" style="width:0%"></div>
-            <div class="step" data-step="archive">
-              <div class="step__dot">A</div>
-              <div class="step__label">{% if ui_lang(request) == 'ko' %}백업{% else %}Archive{% endif %}</div>
-            </div>
-            <div class="step" data-step="summarize">
-              <div class="step__dot">AI</div>
-              <div class="step__label">{% if ui_lang(request) == 'ko' %}요약{% else %}Summarize{% endif %}</div>
-            </div>
-            <div class="step" data-step="export">
-              <div class="step__dot">O</div>
-              <div class="step__label">Obsidian</div>
-            </div>
-          </div>
-        </div>
-
-        <a id="resum-progress-box" href="#" style="display:none; margin-top:10px; padding-top:10px; border-top: 1px dashed var(--line); text-decoration:none; color:inherit;">
-          <div class="muted" style="font-size:12px; margin-bottom:6px;">{% if ui_lang(request) == 'ko' %}날짜별 재요약 진행 중... (클릭하여 이동){% else %}Resummarizing day... (Click to view){% endif %}</div>
-          <div class="bar" style="height:8px;"><div class="bar__fill" id="resum-bar" style="width:0%; background: var(--accent);"></div></div>
-          <div class="muted" id="resum-text" style="font-size:11px;">...</div>
-        </a>
-
-        <div class="muted" id="sync-log" style="margin-top:12px; display:none; font-size:11px; text-align:center;"></div>
-      </div>
+    <script>
+    (() => {
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete('saved');
+        history.replaceState(null, '', u.toString());
+      } catch (e) {}
+    })();
+    </script>
+  {% endif %}
+  <div class="hero__row">
+    <div>
+      <h1>{{ t(request, 'home.hero.title') }}</h1>
+      <p class="muted">{{ t(request, 'home.hero.sub') }}</p>
     </div>
-
-    <div id="day-list-container">
-      {% for d in days %}
-        <a class="day" href="/day/{{ d.day }}" style="display:block; color:inherit; text-decoration:none;" data-day="{{ d.day }}">
-          <div class="day__head">
-            <div class="day__title">{{ d.day }}</div>
-            <div class="day__count">{{ d.count }} {{ t(request, 'home.day.mails') }}</div>
-          </div>
-          <div class="day__body" style="padding: 12px 14px;">
-            {% if d.overview %}
-              <div class="day__overview pre" style="font-size:13px; color: var(--text); border-left: 2px solid var(--accent); padding-left: 10px; margin-bottom: 10px;">{{ d.overview }}</div>
-            {% endif %}
-            <div class="muted" style="font-size: 12px;">{{ t(request, 'home.day.open_hint') }}</div>
-          </div>
-        </a>
-      {% endfor %}
+    <div class="hero__actions">
+      <button id="btn-sync" class="btn" {% if not ai.ready %}disabled{% endif %}>{{ t(request, 'home.btn.sync') }}</button>
+      <button id="btn-refresh-overviews" class="btn btn--secondary">{{ t(request, 'home.btn.refresh_overviews') }}</button>
+      <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
     </div>
   </div>
 </section>
 
+{% if not ai.setup_complete %}
+  <div class="card span-4" style="margin-bottom: 24px; text-align: center; border-color: var(--accent);">
+    <div class="card__title"><strong>{{ t(request, 'setup.ai.not_ready.title') }}</strong></div>
+    <div class="card__body">
+      <p>{{ t(request, 'setup.ai.not_ready.body') }}</p>
+      <div style="margin-top:20px;">
+      <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<div class="bento-grid">
+  <!-- Progress Card -->
+  <div class="card span-4">
+    <div class="card__title">{{ t(request, 'home.card.progress') }}</div>
+    <div class="card__body">
+      <div id="sync-progress-box">
+        <div class="bar"><div class="bar__fill" id="sync-bar" style="width:0%"></div></div>
+        <div class="muted" id="sync-text" style="margin-top: 8px;">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
+
+        <div class="stepper" id="sync-stepper" style="display:none; margin-top:16px;">
+          <div class="stepper__track" id="sync-track" style="width:0%"></div>
+          <div class="step" data-step="archive">
+            <div class="step__dot">A</div>
+            <div class="step__label">{% if ui_lang(request) == 'ko' %}백업{% else %}Archive{% endif %}</div>
+          </div>
+          <div class="step" data-step="summarize">
+            <div class="step__dot">AI</div>
+            <div class="step__label">{% if ui_lang(request) == 'ko' %}요약{% else %}Summarize{% endif %}</div>
+          </div>
+          <div class="step" data-step="export">
+            <div class="step__dot">O</div>
+            <div class="step__label">Obsidian</div>
+          </div>
+        </div>
+      </div>
+
+      <a id="resum-progress-box" href="#" style="display:none; margin-top:16px; padding-top:16px; border-top: 1px dashed var(--border); text-decoration:none; color:inherit;">
+        <div class="muted" style="font-size:12px; margin-bottom:6px;">{% if ui_lang(request) == 'ko' %}날짜별 재요약 진행 중... (클릭하여 이동){% else %}Resummarizing day... (Click to view){% endif %}</div>
+        <div class="bar" style="height:8px;"><div class="bar__fill" id="resum-bar" style="width:0%;"></div></div>
+        <div class="muted" id="resum-text" style="font-size:11px; margin-top: 4px;">...</div>
+      </a>
+
+      <div id="refresh-progress-box" style="display:none; margin-top:16px; padding-top:16px; border-top: 1px dashed var(--border);">
+        <div class="muted" style="font-size:12px; margin-bottom:6px;">{{ t(request, 'home.btn.refresh_overviews') }}...</div>
+        <div class="bar"><div class="bar__fill" id="refresh-bar" style="width:0%"></div></div>
+        <div class="muted" id="refresh-text" style="font-size:11px; margin-top: 4px;">...</div>
+      </div>
+
+      <div class="muted" id="sync-log" style="margin-top:12px; display:none; font-size:11px; text-align:center;"></div>
+    </div>
+  </div>
+
+  <!-- Day Cards -->
+  {% for d in days %}
+    <div class="card day-card">
+      <div style="position: absolute; top: 18px; left: 18px; z-index: 10;">
+        <input type="checkbox" class="day-select" value="{{ d.day }}" style="width: 18px; height: 18px; cursor: pointer;">
+      </div>
+      <a href="/day/{{ d.day }}" style="text-decoration:none; color:inherit; display: flex; flex-direction: column; height: 100%; padding: 20px 20px;">
+        <div class="card__title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-left: 28px;">
+          <span style="font-size: 1.1rem; font-weight: 800;">{{ d.day_display }}</span>
+
+          <span class="muted" style="font-size: 0.75rem;">{{ d.count }} {{ t(request, 'home.day.mails') }}</span>
+        </div>
+        <div class="card__body">
+          {% if d.overview %}
+            <div class="day__overview" data-raw="{{ d.overview }}"></div>
+          {% else %}
+            <div class="muted" style="font-size: 0.85rem; padding-left: 28px; margin-top: 10px;">{{ t(request, 'home.day.open_hint') }}</div>
+          {% endif %}
+        </div>
+      </a>
+    </div>
+  {% endfor %}
+</div>
+
 <script>
 (() => {
-  const btn = document.getElementById('btn-sync');
-  const bar = document.getElementById('sync-bar');
-  const text = document.getElementById('sync-text');
-  const logEl = document.getElementById('sync-log');
-  const stepperEl = document.getElementById('sync-stepper');
-  const trackEl = document.getElementById('sync-track');
-  
-  const resumBox = document.getElementById('resum-progress-box');
-  const resumBar = document.getElementById('resum-bar');
-  const resumText = document.getElementById('resum-text');
-  const dayContainer = document.getElementById('day-list-container');
-  const STR_MAILS = "{{ t(request, 'home.day.mails') }}";
-  const STR_OPEN_HINT = "{{ t(request, 'home.day.open_hint') }}";
+  // --- UI Elements ---
+  const btn = document.getElementById('btn-sync'), bar = document.getElementById('sync-bar'), text = document.getElementById('sync-text');
+  const stepperEl = document.getElementById('sync-stepper'), trackEl = document.getElementById('sync-track');
+  const resumBox = document.getElementById('resum-progress-box'), resumBar = document.getElementById('resum-bar'), resumText = document.getElementById('resum-text');
+  const btnRefresh = document.getElementById('btn-refresh-overviews'), refreshBox = document.getElementById('refresh-progress-box'), refreshBar = document.getElementById('refresh-bar'), refreshText = document.getElementById('refresh-text');
+  const grid = document.querySelector('.bento-grid');
 
-  if (!btn || !bar || !text) return;
+  const STR_MAILS = "{{ t(request, 'home.day.mails') }}", STR_OPEN_HINT = "{{ t(request, 'home.day.open_hint') }}";
+  const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }}, LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }}, LABEL_REFRESH = {{ t(request, 'home.btn.refresh_overviews')|tojson }}, LABEL_SUMMARIZING = {{ t(request, 'home.btn.refresh_ing')|tojson }};
+  const STR_STARTING = {{ ("동기화를 시작합니다" if ui_lang(request) == 'ko' else "Starting sync")|tojson }}, STR_ERROR = {{ ("오류" if ui_lang(request) == 'ko' else "Error")|tojson }}, STR_EVENT_STREAM = {{ ("오류: 이벤트 스트림" if ui_lang(request) == 'ko' else "Error: event stream")|tojson }};
 
-  const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }};
-  const LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }};
-  const STR_STARTING = {{ ("동기화를 시작합니다" if ui_lang(request) == 'ko' else "Starting sync")|tojson }};
-  const STR_ERROR = {{ ("오류" if ui_lang(request) == 'ko' else "Error")|tojson }};
-  const STR_EVENT_STREAM = {{ ("오류: 이벤트 스트림" if ui_lang(request) == 'ko' else "Error: event stream")|tojson }};
-
-  let es = null;
-  let resumEs = null;
-  let currentJobId = "";
-  let currentResumId = "";
+  let es = null, resumEs = null, refreshEs = null;
+  let currentJobId = "", currentResumId = "", currentRefreshId = "";
   let dayRefreshTimer = null;
+  let refreshPollTimer = null;
+  let syncPollTimer = null;
 
+  // --- Shared Formatting Logic ---
+  function escapeHtml(str) {
+    return String(str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function formatSummary(raw) {
+    if (!raw) return '<div class="muted">요약 생성 중...</div>';
+    let contentStr = String(raw).trim();
+    if (!contentStr) return '<div class="muted">요약 생성 중...</div>';
+    
+    const cleanJsonStr = (input) => {
+        let t = input.replace(/^[\s\-•·\*"]*(summary|overview)?\s*[:]\s*/i, "").trim();
+        if (t.startsWith('"') && t.endsWith('"')) t = t.substring(1, t.length - 1);
+        return t;
+    };
+
+    let processed = cleanJsonStr(contentStr);
+    let s = contentStr.replace(/\*\*/g, '');
+    if (s.startsWith("```")) { s = s.replace(/^```[a-zA-Z0-9_-]*\s*/, "").replace(/\s*```$/, "").trim(); }
+    
+    try {
+      let target = (processed.startsWith("{") || processed.startsWith("[")) ? processed : s;
+      if ((target.startsWith("{") && target.endsWith("}")) || (target.startsWith("[") && target.endsWith("]"))) {
+        const parsed = JSON.parse(target);
+        if (Array.isArray(parsed)) s = parsed.join('\n');
+        else if (parsed.summary) s = Array.isArray(parsed.summary) ? parsed.summary.join('\n') : String(parsed.summary);
+      }
+    } catch(e) {}
+
+    const textLines = s.replace(/\r\n?/g, "\n").split("\n");
+    const html = [];
+    textLines.forEach(rawLine => {
+      const line = rawLine.trim();
+      if (!line) return;
+      const parts = line.split(/\s+-\s+(?=[A-Za-z0-9가-힣\[])/g);
+      parts.forEach(p => {
+        let t = p.trim();
+        if (!t) return;
+        t = t.replace(/^([\s\-\•·\*]+)/, '');
+        if (!t || t.length < 2) return;
+        if (/^#{1,6}\s*/.test(t)) {
+          const heading = t.replace(/^#{1,6}\s*/, '').trim();
+          if (heading) html.push(`<h3 class="summary-h3">${escapeHtml(heading)}</h3>`);
+          return;
+        }
+        let safe = escapeHtml(t);
+        if (safe.includes(':')) {
+           const splitIdx = safe.indexOf(':');
+           const title = safe.substring(0, splitIdx).trim();
+           const content = safe.substring(splitIdx + 1).trim();
+           html.push(`<div class="summary-item">• <b class="summary-item-bold">${title}:</b> ${content}</div>`);
+        } else {
+           html.push(`<div class="summary-item">• ${safe}</div>`);
+        }
+      });
+    });
+    return html.length > 0 ? html.join('') : '<div class="muted">요약 생성 중...</div>';
+  }
+
+  function applyFormatting() {
+    document.querySelectorAll('.day__overview').forEach(el => {
+      const raw = el.getAttribute('data-raw');
+      if (raw) el.innerHTML = formatSummary(raw);
+    });
+  }
+
+  // --- Logic Functions ---
   async function refreshDayList() {
-    if (!dayContainer) return;
+    if (!grid) return;
     try {
         const res = await fetch('/api/ui/days');
         if (!res.ok) return;
         const days = await res.json();
         
-        // Simple strategy: rebuild the HTML if changed to reflect counts/new days
-        let html = "";
-        days.forEach(d => {
-            const overviewHtml = d.overview ? `<div class="day__overview pre" style="font-size:13px; color: var(--text); border-left: 2px solid var(--accent); padding-left: 10px; margin-bottom: 10px;">${d.overview}</div>` : '';
-            html += `
-            <a class="day" href="/day/${d.day}" style="display:block; color:inherit; text-decoration:none;" data-day="${d.day}">
-              <div class="day__head">
-                <div class="day__title">${d.day}</div>
-                <div class="day__count">${d.count} ${STR_MAILS}</div>
-              </div>
-              <div class="day__body" style="padding: 12px 14px;">
-                ${overviewHtml}
-                <div class="muted" style="font-size: 12px;">${STR_OPEN_HINT}</div>
-              </div>
-            </a>`;
+        const existingDays = {};
+        document.querySelectorAll('.day-card').forEach(card => {
+          const cb = card.querySelector('.day-select');
+          if (cb) existingDays[cb.value] = card;
         });
-        dayContainer.innerHTML = html;
+
+        const processed = new Set();
+        const progressCard = grid.firstElementChild;
+        let lastNode = progressCard;
+
+        days.forEach(d => {
+            processed.add(d.day);
+            const contentHtml = d.overview 
+                ? `<div class="day__overview" data-raw="${escapeHtml(d.overview)}"></div>` 
+                : `<div class="muted" style="font-size: 0.85rem; padding-left: 28px; margin-top: 10px;">${STR_OPEN_HINT}</div>`;
+            
+            const existing = existingDays[d.day];
+            if (existing) {
+              const countEl = existing.querySelector('.muted');
+              if (countEl) countEl.textContent = `${d.count} ${STR_MAILS}`;
+              
+              const body = existing.querySelector('.card__body');
+              const currentRaw = body.querySelector('.day__overview')?.getAttribute('data-raw');
+              if (currentRaw !== d.overview) {
+                body.innerHTML = contentHtml;
+                applyFormatting();
+              }
+              lastNode = existing;
+            } else {
+              const div = document.createElement('div');
+              div.className = 'card day-card';
+              div.innerHTML = `
+                <div style="position: absolute; top: 18px; left: 18px; z-index: 10;">
+                  <input type="checkbox" class="day-select" value="${d.day}" style="width: 18px; height: 18px; cursor: pointer;">
+                </div>
+                <a href="/day/${d.day}" style="text-decoration:none; color:inherit; display: flex; flex-direction: column; height: 100%; padding: 20px 20px;">
+                  <div class="card__title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-left: 28px;">
+                    <span style="font-size: 1.1rem; font-weight: 800;">${d.day_display}</span>
+                    <span class="muted" style="font-size: 0.75rem;">${d.count} ${STR_MAILS}</span>
+                  </div>
+                  <div class="card__body">${contentHtml}</div>
+                </a>`;
+              lastNode.after(div);
+              lastNode = div;
+              applyFormatting();
+            }
+        });
+
+        Object.keys(existingDays).forEach(day => {
+          if (!processed.has(day)) existingDays[day].remove();
+        });
     } catch (e) { console.error("Day refresh failed", e); }
   }
 
   function setProgress(pct, msg) {
     const p = Math.max(0, Math.min(100, pct));
-    bar.style.width = p + '%';
-    text.textContent = (msg || '...') + ' (' + p.toFixed(2) + '%)';
+    if (bar) bar.style.width = p + '%';
+    if (text) text.textContent = (msg || '...') + ' (' + p.toFixed(2) + '%)';
   }
 
   function watchResummarize(jobId) {
@@ -164,166 +270,201 @@
       const pct = Math.max(0, Math.min(100, (Number(p.current||0)/Number(p.total||1))*100));
       if (resumBar) resumBar.style.width = pct + '%';
       if (resumText) resumText.textContent = (p.message || '...') + ' (' + pct.toFixed(2) + '%)';
-      
-      // Update link to date if available in p.date_key or from message
-      let dk = p.date_key || "";
-      if (!dk && p.message && p.message.startsWith("[")) {
-         const pot = p.message.substring(1, 11);
-         if (pot.length === 10 && pot[4] === "-" && pot[7] === "-") dk = pot;
-      }
-      if (dk) resumBox.href = "/day/" + dk;
-
       if (p.status === 'succeeded' || p.status === 'failed' || p.status === 'cancelled') {
-        resumEs.close();
-        resumEs = null;
-        currentResumId = "";
+        resumEs.close(); resumEs = null; currentResumId = "";
         setTimeout(() => { if (resumBox) resumBox.style.display = 'none'; }, 2000);
       }
     });
   }
 
+  function watchRefresh(jobId) {
+    if (!jobId || !refreshBox) return;
+    currentRefreshId = String(jobId);
+    refreshBox.style.display = 'block';
+    if (btnRefresh) { btnRefresh.disabled = false; btnRefresh.textContent = LABEL_SUMMARIZING; }
+    if (refreshPollTimer) { clearInterval(refreshPollTimer); refreshPollTimer = null; }
+
+    const renderRefreshProgress = (p) => {
+      let cur = Number(p && p.current || 0);
+      let total = Number(p && p.total || 0);
+      const msg = String((p && p.message) || '...');
+
+      if ((!total || total <= 0) && msg) {
+        const m = msg.match(/\((\d+)\/(\d+)\)/);
+        if (m) {
+          cur = Number(m[1] || 0);
+          total = Number(m[2] || 0);
+        }
+      }
+
+      const pct = Math.max(0, Math.min(100, (cur / (total || 1)) * 100));
+      if (refreshBar) refreshBar.style.width = pct + '%';
+      if (refreshText) {
+        const frac = total > 0 ? (Math.floor(cur) + '/' + total) : String(Math.floor(cur));
+        refreshText.textContent = msg + ' (' + frac + ', ' + pct.toFixed(2) + '%)';
+      }
+    };
+
+    const onTerminal = (status) => {
+      if (dayRefreshTimer) { clearInterval(dayRefreshTimer); dayRefreshTimer = null; }
+      if (refreshPollTimer) { clearInterval(refreshPollTimer); refreshPollTimer = null; }
+      if (refreshEs) { try { refreshEs.close(); } catch (e) {} }
+      refreshEs = null;
+      currentRefreshId = "";
+      if (btnRefresh) { btnRefresh.disabled = false; btnRefresh.textContent = LABEL_REFRESH; }
+      if (status === 'succeeded') setTimeout(() => location.reload(), 1000);
+      else setTimeout(() => { if (refreshBox) refreshBox.style.display = 'none'; }, 3000);
+    };
+
+    const pollRefresh = async () => {
+      try {
+        const res = await fetch('/api/jobs/' + jobId);
+        if (!res.ok) return;
+        const j = await res.json();
+        renderRefreshProgress({
+          status: j.status,
+          current: j.progress_current,
+          total: j.progress_total,
+          message: j.message,
+        });
+        if (j.status === 'running' && !dayRefreshTimer) dayRefreshTimer = setInterval(refreshDayList, 15000);
+        if (j.status === 'succeeded' || j.status === 'failed' || j.status === 'cancelled') onTerminal(j.status);
+      } catch (e) {}
+    };
+
+    if (refreshEs) refreshEs.close();
+    refreshEs = new EventSource('/api/jobs/' + jobId + '/events');
+    refreshPollTimer = setInterval(pollRefresh, 2000);
+    refreshEs.addEventListener('progress', (ev) => {
+      const p = JSON.parse(ev.data);
+      renderRefreshProgress(p);
+      if (p.message && (p.message.includes('완료') || p.message.includes('completed'))) {
+          refreshDayList();
+      }
+      if (p.status === 'running' && !dayRefreshTimer) dayRefreshTimer = setInterval(refreshDayList, 15000);
+      if (p.status === 'succeeded' || p.status === 'failed' || p.status === 'cancelled') {
+        onTerminal(p.status);
+      }
+    });
+    refreshEs.addEventListener('error', () => {
+      pollRefresh();
+    });
+
+    pollRefresh();
+  }
+
   function renderProgress(p) {
     if (p && p.status === 'cancel_requested') {
-      bar.style.width = '100%';
-      text.textContent = "{% if ui_lang(request) == 'ko' %}멈추는 중...{% else %}Stopping...{% endif %}";
-      btn.disabled = true;
+      if (bar) bar.style.width = '100%';
+      if (text) text.textContent = "{% if ui_lang(request) == 'ko' %}멈추는 중...{% else %}Stopping...{% endif %}";
+      if (btn) btn.disabled = true;
       if (stepperEl) stepperEl.style.display = 'none';
       return;
     }
-
-    const total = Number(p.total || 0);
-    const cur = Number(p.current || 0);
-    const denom = total > 0 ? total : 1;
-    const rawPct = (cur / denom) * 100;
-    const pct = Math.max(0, Math.min(100, rawPct));
+    const total = Number(p.total || 0), cur = Number(p.current || 0);
+    const pct = Math.max(0, Math.min(100, (cur / (total || 1)) * 100));
     const msg = (p.message || p.status || '...');
-    // Show current/total to avoid "0%" confusion on large totals.
-    // Round 'cur' to avoid long floating point strings
-    const frac = total > 0 ? (Math.floor(cur) + '/' + total) : String(Math.floor(cur));
-    bar.style.width = pct + '%';
-    let pctText = pct.toFixed(2) + '%';
-    if (pct === 0 && cur > 0 && total > 0) {
-      pctText = '<0.01%';
-    }
-    text.textContent = msg + ' (' + frac + ', ' + pctText + ')';
-    btn.disabled = false;
-
-    // Update stepper
+    if (bar) bar.style.width = pct + '%';
+    if (text) text.textContent = msg + ' (' + (total > 0 ? (Math.floor(cur) + '/' + total) : Math.floor(cur)) + ', ' + pct.toFixed(2) + '%)';
+    if (btn) btn.disabled = false;
     if (stepperEl && cur > 0) {
       stepperEl.style.display = 'flex';
-      const stages = ['archive', 'summarize', 'export'];
-      let activeIdx = -1;
-      const m = msg.toLowerCase();
+      const m = msg.toLowerCase(); let activeIdx = -1;
       if (m.includes('아카이브') || m.includes('archive')) activeIdx = 0;
       else if (m.includes('요약') || m.includes('summarize')) activeIdx = 1;
       else if (m.includes('내보내기') || m.includes('export') || m.includes('obsidian')) activeIdx = 2;
-
       if (activeIdx >= 0) {
-        const nodes = stepperEl.querySelectorAll('.step');
-        nodes.forEach((n, idx) => {
+        stepperEl.querySelectorAll('.step').forEach((n, idx) => {
           if (idx < activeIdx) n.setAttribute('data-state', 'completed');
           else if (idx === activeIdx) n.setAttribute('data-state', 'active');
           else n.setAttribute('data-state', 'pending');
         });
         if (trackEl) trackEl.style.width = (activeIdx * 50) + '%';
       }
-    } else if (stepperEl) {
-      stepperEl.style.display = 'none';
-    }
+    } else if (stepperEl) stepperEl.style.display = 'none';
   }
 
   function watch(jobId) {
     if (!jobId) return;
     currentJobId = String(jobId);
-    if (es) {
-      try { es.close(); } catch (e) {}
-      es = null;
-    }
-    btn.textContent = LABEL_STOP;
-    es = new EventSource('/api/jobs/' + jobId + '/events');
-    es.addEventListener('log', (ev) => {
-      try {
-        const j = JSON.parse(ev.data);
-        if (logEl) {
-          logEl.style.display = '';
-          logEl.textContent = (j.level || 'info') + ': ' + (j.text || '');
-        }
-      } catch (e) {}
-    });
-    es.addEventListener('progress', (ev) => {
-      const p = JSON.parse(ev.data);
-      renderProgress(p);
-      
-      // Start refreshing days if sync is running
-      if (p.status === 'running' && !dayRefreshTimer) {
-          dayRefreshTimer = setInterval(refreshDayList, 10000); // every 10s
-      }
+    if (btn) btn.textContent = LABEL_STOP;
+    if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
 
-      if (p.status === 'succeeded' || p.status === 'failed' || p.status === 'cancelled') {
-        if (dayRefreshTimer) { clearInterval(dayRefreshTimer); dayRefreshTimer = null; }
-        try { es.close(); } catch (e) {}
-        es = null;
-        currentJobId = "";
-        btn.textContent = LABEL_START;
-        if (stepperEl) stepperEl.style.display = 'none';
-        if (p.status === 'succeeded') {
-          setTimeout(() => location.reload(), 400);
-        }
-      }
+    const onTerminal = (status) => {
+      if (dayRefreshTimer) { clearInterval(dayRefreshTimer); dayRefreshTimer = null; }
+      if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
+      if (es) { try { es.close(); } catch (e) {} }
+      es = null; currentJobId = "";
+      if (btn) btn.textContent = LABEL_START;
+      if (stepperEl) stepperEl.style.display = 'none';
+      if (status === 'succeeded') setTimeout(() => location.reload(), 400);
+    };
+
+    const pollSync = async () => {
+      try {
+        const res = await fetch('/api/jobs/' + jobId);
+        if (!res.ok) return;
+        const j = await res.json();
+        renderProgress({
+          status: j.status,
+          current: j.progress_current,
+          total: j.progress_total,
+          message: j.message,
+        });
+        if (j.status === 'running' && !dayRefreshTimer) dayRefreshTimer = setInterval(refreshDayList, 15000);
+        if (j.status === 'succeeded' || j.status === 'failed' || j.status === 'cancelled') onTerminal(j.status);
+      } catch (e) {}
+    };
+
+    if (es) { try { es.close(); } catch (e) {} }
+    es = new EventSource('/api/jobs/' + jobId + '/events');
+    syncPollTimer = setInterval(pollSync, 3000);
+    es.addEventListener('progress', (ev) => {
+      const p = JSON.parse(ev.data); renderProgress(p);
+      if (p.status === 'running' && !dayRefreshTimer) dayRefreshTimer = setInterval(refreshDayList, 15000); 
+      if (p.status === 'succeeded' || p.status === 'failed' || p.status === 'cancelled') onTerminal(p.status);
     });
     es.addEventListener('error', () => {
-      setProgress(0, STR_EVENT_STREAM);
-      try { es.close(); } catch (e) {}
-      es = null;
-      currentJobId = "";
-      btn.textContent = LABEL_START;
-      if (stepperEl) stepperEl.style.display = 'none';
+      pollSync();
     });
+    pollSync();
   }
 
-  btn.addEventListener('click', async () => {
+  // --- Execution ---
+  applyFormatting();
+  if (btn) btn.addEventListener('click', async () => {
     if (currentJobId) {
       btn.disabled = true;
       text.textContent = "{% if ui_lang(request) == 'ko' %}멈추는 중...{% else %}Stopping...{% endif %}";
-      const res = await fetch('/api/jobs/' + currentJobId + '/cancel', { method: 'POST' });
-      if (!res.ok) {
-        try {
-          const j = await res.json();
-          setProgress(0, STR_ERROR + ': ' + (j.error || 'failed'));
-        } catch (e) {
-          setProgress(0, STR_ERROR);
-        }
-      }
-      btn.disabled = false;
+      await fetch('/api/jobs/' + currentJobId + '/cancel', { method: 'POST' });
       return;
     }
-
-    btn.disabled = true;
-    btn.textContent = LABEL_STOP;
-    setProgress(0, STR_STARTING);
+    btn.disabled = true; btn.textContent = LABEL_STOP; setProgress(0, STR_STARTING);
     const res = await fetch('/api/jobs/sync', { method: 'POST' });
     const j = await res.json();
-    if (!res.ok) {
-      setProgress(0, STR_ERROR + ': ' + (j.error || 'failed'));
-      btn.disabled = false;
-      btn.textContent = LABEL_START;
-      return;
-    }
+    if (!res.ok) { setProgress(0, STR_ERROR + ': ' + (j.error || 'failed')); btn.disabled = false; btn.textContent = LABEL_START; return; }
     watch(j.job_id);
+  });
+
+  if (btnRefresh) btnRefresh.addEventListener('click', async () => {
+    if (currentRefreshId) { btnRefresh.disabled = true; await fetch('/api/jobs/' + currentRefreshId + '/cancel', { method: 'POST' }); return; }
+    const selectedDays = Array.from(document.querySelectorAll('input.day-select:checked')).map(cb => cb.value);
+    btnRefresh.disabled = true;
+    btnRefresh.textContent = LABEL_SUMMARIZING;
+    const payload = selectedDays.length > 0 ? { date_keys: selectedDays, force_refresh: true } : { force_refresh: true };
+    const res = await fetch('/api/jobs/refresh-overviews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const j = await res.json();
+    if (res.ok) watchRefresh(j.job_id); else { btnRefresh.disabled = false; btnRefresh.textContent = LABEL_REFRESH; }
   });
 
   const ACTIVE_SYNC = "{{ (active.sync.id if active and active.sync else '') }}";
   const ACTIVE_RESUM = "{{ (active.resummarize.id if active and active.resummarize else '') }}";
-  
-  if (ACTIVE_SYNC) {
-    watch(ACTIVE_SYNC);
-  } else {
-    btn.textContent = LABEL_START;
-  }
-
-  if (ACTIVE_RESUM) {
-    watchResummarize(ACTIVE_RESUM);
-  }
+  const ACTIVE_REFRESH = "{{ (active.refresh_overviews.id if active and active.refresh_overviews else '') }}";
+  if (ACTIVE_SYNC) watch(ACTIVE_SYNC);
+  if (ACTIVE_RESUM) watchResummarize(ACTIVE_RESUM);
+  if (ACTIVE_REFRESH) watchRefresh(ACTIVE_REFRESH);
 })();
 </script>
+
 {% endblock %}
+

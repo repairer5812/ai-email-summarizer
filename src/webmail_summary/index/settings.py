@@ -21,6 +21,7 @@ class Settings:
     revert_seen_after_sync: bool
     user_roles: list[str]
     user_interests: str
+    ui_theme: str
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -84,4 +85,5 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         revert_seen_after_sync=revert_seen_after_sync,
         user_roles=user_roles,
         user_interests=user_interests,
+        ui_theme=get_setting(conn, "ui_theme") or "trust",
     )

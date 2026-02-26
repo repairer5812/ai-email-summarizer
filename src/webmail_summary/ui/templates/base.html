@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ title or "Webmail Summary" }}</title>
     <link rel="stylesheet" href="/static/app.css" />
+    <script src="/static/app.js"></script>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   </head>
-  <body>
+  <body class="theme-{{ theme or 'trust' }}">
     <div class="app">
       <header class="topbar">
         <div class="brand">
