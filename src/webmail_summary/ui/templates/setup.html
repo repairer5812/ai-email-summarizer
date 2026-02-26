@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid grid--center">
+<div class="setup-wizard">
   <section class="panel">
     <div class="setup-header">
       <h2>{{ t(request, 'setup.title') }}</h2>
@@ -42,7 +42,38 @@
           
           {# TAB 1: PROFILE #}
           <div class="tab-panel {% if current_tab == 'profile' %}active{% endif %}" id="panel-profile">
+            <!-- Theme Selection -->
             <div class="card">
+              <div class="card__title">{{ t(request, 'setup.ui_theme') }}</div>
+              <div class="card__body">
+                <div class="theme-selector">
+                  <label class="theme-option {% if defaults.ui_theme == 'trust' %}selected{% endif %}" id="label-theme-trust">
+                    <input type="radio" name="ui_theme" value="trust" {% if defaults.ui_theme == 'trust' %}checked{% endif %} onchange="updateThemeSelection('trust')">
+                    <div class="theme-preview preview-trust">
+                      <div class="preview-grid">
+                        <div class="preview-grid-item"></div>
+                        <div class="preview-grid-item"></div>
+                      </div>
+                      <div class="preview-content"></div>
+                    </div>
+                    <div>{{ t(request, 'setup.ui_theme.trust') }}</div>
+                  </label>
+                  <label class="theme-option {% if defaults.ui_theme == 'creative' %}selected{% endif %}" id="label-theme-creative">
+                    <input type="radio" name="ui_theme" value="creative" {% if defaults.ui_theme == 'creative' %}checked{% endif %} onchange="updateThemeSelection('creative')">
+                    <div class="theme-preview preview-creative">
+                      <div class="preview-grid">
+                        <div class="preview-grid-item"></div>
+                        <div class="preview-grid-item"></div>
+                      </div>
+                      <div class="preview-content"></div>
+                    </div>
+                    <div>{{ t(request, 'setup.ui_theme.creative') }}</div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:20px;">
               <div class="card__title">{{ t(request, 'setup.profile.roles') }}</div>
               <div class="card__body">
                 <div class="help" style="margin-bottom:15px;">{{ t(request, 'setup.profile.roles.help') }}</div>
@@ -74,7 +105,7 @@
             <div class="card" style="margin-top:20px;">
               <div class="card__title">{{ t(request, 'setup.profile.interests') }}</div>
               <div class="card__body">
-                <textarea name="user_interests" rows="4" style="width:100%; border: 1px solid var(--line); border-radius: 8px; background: rgba(0,0,0,0.2); color: #fff; padding: 10px;" placeholder="예: 최신 AI 기술 동향, 국내외 주식 시장 정보, 교육 IT 트렌드 등...">{{ defaults.user_interests }}</textarea>
+                <textarea name="user_interests" rows="4" placeholder="예: 최신 AI 기술 동향, 국내외 주식 시장 정보, 교육 IT 트렌드 등...">{{ defaults.user_interests }}</textarea>
                 <div class="help">{{ t(request, 'setup.profile.interests.help') }}</div>
               </div>
             </div>
@@ -85,31 +116,31 @@
             <div class="card">
               <div class="card__title">{{ t(request, 'setup.imap.card') }}</div>
               <div class="card__body">
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.imap.host') }}</label>
                   <input name="imap_host" value="{{ defaults.imap_host or 'imap.daouoffice.com' }}" />
                 </div>
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.imap.port') }}</label>
                   <input name="imap_port" value="{{ defaults.imap_port or '993' }}" />
                 </div>
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.imap.user') }}</label>
                   <input name="imap_user" value="{{ defaults.imap_user }}" />
                 </div>
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.imap.password') }}</label>
                   <input name="imap_password" type="password" />
                 </div>
                 <div class="actions" style="justify-content: flex-start; margin-top:10px;">
-                  <button type="button" class="btn-inline" id="btn-test-imap">{{ t(request, 'setup.imap.test') }}</button>
+                  <button type="button" class="btn" id="btn-test-imap">{{ t(request, 'setup.imap.test') }}</button>
                   <span id="test-status" style="margin-left:10px;"></span>
                 </div>
                 
-                <div class="row" style="margin-top:20px;">
+                <div class="form-group" style="margin-top:20px;">
                   <label>{{ t(request, 'setup.imap.folder') }}</label>
                   <div id="folder-container">
-                    <div class="help" style="margin-bottom:8px; color: var(--ok);">{% if ui_lang(request) == 'ko' %}AI가 이 폴더에 분류된 이메일을 중점적으로 분석합니다.{% else %}AI will primarily analyze emails classified in this folder.{% endif %}</div>
+                    <div class="help" style="margin-bottom:8px; color: var(--accent);">{% if ui_lang(request) == 'ko' %}AI가 이 폴더에 분류된 이메일을 중점적으로 분석합니다.{% else %}AI will primarily analyze emails classified in this folder.{% endif %}</div>
                     {% if folders %}
                       <select name="imap_folder">
                         {% for f in folders %}
@@ -131,7 +162,7 @@
             <div class="card">
               <div class="card__title">{{ t(request, 'setup.llm_backend') }}</div>
               <div class="card__body">
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.llm_backend') }}</label>
                   <select name="llm_backend" id="llm-backend">
                     <option value="local" {% if defaults.llm_backend == 'local' %}selected{% endif %}>{{ t(request, 'setup.backend.local') }}</option>
@@ -141,7 +172,7 @@
                 </div>
 
                 <div id="local-options" {% if defaults.llm_backend != 'local' %}style="display:none"{% endif %}>
-                  <div class="row">
+                  <div class="form-group">
                     <label>{{ t(request, 'setup.local_tier') }}</label>
                     <select name="local_model_id" id="local-model">
                       {% for m in local_models %}
@@ -150,13 +181,13 @@
                     </select>
                     <div class="help" id="model-notes"></div>
                   </div>
-                  <div class="row">
+                  <div class="form-group">
                     <label>{{ t(request, 'setup.install_local') }}</label>
                     <div>
                       <button type="button" id="btn-local-install">{{ t(request, 'setup.install_btn') }}</button>
                     </div>
                   </div>
-                  <div class="row">
+                  <div class="form-group">
                     <label>{{ t(request, 'setup.install_progress') }}</label>
                     <div>
                       <div class="bar"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
@@ -166,7 +197,7 @@
                 </div>
 
                 <div id="cloud-options" {% if defaults.llm_backend == 'local' %}style="display:none"{% endif %}>
-                  <div class="row">
+                  <div class="form-group">
                     <label>Provider</label>
                     <select name="cloud_provider" id="cloud-provider">
                       <option value="openai" {% if defaults.cloud_provider == 'openai' %}selected{% endif %}>OpenAI (ChatGPT)</option>
@@ -177,23 +208,23 @@
                     </select>
                   </div>
                   
-                  <div class="row cloud-key" data-provider="openai">
+                  <div class="form-group cloud-key" data-provider="openai">
                     <label>OpenAI API Key</label>
                     <input name="openai_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openai %}•••••••• (Saved){% else %}sk-...{% endif %}" />
                   </div>
-                  <div class="row cloud-key" data-provider="upstage">
+                  <div class="form-group cloud-key" data-provider="upstage">
                     <label>Upstage API Key</label>
                     <input name="upstage_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.upstage %}•••••••• (Saved){% else %}up_...{% endif %}" />
                   </div>
-                  <div class="row cloud-key" data-provider="google">
+                  <div class="form-group cloud-key" data-provider="google">
                     <label>Google API Key</label>
                     <input name="google_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.google %}•••••••• (Saved){% endif %}" />
                   </div>
-                  <div class="row cloud-key" data-provider="anthropic">
+                  <div class="form-group cloud-key" data-provider="anthropic">
                     <label>Anthropic API Key</label>
                     <input name="anthropic_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.anthropic %}•••••••• (Saved){% endif %}" />
                   </div>
-                  <div class="row cloud-key" data-provider="openrouter">
+                  <div class="form-group cloud-key" data-provider="openrouter">
                     <label>OpenRouter API Key</label>
                     <input name="openrouter_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openrouter %}•••••••• (Saved){% endif %}" />
                   </div>
@@ -207,18 +238,18 @@
             <div class="card">
               <div class="card__title">{{ t(request, 'setup.tab.advanced') }}</div>
               <div class="card__body">
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.sender_filter') }}</label>
                   <input name="sender_filter" value="{{ defaults.sender_filter }}" />
                 </div>
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.obsidian_root') }}</label>
-                  <div class="inline">
-                    <input name="obsidian_root" id="obsidian-root" value="{{ defaults.obsidian_root }}" />
-                    <button type="button" class="btn-inline" id="btn-pick-obsidian">{{ t(request, 'setup.pick') }}</button>
+                  <div style="display: flex; gap: 10px;">
+                    <input name="obsidian_root" id="obsidian-root" value="{{ defaults.obsidian_root }}" style="flex: 1;" />
+                    <button type="button" class="btn" id="btn-pick-obsidian" style="white-space: nowrap;">{{ t(request, 'setup.pick') }}</button>
                   </div>
                 </div>
-                <div class="row">
+                <div class="form-group">
                   <label>{{ t(request, 'setup.external_limit') }}</label>
                   <select name="external_max_bytes">
                     <option value="10485760" {% if defaults.external_max_bytes == '10485760' %}selected{% endif %}>10MB</option>
@@ -226,14 +257,13 @@
                     <option value="10737418240" {% if defaults.external_max_bytes == '10737418240' %}selected{% endif %}>10GB</option>
                   </select>
                 </div>
-                <div class="row">
+                <div class="form-group">
                     <label>{{ t(request, 'setup.revert_seen') }}</label>
-                    <div class="toggle-card">
-                        <label class="toggle">
-                            <input type="checkbox" name="revert_seen_after_sync" {% if defaults.revert_seen %}checked{% endif %} />
-                            <span class="toggle__box"></span>
-                            <span class="toggle__text">{{ t(request, 'setup.revert_seen.label') }}</span>
-                        </label>
+                    <div class="card" style="padding: 12px; background: rgba(0,0,0,0.02);">
+                      <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; margin-bottom: 0;">
+                          <input type="checkbox" name="revert_seen_after_sync" {% if defaults.revert_seen %}checked{% endif %} style="width: auto;" />
+                          <span>{{ t(request, 'setup.revert_seen.label') }}</span>
+                      </label>
                     </div>
                 </div>
               </div>
@@ -241,7 +271,7 @@
           </div>
 
           <div class="wizard__footer">
-            <button type="submit" class="btn-primary">
+            <button type="submit">
               {% if current_tab == 'advanced' %}{{ t(request, 'setup.wizard.done') }}{% else %} {{ t(request, 'setup.wizard.next') }}{% endif %}
             </button>
           </div>
@@ -253,26 +283,31 @@
 
 <style>
 .wizard { margin-top: 20px; }
-.wizard__tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
-.wizard__tab { flex: 1; display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; opacity: 0.5; cursor: pointer; transition: all 0.2s; }
-.wizard__tab:hover { opacity: 0.8; background: rgba(255,255,255,0.05); }
-.wizard__tab.active { opacity: 1; background: rgba(96, 165, 250, 0.1); border: 1px solid var(--accent); }
-.wizard__tab-num { width: 24px; height: 24px; border-radius: 50%; background: var(--line); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
+.wizard__tabs { display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.wizard__tab { flex: 1; display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 12px; opacity: 0.5; cursor: pointer; transition: var(--transition); border: 1px solid transparent; }
+.wizard__tab:hover { opacity: 0.8; background: rgba(0,0,0,0.03); }
+.wizard__tab.active { opacity: 1; background: var(--card-bg); border-color: var(--accent); box-shadow: var(--shadow); }
+.wizard__tab-num { width: 28px; height: 28px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; color: var(--text-primary); }
 .wizard__tab.active .wizard__tab-num { background: var(--accent); color: #fff; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
-.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
-.role-btn { cursor: pointer; border: 1px solid var(--line); border-radius: 12px; padding: 12px; text-align: center; display: block; transition: all 0.2s; background: rgba(255,255,255,0.02); }
-.role-btn:hover { background: rgba(255,255,255,0.05); }
-.role-btn:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 0 15px var(--accent); }
+.role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.role-btn { cursor: pointer; border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: center; display: block; transition: var(--transition); background: var(--card-bg); }
+.role-btn:hover { border-color: var(--accent); }
+.role-btn:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow); }
 .role-btn input { display: none; }
-.wizard__footer { margin-top: 30px; display: flex; justify-content: flex-end; }
-.btn-primary { padding: 12px 32px; font-size: 16px; background: var(--accent); color: #fff; border: none; border-radius: 12px; cursor: pointer; font-weight: 700; transition: transform 0.1s; }
-.btn-primary:active { transform: scale(0.98); }
+.wizard__footer { margin-top: 32px; display: flex; justify-content: flex-end; }
 </style>
 
 <script>
 (() => {
+  window.updateThemeSelection = (theme) => {
+    document.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('selected'));
+    document.getElementById('label-theme-' + theme).classList.add('selected');
+    // Live preview by changing body class
+    document.body.className = 'theme-' + theme;
+  };
+
   const modelSelect = document.getElementById('local-model');
   const notesEl = document.getElementById('model-notes');
   function syncModelNotes() {
@@ -297,7 +332,7 @@
   function syncCloudKeys() {
     const p = provider.value;
     document.querySelectorAll('.cloud-key').forEach(row => {
-      row.style.display = row.getAttribute('data-provider') === p ? 'grid' : 'none';
+      row.style.display = row.getAttribute('data-provider') === p ? 'block' : 'none';
     });
   }
   if (provider) provider.addEventListener('change', syncCloudKeys);
@@ -317,6 +352,60 @@
   }
 
   const btnTest = document.getElementById('btn-test-imap');
+  const testStatus = document.getElementById('test-status');
+  if (btnTest) {
+    btnTest.addEventListener('click', async () => {
+        btnTest.disabled = true;
+        testStatus.textContent = "...";
+        const form = document.getElementById('setup-form');
+        const fd = new FormData(form);
+        const res = await fetch('/setup/test-imap', { method: 'POST', body: fd });
+        location.reload();
+    });
+  }
+
+  // --- Local Install Logic ---
+  const btnInstall = document.getElementById('btn-local-install');
+  const localBar = document.getElementById('local-bar');
+  const localText = document.getElementById('local-text');
+  let installEs = null;
+
+  function watchInstall(jobId) {
+    if (!jobId || !localBar || !localText) return;
+    if (btnInstall) btnInstall.disabled = true;
+    if (installEs) installEs.close();
+    installEs = new EventSource('/api/jobs/' + jobId + '/events');
+    installEs.addEventListener('progress', (ev) => {
+      const p = JSON.parse(ev.data);
+      const pct = Math.max(0, Math.min(100, (Number(p.current||0)/Number(p.total||1))*100));
+      localBar.style.width = pct + '%';
+      localText.textContent = (p.message || '...') + ' (' + pct.toFixed(2) + '%)';
+      if (p.status === 'succeeded' || p.status === 'failed' || p.status === 'cancelled') {
+        installEs.close(); installEs = null;
+        if (btnInstall) btnInstall.disabled = false;
+        if (p.status === 'succeeded') setTimeout(() => location.reload(), 1000);
+      }
+    });
+  }
+
+  if (btnInstall) {
+    btnInstall.addEventListener('click', async () => {
+      btnInstall.disabled = true;
+      const modelId = document.getElementById('local-model').value;
+      const res = await fetch('/api/jobs/local-install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: modelId })
+      });
+      const j = await res.json();
+      if (res.ok) watchInstall(j.job_id);
+      else btnInstall.disabled = false;
+    });
+  }
+
+  const ACTIVE_INSTALL = "{{ (active.local_install.id if active and active.local_install else '') }}";
+  if (ACTIVE_INSTALL) watchInstall(ACTIVE_INSTALL);
+
   const testStatus = document.getElementById('test-status');
   if (btnTest) {
     btnTest.addEventListener('click', async () => {

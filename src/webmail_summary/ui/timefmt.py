@@ -55,3 +55,18 @@ def time_kst(iso: str, *, with_seconds: bool = True) -> str:
     if dt is None:
         return ""
     return dt.strftime("%H:%M:%S" if with_seconds else "%H:%M")
+
+
+def format_date_with_weekday_ko(iso_date: str) -> str:
+    """Format YYYY-MM-DD to YYYY-MM-DD(요일)."""
+    s = (iso_date or "").strip()
+    if not s:
+        return ""
+    # Just take first 10 chars if it's a full timestamp.
+    dstr = s[:10]
+    try:
+        dt = datetime.fromisoformat(dstr)
+        weekdays = ["월", "화", "수", "목", "금", "토", "일"]
+        return f"{dstr}({weekdays[dt.weekday()]})"
+    except Exception:
+        return s

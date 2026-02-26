@@ -1,98 +1,67 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="panel">
-  <div class="detail__head">
+<section class="hero">
+  <div class="hero__row">
     <div>
-      <div class="muted">{{ msg.internal_date }}</div>
-      <h2 class="detail__title">{{ msg.subject }}</h2>
+      <p class="muted" style="margin-bottom: 4px;">{{ msg.internal_date }}</p>
+      <h1>{{ msg.subject }}</h1>
       {% if msg.summarize_ms or msg.summarized_at %}
-        <div class="muted" style="margin-top:6px;">
-          {% if ui_lang(request) == 'ko' %}요약{% else %}Summarize{% endif %}
+        <div class="muted" style="margin-top:8px; font-size: 0.9rem;">
+          {% if ui_lang(request) == 'ko' %}요약됨{% else %}Summarized{% endif %}
           {% if msg.summarize_ms %} · {{ msg.summarize_ms }}{% endif %}
           {% if msg.summarized_at %} · {{ msg.summarized_at }}{% endif %}
         </div>
       {% endif %}
     </div>
-    <div class="detail__meta">
-      {% if msg.tags and msg.tags|length > 0 %}
-        <div class="chips">
-          {% for t in msg.tags %}
-            <span class="chip">#{{ t }}</span>
-          {% endfor %}
-        </div>
-      {% endif %}
-      {% if msg.topics and msg.topics|length > 0 %}
-        <div class="chips">
-          {% for t in msg.topics %}
-            <span class="chip chip--topic">[[{{ t }}]]</span>
-          {% endfor %}
-        </div>
-      {% endif %}
+    <div class="hero__actions">
+      <a class="btn btn--secondary" href="{{ msg.back_href or '/' }}">{{ t(request, 'detail.back') }}</a>
     </div>
   </div>
 
-  <div class="detail-grid">
-    <div class="card">
-      <div class="card__title">{{ t(request, 'detail.summary') }}</div>
-      <div class="card__body">
-        <div class="pre summary-content">{{ msg.summary or t(request, 'detail.no_summary') }}</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card__title">{{ t(request, 'detail.original') }}</div>
-      <div class="card__body">
-        {% if msg.has_rendered %}
-          <div class="actions" style="justify-content:flex-start; gap:10px;">
-            <a class="btnlink" href="/m/{{ msg.id }}/rendered.html" target="_blank">{{ t(request, 'detail.view_original') }}</a>
-          </div>
-          <div class="frame">
-            <iframe src="/m/{{ msg.id }}/rendered.html" title="rendered" referrerpolicy="no-referrer"></iframe>
-          </div>
-        {% else %}
-          <div class="muted">{{ t(request, 'detail.no_rendered') }}</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
-  <div class="actions" style="margin-top:14px; justify-content:flex-start;">
-    <a class="btnlink" href="/">{{ t(request, 'detail.back') }}</a>
+  <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px;">
+    {% if msg.tags %}
+      {% for t in msg.tags %}<span class="chip">#{{ t }}</span>{% endfor %}
+    {% endif %}
+    {% if msg.topics %}
+      {% for t in msg.topics %}<span class="chip" style="border-color: var(--accent); color: var(--accent);">[[{{ t }}]]</span>{% endfor %}
+    {% endif %}
   </div>
 </section>
 
+<div class="bento-grid" style="margin-top: 24px;">
+  <div class="card span-2">
+    <div class="card__title">{{ t(request, 'detail.summary') }}</div>
+    <div class="card__body">
+      <div class="summary-content" style="font-size: 1rem; line-height: 1.7;" data-raw="{{ msg.summary }}"></div>
+    </div>
+  </div>
+
+  <div class="card span-2">
+    <div class="card__title" style="display: flex; justify-content: space-between; align-items: center;">
+      <span>{{ t(request, 'detail.original') }}</span>
+      {% if msg.has_rendered %}
+        <a class="btn btn--secondary" href="/m/{{ msg.id }}/rendered.html" target="_blank" style="padding: 6px 12px; font-size: 0.8rem;">새 창에서 열기</a>
+      {% endif %}
+    </div>
+    <div class="card__body" style="padding: 0; overflow: hidden; border-radius: 0 0 var(--card-radius) var(--card-radius);">
+      {% if msg.has_rendered %}
+        <iframe src="/m/{{ msg.id }}/rendered.html" style="width: 100%; height: 600px; border: none; background: white;" title="rendered" referrerpolicy="no-referrer"></iframe>
+      {% else %}
+        <div style="padding: 24px;" class="muted">{{ t(request, 'detail.no_rendered') }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 <script>
-(() => {
-  function formatSummary(text) {
-    if (!text) return '';
-    let lines = String(text).replace(/\r\n/g, '\n').split('\n');
-    let htmlLines = [];
-    lines.forEach(line => {
-      let l = line.trim();
-      if (!l) { htmlLines.push('<div style="height:12px;"></div>'); return; }
-      l = l.replace(/^[^a-zA-Z0-9가-힣#\*\[]+(###|\*\*|\[)/, '$1');
-      let isHeader = false, isCore = false;
-      if (l.match(/^###\s+/)) {
-        l = `<h3 class="summary-h3">${l.replace(/^###\s*/, '').trim()}</h3>`;
-        isHeader = true;
-      }
-      if (l.includes('[핵심 결론]')) {
-        let content = l.replace(/\[핵심 결론\][:\s]*/, '').replace(/\*\*/g, '').trim();
-        l = `<div class="summary-core-box"><b style="color:var(--ok)">[핵심 결론]</b> <span>${content}</span></div>`;
-        isCore = true;
-      }
-      if (!isHeader && !isCore) {
-        l = l.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-        if (l.match(/^[-\s·•\*]+/)) l = l.replace(/^[-\s·•\*]+/, '• ');
-        htmlLines.push(`<div style="margin-bottom:6px; line-height:1.6; padding-left:4px;">${l}</div>`);
-      } else { htmlLines.push(l); }
-    });
-    return htmlLines.join('');
-  }
+  // Summary formatting is now provided by /static/app.js
+  applyFormatting('.summary-content');
+
+
   const el = document.querySelector('.summary-content');
   if (el) {
-    const raw = el.textContent;
-    el.innerHTML = formatSummary(raw);
+    const raw = el.getAttribute('data-raw');
+    if (raw) el.innerHTML = formatSummary(raw);
   }
 })();
 </script>

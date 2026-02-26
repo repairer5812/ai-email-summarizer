@@ -126,6 +126,14 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(ui_router)
+
+    @app.on_event("shutdown")
+    def shutdown_event():
+        from webmail_summary.jobs.runner import get_runner
+        get_runner().terminate_all()
+
+    return app
+
     return app
 
 

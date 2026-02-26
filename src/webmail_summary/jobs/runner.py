@@ -206,6 +206,17 @@ class JobRunner:
                     self._active_procs.pop(job.id, None)
                     self._cancelled_procs.discard(job.id)
 
+    def terminate_all(self) -> None:
+        """Forcefully terminate all active subprocesses (e.g. on server shutdown)."""
+        with self._lock:
+            pids = [p.pid for p in self._active_procs.values()]
+            for pid in pids:
+                try:
+                    kill_sync_worker(pid)
+                except Exception:
+                    pass
+            self._active_procs.clear()
+            self._active.clear()
 
 _runner: JobRunner | None = None
 

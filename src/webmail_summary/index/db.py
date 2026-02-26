@@ -31,7 +31,7 @@ def init_db(db_path: Path) -> None:
             conn.commit()
 
         version = int(conn.execute("SELECT version FROM schema_version").fetchone()[0])
-        target = 3
+        target = 4
         if version < 1:
             _migrate_0_to_1(conn)
             conn.execute("UPDATE schema_version SET version = 1")
@@ -46,6 +46,13 @@ def init_db(db_path: Path) -> None:
             _migrate_2_to_3(conn)
             conn.execute("UPDATE schema_version SET version = 3")
             conn.commit()
+            version = 3
+        if version < 4:
+            _migrate_3_to_4(conn)
+            conn.execute("UPDATE schema_version SET version = 4")
+            conn.commit()
+            version = 4
+
         if version > target:
             raise RuntimeError(f"DB schema too new: {version} > {target}")
     finally:
@@ -164,3 +171,11 @@ def _migrate_2_to_3(conn: sqlite3.Connection) -> None:
         )
         """
     )
+
+
+def _migrate_3_to_4(conn: sqlite3.Connection) -> None:
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_internal_date ON messages(internal_date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_day_prefix ON messages(substr(internal_date, 1, 10))")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_pending_summary ON messages(id) WHERE summarized_at IS NULL")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_sync_resume ON messages(account_id, mailbox, uidvalidity, uid) WHERE seen_marked_at IS NOT NULL")
+

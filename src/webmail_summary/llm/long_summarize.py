@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from collections.abc import Callable
 
 from webmail_summary.llm.base import LlmProvider, LlmResult
+import re
 
 
 @dataclass(frozen=True)
@@ -93,22 +94,48 @@ def _extract_bullets(summary: str) -> list[str]:
     if not s:
         return []
 
-    # If it looks like bullet lines, keep them.
-    lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
-    if any(ln.startswith("-") for ln in lines):
-        out: list[str] = []
-        for ln in lines:
-            if ln.startswith("-"):
-                out.append(ln.lstrip("- ").strip())
-            else:
-                out.append(ln)
-        return [x for x in out if x]
+    # Handle leaked JSON list output.
+    if s.startswith("[") and s.endswith("]"):
+        try:
+            import json
 
-    # If it's a single line with separators.
+            obj = json.loads(s)
+            if isinstance(obj, list):
+                return [str(x).strip() for x in obj if str(x).strip()]
+        except Exception:
+            pass
+
+    # Remove bold markdown markers to avoid downstream UI artifacts.
+    s = s.replace("**", "")
+
+    # Normalize bullets and split clumped inline bullets.
+    s = s.replace("·", "-").replace("•", "-")
+    s = re.sub(r"\s+-\s+(?=[A-Za-z가-힣0-9\[])", "\n- ", s)
+
+    out: list[str] = []
+    for raw_line in s.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        # Keep section headers, remove markdown symbols around them.
+        if line.startswith("###"):
+            header = re.sub(r"^#{1,6}\s*", "", line).strip()
+            if header:
+                out.append(header)
+            continue
+
+        clean_line = re.sub(r"^([\s\-\*#]+)", "", line).strip()
+        clean_line = re.sub(r"[\"'\],]+$", "", clean_line).strip()
+        if clean_line and len(clean_line) > 1:
+            out.append(clean_line)
+
+    if out:
+        return out
+
     if "; " in s:
         return [x.strip() for x in s.split("; ") if x.strip()]
-
-    return [s]
+    return []
 
 
 def _dedupe_keep_order(items: list[str]) -> list[str]:
@@ -129,7 +156,7 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
 def _is_structured(text: str) -> bool:
     """Check if the text already contains structured formatting like headers or bold topics."""
     s = text.strip()
-    return "###" in s or "**" in s or (s.count("\n\n") >= 2)
+    return "###" in s or (s.count("\n\n") >= 2)
 
 
 def summarize_email_long_aware(
@@ -142,6 +169,44 @@ def summarize_email_long_aware(
     on_progress: Callable[[float], None] | None = None,
     user_profile: dict | None = None,
 ) -> LlmResult:
+
+    user_profile: dict | None = None,
+    body_s = str(body or "")
+    
+    # Tier-aware dynamic configuration for performance.
+    tier = getattr(provider, "tier", "standard")
+    
+    # Create a local copy of config if we need to adjust it.
+    active_cfg = cfg
+    if tier == "cloud" and cfg.chunk_chars <= 2400:
+        # Modern cloud models can handle 100k+ tokens easily.
+        # Larger chunks = fewer API calls, better global context.
+        active_cfg = LongSummarizeConfig(
+            chunk_if_body_chars_over=12000,
+            chunk_chars=10000,
+            max_bullets=cfg.max_bullets,
+            part_bullets=cfg.part_bullets,
+            max_tags=cfg.max_tags,
+            max_backlinks=cfg.max_backlinks
+        )
+    elif tier == "standard" and cfg.chunk_chars <= 2400:
+        # Local 8B+ models usually have 8k-32k context.
+        active_cfg = LongSummarizeConfig(
+            chunk_if_body_chars_over=6000,
+            chunk_chars=5000,
+            max_bullets=cfg.max_bullets,
+            part_bullets=cfg.part_bullets,
+            max_tags=cfg.max_tags,
+            max_backlinks=cfg.max_backlinks
+        )
+
+    if len(body_s) <= active_cfg.chunk_if_body_chars_over:
+        return provider.summarize(subject=subject, body=body_s)
+
+    chunks = _chunk_text(body_s, chunk_chars=active_cfg.chunk_chars, max_chunks=active_cfg.max_chunks)
+    if not chunks:
+        return provider.summarize(subject=subject, body=body_s[: active_cfg.chunk_chars])
+
     body_s = str(body or "")
     if len(body_s) <= cfg.chunk_if_body_chars_over:
         return provider.summarize(subject=subject, body=body_s)
@@ -206,35 +271,35 @@ def summarize_email_long_aware(
 
         custom_tailor = ""
         if profile_info:
-            custom_tailor = f"\n**중요**: 아래 사용자 프로필에 맞춰 사용자가 특히 관심있어 할 내용을 강조하여 요약하세요.{profile_info}"
+            custom_tailor = f"\n중요: 아래 사용자 프로필에 맞춰 사용자가 특히 관심있어 할 내용을 강조하여 요약하세요.{profile_info}"
 
         if tier == "fast":
             # Lite version for small models (like Gemma 2 2B)
             system_role = "뉴스레터를 요약하는 어시스턴트"
             guidelines = (
-                "1. **핵심 요약**: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
-                "2. **단순 구조**: `[주요 소식]`과 같은 간단한 주제별로 그룹화하세요.\n"
-                "3. **노이즈 제거**: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
+                "1. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
+                "2. 단순 구조: [주요 소식]과 같은 간단한 주제별로 그룹화하세요.\n"
+                "3. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
                 "4. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
             )
         elif tier == "cloud":
             # Executive version for high-capability models (Gemini, OpenAI etc)
             system_role = "전문적인 전략 분석가 및 수석 에디터"
             guidelines = (
-                "1. **BLUF (핵심 결론 우선)**: 최상단에 전체를 관통하는 인사이트를 `**[핵심 전략 결론]**`으로 굵게 작성하세요.\n"
-                "2. **심층 구조화**: `### [주제별 분석]` 머리말을 사용하여 논리적으로 섹션을 나누세요.\n"
-                "3. **데이터 밀도**: 수치, 인물, 결정 사항을 포함하여 전문 리포트 수준의 풍부한 정보를 담으세요.\n"
-                "4. **Smart Brevity**: 각 섹션마다 'Why it matters'를 포함하여 가치가 높은 리포트를 작성하세요.\n"
+                "1. BLUF (핵심 결론 우선): 최상단에 전체를 관통하는 인사이트를 [핵심 전략 결론]으로 작성하세요.\n"
+                "2. 심층 구조화: ### [주제별 분석] 머리말을 사용하여 논리적으로 섹션을 나누세요.\n"
+                "3. 데이터 밀도: 수치, 인물, 결정 사항을 포함하여 전문 리포트 수준의 풍부한 정보를 담으세요.\n"
+                "4. Smart Brevity: 각 섹션마다 'Why it matters'를 포함하여 가치가 높은 리포트를 작성하세요.\n"
                 "5. 반드시 한국어로만 격식 있는 문체로 작성하세요."
             )
         else:
             # Standard version (EXAONE, Qwen 3B etc)
             system_role = "뉴스레터를 요약하는 전문 에디터"
             guidelines = (
-                "1. **BLUF (핵심 결론 우선)**: 최상단에 가장 중요한 결론을 `**[핵심 결론]**` 머리말과 함께 작성하세요.\n"
-                "2. **구조화**: 관련 소식을 2~3개의 주제로 묶고 `### [주제명]` 머리말을 사용하세요.\n"
-                "3. **Smart Brevity**: 주제 아래에 핵심 요지를 적고 상세 내용을 불릿으로 설명하세요.\n"
-                "4. **노이즈 제거**: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
+                "1. BLUF (핵심 결론 우선): 최상단에 가장 중요한 결론을 [핵심 결론] 머리말과 함께 작성하세요.\n"
+                "2. 구조화: 관련 소식을 2~3개의 주제로 묶고 ### [주제명] 머리말을 사용하세요.\n"
+                "3. Smart Brevity: 주제 아래에 핵심 요지를 적고 상세 내용을 불릿으로 설명하세요.\n"
+                "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
                 "5. 반드시 한국어로 작성하고 모든 문장은 마침표(.)로 끝맺으세요."
             )
 
@@ -296,6 +361,76 @@ def synthesize_daily_overview(
     if not summaries:
         return ""
 
+    # Performance guardrails for day-level synthesis.
+    # This keeps prompts responsive when a day has many long summaries.
+    max_items = 40
+    max_item_chars = 450
+    max_total_chars = 12000
+
+    compact_summaries: list[str] = []
+    seen: set[str] = set()
+    total_chars = 0
+    for raw in summaries:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        
+        # Drop obvious noise/duplicates.
+        key = re.sub(r"\s+", " ", s.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+
+        # Smart clip: prefer ending at a newline or period if possible.
+        clipped = s[:max_item_chars]
+        if len(s) > max_item_chars:
+            last_period = clipped.rfind(".")
+            last_newline = clipped.rfind("\n")
+            break_point = max(last_period, last_newline)
+            if break_point > max_item_chars // 2:
+                clipped = clipped[:break_point + 1]
+            else:
+                clipped = clipped + "..."
+        
+        next_total = total_chars + len(clipped)
+        if compact_summaries and next_total > max_total_chars:
+            break
+        compact_summaries.append(clipped)
+        total_chars = next_total
+        if len(compact_summaries) >= max_items:
+            break
+
+    # This keeps prompts responsive when a day has many long summaries.
+    max_items = 24
+    max_item_chars = 220
+    max_total_chars = 8000
+
+    compact_summaries: list[str] = []
+    seen: set[str] = set()
+    total_chars = 0
+    for raw in summaries:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        # Normalize whitespace and drop obvious duplicates.
+        s = re.sub(r"\s+", " ", s)
+        key = s.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        clipped = s[:max_item_chars]
+        next_total = total_chars + len(clipped)
+        if compact_summaries and next_total > max_total_chars:
+            break
+        compact_summaries.append(clipped)
+        total_chars = next_total
+        if len(compact_summaries) >= max_items:
+            break
+
+    if not compact_summaries:
+        return ""
+
     profile_info = ""
     if user_profile:
         roles = ", ".join(user_profile.get("roles", []))
@@ -304,21 +439,21 @@ def synthesize_daily_overview(
 
     body = (
         f"아래는 {day} 하루 동안 수신된 이메일 요약본들입니다.\n"
-        "이 내용들을 종합하여 사용자가 가장 관심 있어 할 만한 내용을 5줄 이내의 불릿 포인트로 요약하세요.\n"
-        "반드시 한국어로 작성하세요.\n"
+        "이 내용들을 종합하여 사용자가 관심 있어 할 만한 주요 내용을 불릿 포인트로 요약하세요.\n"
+        "반드시 한국어로 작성하고, 각 항목은 뉴스 헤드라인처럼 핵심만 간결하게 표현하세요.\n"
         + (
-            f"\n**중요**: 아래 사용자 프로필에 맞춰 맞춤형 브리핑을 작성하세요.{profile_info}"
+            f"\n중요: 아래 사용자 프로필에 맞춰 맞춤형 브리핑을 작성하세요.{profile_info}"
             if profile_info
             else ""
         )
         + "\n\n요약 목록:\n"
-        + "\n".join([f"- {s[:300]}" for s in summaries])
+        + "\n".join([f"- {s}" for s in compact_summaries])
     )
 
     try:
         res = provider.summarize(subject=f"{day} Daily Overview", body=body)
         # Extract bullets from the result
         bullets = _extract_bullets(res.summary)
-        return "\n".join(["- " + b for b in bullets[:5]]).strip()
+        return "\n".join(["- " + b for b in bullets]).strip()
     except Exception:
         return ""
