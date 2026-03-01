@@ -56,13 +56,5 @@
 <script>
   // Summary formatting is now provided by /static/app.js
   applyFormatting('.summary-content');
-
-
-  const el = document.querySelector('.summary-content');
-  if (el) {
-    const raw = el.getAttribute('data-raw');
-    if (raw) el.innerHTML = formatSummary(raw);
-  }
-})();
 </script>
 {% endblock %}

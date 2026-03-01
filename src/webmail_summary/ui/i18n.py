@@ -16,7 +16,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "home.btn.sync_stop": "Stop sync",
         "home.btn.refresh_ing": "Summarizing...",
         "home.btn.setup": "Setup",
-
         "home.notice.ai.title": "AI not ready.",
         "home.notice.ai.body": "Install local AI (llama.cpp + GGUF) or configure a Cloud Service in Setup.",
         "home.notice.ai.backend": "Current backend:",
@@ -94,7 +93,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "setup.openrouter_key": "OpenRouter API key",
         "setup.openrouter_key.help": "Stored in Windows Credential Manager via keyring. Not saved to SQLite.",
         "setup.save": "Save",
-        "detail.summary": "Summary",
+        "detail.summary": "Core / Detailed Summary",
         "detail.no_summary": "(no summary)",
         "detail.original": "Original",
         "detail.view_original": "View original email",
@@ -117,7 +116,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "home.btn.refresh_ing": "요약 중...",
         "home.btn.setup": "설정",
         "home.btn.refresh_overviews": "날짜별요약",
-
         "home.notice.ai.title": "AI가 준비되지 않았습니다.",
         "home.notice.ai.body": "설정에서 로컬 AI(llama.cpp + GGUF)를 설치하거나 클라우드 서비스를 설정하세요.",
         "home.notice.ai.backend": "현재 백엔드:",
@@ -195,7 +193,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "setup.openrouter_key": "OpenRouter API 키",
         "setup.openrouter_key.help": "Windows 자격 증명 관리자(keyring)에 저장됩니다. SQLite에는 저장하지 않습니다.",
         "setup.save": "저장",
-        "detail.summary": "요약",
+        "detail.summary": "핵심 요약 / 상세 요약",
         "detail.no_summary": "(요약 없음)",
         "detail.original": "원문",
         "detail.view_original": "이메일 원본 보기",

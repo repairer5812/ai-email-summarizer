@@ -95,7 +95,11 @@ def export_email_note(*, vault_root: Path, inp: MessageExportInput) -> Path:
 
     body = "\n".join(front) + "\n\n"
     body += f"{daily_link} {topic_links}\n\n"
-    body += "## Summary\n\n" + (inp.summary.strip() or "(no summary)") + "\n\n"
+    body += (
+        "## 핵심 요약 / 상세 요약\n\n"
+        + (inp.summary.strip() or "(no summary)")
+        + "\n\n"
+    )
     body += "## Original\n\n"
     body += f"- Rendered HTML: [[Assets/{inp.message_key}/rendered.html]]\n"
     body += f"- Raw EML: [[Raw/{inp.message_key}.eml]]\n"
