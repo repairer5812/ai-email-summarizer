@@ -159,6 +159,104 @@ def _is_structured(text: str) -> bool:
     return "###" in s or (s.count("\n\n") >= 2)
 
 
+def _normalize_summary_section_labels(text: str) -> str:
+    s = str(text or "").strip()
+    if not s:
+        return s
+
+    lines: list[str] = []
+    for raw_line in s.splitlines():
+        line = raw_line.strip()
+        if not line:
+            lines.append(raw_line)
+            continue
+
+        clean = re.sub(r"^#{1,6}\s*", "", line).strip()
+        clean = clean.strip("[]").strip()
+        normalized = clean.lower().replace(" ", "")
+
+        if normalized in {
+            "핵심전략결론",
+            "핵심결론",
+            "핵심요약",
+            "bluf",
+        }:
+            lines.append("### 핵심 요약")
+            continue
+
+        if normalized in {
+            "주요소식",
+            "주제별분석",
+            "심층구조화",
+            "구조화",
+            "상세요약",
+        }:
+            lines.append("### 상세 요약")
+            continue
+
+        lines.append(raw_line)
+
+    return "\n".join(lines).strip()
+
+
+def _ensure_core_detail_sections(text: str) -> str:
+    s = _normalize_summary_section_labels(text)
+    if not s:
+        return s
+
+    normalized = s.lower().replace(" ", "")
+    has_core = "핵심요약" in normalized
+    has_detail = "상세요약" in normalized
+    if has_core and has_detail:
+        return s
+
+    skip_headers = {
+        "핵심요약",
+        "상세요약",
+        "핵심결론",
+        "핵심전략결론",
+        "주요소식",
+        "주제별분석",
+        "심층구조화",
+        "구조화",
+    }
+
+    bullets = _extract_bullets(s)
+    cleaned: list[str] = []
+    for b in bullets:
+        t = str(b or "").strip()
+        if not t:
+            continue
+        n = t.lower().replace(" ", "").strip("[]").strip()
+        if n in skip_headers:
+            continue
+        cleaned.append(t)
+
+    if not cleaned:
+        for raw in s.splitlines():
+            t = re.sub(r"^#{1,6}\s*", "", raw).strip()
+            t = re.sub(r"^[-*•·]\s*", "", t).strip()
+            if not t:
+                continue
+            n = t.lower().replace(" ", "").strip("[]").strip()
+            if n in skip_headers:
+                continue
+            cleaned.append(t)
+
+    cleaned = _dedupe_keep_order(cleaned)
+    if not cleaned:
+        return "### 핵심 요약\n- (요약 없음)\n\n### 상세 요약\n- (요약 없음)"
+
+    core = cleaned[:3]
+    detail = cleaned[3:10]
+    if not detail:
+        detail = cleaned[: min(7, len(cleaned))]
+
+    core_text = "\n".join([f"- {x}" for x in core])
+    detail_text = "\n".join([f"- {x}" for x in detail])
+    return f"### 핵심 요약\n{core_text}\n\n### 상세 요약\n{detail_text}".strip()
+
+
 def summarize_email_long_aware(
     provider: LlmProvider,
     *,
@@ -169,51 +267,56 @@ def summarize_email_long_aware(
     on_progress: Callable[[float], None] | None = None,
     user_profile: dict | None = None,
 ) -> LlmResult:
-
-    user_profile: dict | None = None,
     body_s = str(body or "")
-    
+
     # Tier-aware dynamic configuration for performance.
     tier = getattr(provider, "tier", "standard")
-    
-    # Create a local copy of config if we need to adjust it.
     active_cfg = cfg
     if tier == "cloud" and cfg.chunk_chars <= 2400:
-        # Modern cloud models can handle 100k+ tokens easily.
-        # Larger chunks = fewer API calls, better global context.
+        # Cloud models can process larger contexts efficiently.
         active_cfg = LongSummarizeConfig(
             chunk_if_body_chars_over=12000,
             chunk_chars=10000,
+            max_chunks=cfg.max_chunks,
             max_bullets=cfg.max_bullets,
             part_bullets=cfg.part_bullets,
             max_tags=cfg.max_tags,
-            max_backlinks=cfg.max_backlinks
+            max_backlinks=cfg.max_backlinks,
         )
     elif tier == "standard" and cfg.chunk_chars <= 2400:
-        # Local 8B+ models usually have 8k-32k context.
+        # Local standard models usually handle medium context windows.
         active_cfg = LongSummarizeConfig(
             chunk_if_body_chars_over=6000,
             chunk_chars=5000,
+            max_chunks=cfg.max_chunks,
             max_bullets=cfg.max_bullets,
             part_bullets=cfg.part_bullets,
             max_tags=cfg.max_tags,
-            max_backlinks=cfg.max_backlinks
+            max_backlinks=cfg.max_backlinks,
         )
 
     if len(body_s) <= active_cfg.chunk_if_body_chars_over:
-        return provider.summarize(subject=subject, body=body_s)
+        res = provider.summarize(subject=subject, body=body_s)
+        return LlmResult(
+            summary=_ensure_core_detail_sections(res.summary),
+            tags=list(res.tags or []),
+            backlinks=list(res.backlinks or []),
+            personal=bool(res.personal),
+        )
 
-    chunks = _chunk_text(body_s, chunk_chars=active_cfg.chunk_chars, max_chunks=active_cfg.max_chunks)
+    chunks = _chunk_text(
+        body_s,
+        chunk_chars=active_cfg.chunk_chars,
+        max_chunks=active_cfg.max_chunks,
+    )
     if not chunks:
-        return provider.summarize(subject=subject, body=body_s[: active_cfg.chunk_chars])
-
-    body_s = str(body or "")
-    if len(body_s) <= cfg.chunk_if_body_chars_over:
-        return provider.summarize(subject=subject, body=body_s)
-
-    chunks = _chunk_text(body_s, chunk_chars=cfg.chunk_chars, max_chunks=cfg.max_chunks)
-    if not chunks:
-        return provider.summarize(subject=subject, body=body_s[: cfg.chunk_chars])
+        res = provider.summarize(subject=subject, body=body_s[: active_cfg.chunk_chars])
+        return LlmResult(
+            summary=_ensure_core_detail_sections(res.summary),
+            tags=list(res.tags or []),
+            backlinks=list(res.backlinks or []),
+            personal=bool(res.personal),
+        )
 
     detailed_parts: list[str] = []
     all_bullets: list[str] = []
@@ -246,7 +349,7 @@ def summarize_email_long_aware(
         backlinks.extend(list(res.backlinks or []))
         personal = personal or bool(res.personal)
 
-        short = _dedupe_keep_order(part_bullets)[: max(1, int(cfg.part_bullets))]
+        short = _dedupe_keep_order(part_bullets)[: max(1, int(active_cfg.part_bullets))]
         if short:
             lines = "\n".join(["- " + x for x in short if x]).strip()
             if lines:
@@ -277,28 +380,30 @@ def summarize_email_long_aware(
             # Lite version for small models (like Gemma 2 2B)
             system_role = "뉴스레터를 요약하는 어시스턴트"
             guidelines = (
-                "1. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
-                "2. 단순 구조: [주요 소식]과 같은 간단한 주제별로 그룹화하세요.\n"
-                "3. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
-                "4. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
+                "1. 형식 고정: 반드시 '### 핵심 요약' 섹션과 '### 상세 요약' 섹션 2개로 작성하세요.\n"
+                "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
+                "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
+                "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
+                "5. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
             )
         elif tier == "cloud":
             # Executive version for high-capability models (Gemini, OpenAI etc)
             system_role = "전문적인 전략 분석가 및 수석 에디터"
             guidelines = (
-                "1. BLUF (핵심 결론 우선): 최상단에 전체를 관통하는 인사이트를 [핵심 전략 결론]으로 작성하세요.\n"
-                "2. 심층 구조화: ### [주제별 분석] 머리말을 사용하여 논리적으로 섹션을 나누세요.\n"
-                "3. 데이터 밀도: 수치, 인물, 결정 사항을 포함하여 전문 리포트 수준의 풍부한 정보를 담으세요.\n"
-                "4. Smart Brevity: 각 섹션마다 'Why it matters'를 포함하여 가치가 높은 리포트를 작성하세요.\n"
-                "5. 반드시 한국어로만 격식 있는 문체로 작성하세요."
+                "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
+                "2. 핵심 요약: 최상단에 전체를 관통하는 핵심 결론 3~5개를 불릿으로 작성하세요.\n"
+                "3. 상세 요약: 본문 사실에 근거해 주제별 핵심 사실을 최대 7개 불릿으로 정리하세요(7개 미만 가능).\n"
+                "4. 데이터 밀도: 수치, 인물, 결정 사항을 포함하되 과장/추측은 금지하세요.\n"
+                "5. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
+                "6. 반드시 한국어로만 격식 있는 문체로 작성하세요."
             )
         else:
             # Standard version (EXAONE, Qwen 3B etc)
             system_role = "뉴스레터를 요약하는 전문 에디터"
             guidelines = (
-                "1. BLUF (핵심 결론 우선): 최상단에 가장 중요한 결론을 [핵심 결론] 머리말과 함께 작성하세요.\n"
-                "2. 구조화: 관련 소식을 2~3개의 주제로 묶고 ### [주제명] 머리말을 사용하세요.\n"
-                "3. Smart Brevity: 주제 아래에 핵심 요지를 적고 상세 내용을 불릿으로 설명하세요.\n"
+                "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
+                "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿으로 작성하세요.\n"
+                "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
                 "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
                 "5. 반드시 한국어로 작성하고 모든 문장은 마침표(.)로 끝맺으세요."
             )
@@ -314,7 +419,7 @@ def summarize_email_long_aware(
         )
 
         # Preserve original formatting (headers/bold) if it looks structured
-        raw_synth = synth.summary.strip()
+        raw_synth = _ensure_core_detail_sections(synth.summary.strip())
         if _is_structured(raw_synth):
             final_summary_text = raw_synth
         else:
@@ -334,11 +439,15 @@ def summarize_email_long_aware(
             pass
 
     if not final_summary_text:
-        merged_bullets = _dedupe_keep_order(all_bullets)[: cfg.max_bullets]
+        merged_bullets = _dedupe_keep_order(all_bullets)[: active_cfg.max_bullets]
         final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
 
-    tags = _dedupe_keep_order([str(x) for x in tags])[: cfg.max_tags]
-    backlinks = _dedupe_keep_order([str(x) for x in backlinks])[: cfg.max_backlinks]
+    final_summary_text = _ensure_core_detail_sections(final_summary_text)
+
+    tags = _dedupe_keep_order([str(x) for x in tags])[: active_cfg.max_tags]
+    backlinks = _dedupe_keep_order([str(x) for x in backlinks])[
+        : active_cfg.max_backlinks
+    ]
 
     if not final_summary_text:
         final_summary_text = "(no summary)"
@@ -362,45 +471,6 @@ def synthesize_daily_overview(
         return ""
 
     # Performance guardrails for day-level synthesis.
-    # This keeps prompts responsive when a day has many long summaries.
-    max_items = 40
-    max_item_chars = 450
-    max_total_chars = 12000
-
-    compact_summaries: list[str] = []
-    seen: set[str] = set()
-    total_chars = 0
-    for raw in summaries:
-        s = str(raw or "").strip()
-        if not s:
-            continue
-        
-        # Drop obvious noise/duplicates.
-        key = re.sub(r"\s+", " ", s.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-
-        # Smart clip: prefer ending at a newline or period if possible.
-        clipped = s[:max_item_chars]
-        if len(s) > max_item_chars:
-            last_period = clipped.rfind(".")
-            last_newline = clipped.rfind("\n")
-            break_point = max(last_period, last_newline)
-            if break_point > max_item_chars // 2:
-                clipped = clipped[:break_point + 1]
-            else:
-                clipped = clipped + "..."
-        
-        next_total = total_chars + len(clipped)
-        if compact_summaries and next_total > max_total_chars:
-            break
-        compact_summaries.append(clipped)
-        total_chars = next_total
-        if len(compact_summaries) >= max_items:
-            break
-
-    # This keeps prompts responsive when a day has many long summaries.
     max_items = 24
     max_item_chars = 220
     max_total_chars = 8000

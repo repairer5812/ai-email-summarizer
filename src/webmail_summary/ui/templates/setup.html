@@ -50,24 +50,16 @@
                   <label class="theme-option {% if defaults.ui_theme == 'trust' %}selected{% endif %}" id="label-theme-trust">
                     <input type="radio" name="ui_theme" value="trust" {% if defaults.ui_theme == 'trust' %}checked{% endif %} onchange="updateThemeSelection('trust')">
                     <div class="theme-preview preview-trust">
-                      <div class="preview-grid">
-                        <div class="preview-grid-item"></div>
-                        <div class="preview-grid-item"></div>
-                      </div>
-                      <div class="preview-content"></div>
+                      <div class="preview-artwork"></div>
                     </div>
-                    <div>{{ t(request, 'setup.ui_theme.trust') }}</div>
+                    <div class="theme-label">{{ t(request, 'setup.ui_theme.trust') }}</div>
                   </label>
                   <label class="theme-option {% if defaults.ui_theme == 'creative' %}selected{% endif %}" id="label-theme-creative">
                     <input type="radio" name="ui_theme" value="creative" {% if defaults.ui_theme == 'creative' %}checked{% endif %} onchange="updateThemeSelection('creative')">
                     <div class="theme-preview preview-creative">
-                      <div class="preview-grid">
-                        <div class="preview-grid-item"></div>
-                        <div class="preview-grid-item"></div>
-                      </div>
-                      <div class="preview-content"></div>
+                      <div class="preview-artwork"></div>
                     </div>
-                    <div>{{ t(request, 'setup.ui_theme.creative') }}</div>
+                    <div class="theme-label">{{ t(request, 'setup.ui_theme.creative') }}</div>
                   </label>
                 </div>
               </div>
@@ -130,7 +122,7 @@
                 </div>
                 <div class="form-group">
                   <label>{{ t(request, 'setup.imap.password') }}</label>
-                  <input name="imap_password" type="password" />
+                  <input name="imap_password" type="password" placeholder="{% if imap_pass_set %}●●●●●●●●{% endif %}" />
                 </div>
                 <div class="actions" style="justify-content: flex-start; margin-top:10px;">
                   <button type="button" class="btn" id="btn-test-imap">{{ t(request, 'setup.imap.test') }}</button>
@@ -162,6 +154,8 @@
             <div class="card">
               <div class="card__title">{{ t(request, 'setup.llm_backend') }}</div>
               <div class="card__body">
+                
+                <!-- 1) LLM Backend Choice -->
                 <div class="form-group">
                   <label>{{ t(request, 'setup.llm_backend') }}</label>
                   <select name="llm_backend" id="llm-backend">
@@ -171,64 +165,81 @@
                   <div class="help">{{ t(request, 'setup.llm_backend.help') }}</div>
                 </div>
 
-                <div id="local-options" {% if defaults.llm_backend != 'local' %}style="display:none"{% endif %}>
-                  <div class="form-group">
-                    <label>{{ t(request, 'setup.local_tier') }}</label>
-                    <select name="local_model_id" id="local-model">
-                      {% for m in local_models %}
-                        <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
-                      {% endfor %}
-                    </select>
-                    <div class="help" id="model-notes"></div>
-                  </div>
-                  <div class="form-group">
-                    <label>{{ t(request, 'setup.install_local') }}</label>
-                    <div>
-                      <button type="button" id="btn-local-install">{{ t(request, 'setup.install_btn') }}</button>
+                <div id="ai-dynamic-options">
+                  <!-- Local Specific Section -->
+                  <div id="local-section">
+                    <div class="form-group">
+                      <label>{{ t(request, 'setup.local_tier') }}</label>
+                      <select name="local_model_id" id="local-model">
+                        {% for m in local_models %}
+                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                        {% endfor %}
+                      </select>
+                      <div class="help" id="model-notes"></div>
+                    </div>
+                    <div class="form-group">
+                      <label>{{ t(request, 'setup.install_local') }}</label>
+                      <div><button type="button" id="btn-local-install" class="btn btn--secondary">{{ t(request, 'setup.install_btn') }}</button></div>
+                    </div>
+                    <div class="form-group">
+                      <label>{{ t(request, 'setup.install_progress') }}</label>
+                      <div>
+                        <div class="bar"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
+                        <div class="muted" id="local-text">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
+                      </div>
                     </div>
                   </div>
-                  <div class="form-group">
-                    <label>{{ t(request, 'setup.install_progress') }}</label>
-                    <div>
-                      <div class="bar"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
-                      <div class="muted" id="local-text">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
+
+                  <!-- Cloud Specific Section -->
+                  <div id="cloud-section" style="display:none">
+                    <div class="form-group">
+                      <label>Service Provider</label>
+                      <select name="cloud_provider" id="cloud-provider">
+                        <option value="openai" {% if defaults.cloud_provider == 'openai' %}selected{% endif %}>OpenAI (ChatGPT)</option>
+                        <option value="upstage" {% if defaults.cloud_provider == 'upstage' %}selected{% endif %}>Upstage (Solar)</option>
+                        <option value="google" {% if defaults.cloud_provider == 'google' %}selected{% endif %}>Google (Gemini)</option>
+                        <option value="anthropic" {% if defaults.cloud_provider == 'anthropic' %}selected{% endif %}>Anthropic (Claude)</option>
+                        <option value="openrouter" {% if defaults.cloud_provider == 'openrouter' %}selected{% endif %}>OpenRouter (Universal)</option>
+                      </select>
+                    </div>
+
+                    <div id="cloud-key-container">
+                      <div class="form-group cloud-key-field" data-provider="openai">
+                        <label>OpenAI API Key</label>
+                        <input name="openai_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openai %}●●●●●●●●{% else %}sk-...{% endif %}" />
+                      </div>
+                      <div class="form-group cloud-key-field" data-provider="upstage">
+                        <label>Upstage API Key</label>
+                        <input name="upstage_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.upstage %}●●●●●●●●{% else %}up_...{% endif %}" />
+                      </div>
+                      <div class="form-group cloud-key-field" data-provider="google">
+                        <label>Google API Key</label>
+                        <input name="google_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.google %}●●●●●●●●{% else %}AIza...{% endif %}" />
+                      </div>
+                      <div class="form-group cloud-key-field" data-provider="anthropic">
+                        <label>Anthropic API Key</label>
+                        <input name="anthropic_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.anthropic %}●●●●●●●●{% else %}sk-ant-...{% endif %}" />
+                      </div>
+                      <div class="form-group cloud-key-field" data-provider="openrouter">
+                        <label>OpenRouter API Key</label>
+                        <input name="openrouter_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openrouter %}●●●●●●●●{% else %}sk-or-...{% endif %}" />
+                      </div>
+                    </div>
+
+                    <div class="form-group">
+                      <label>LLM 모델 선택</label>
+                      <select name="openrouter_model" id="cloud-model-select">
+                        <!-- Options populated by JS -->
+                      </select>
+                    </div>
+
+                    <div class="actions" style="justify-content:flex-start; margin-top:8px; gap:10px; align-items:center;">
+                      <button type="button" class="btn btn--secondary" id="btn-test-cloud-key">API 키 테스트</button>
+                      <span id="cloud-test-status" class="muted"></span>
                     </div>
                   </div>
                 </div>
 
-                <div id="cloud-options" {% if defaults.llm_backend == 'local' %}style="display:none"{% endif %}>
-                  <div class="form-group">
-                    <label>Provider</label>
-                    <select name="cloud_provider" id="cloud-provider">
-                      <option value="openai" {% if defaults.cloud_provider == 'openai' %}selected{% endif %}>OpenAI (ChatGPT)</option>
-                      <option value="upstage" {% if defaults.cloud_provider == 'upstage' %}selected{% endif %}>Upstage (Solar)</option>
-                      <option value="google" {% if defaults.cloud_provider == 'google' %}selected{% endif %}>Google (Gemini)</option>
-                      <option value="anthropic" {% if defaults.cloud_provider == 'anthropic' %}selected{% endif %}>Anthropic (Claude)</option>
-                      <option value="openrouter" {% if defaults.cloud_provider == 'openrouter' %}selected{% endif %}>OpenRouter</option>
-                    </select>
-                  </div>
-                  
-                  <div class="form-group cloud-key" data-provider="openai">
-                    <label>OpenAI API Key</label>
-                    <input name="openai_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openai %}•••••••• (Saved){% else %}sk-...{% endif %}" />
-                  </div>
-                  <div class="form-group cloud-key" data-provider="upstage">
-                    <label>Upstage API Key</label>
-                    <input name="upstage_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.upstage %}•••••••• (Saved){% else %}up_...{% endif %}" />
-                  </div>
-                  <div class="form-group cloud-key" data-provider="google">
-                    <label>Google API Key</label>
-                    <input name="google_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.google %}•••••••• (Saved){% endif %}" />
-                  </div>
-                  <div class="form-group cloud-key" data-provider="anthropic">
-                    <label>Anthropic API Key</label>
-                    <input name="anthropic_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.anthropic %}•••••••• (Saved){% endif %}" />
-                  </div>
-                  <div class="form-group cloud-key" data-provider="openrouter">
-                    <label>OpenRouter API Key</label>
-                    <input name="openrouter_api_key" type="password" placeholder="{% if cloud.cloud_cloud_keys.openrouter %}•••••••• (Saved){% endif %}" />
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -266,6 +277,52 @@
                       </label>
                     </div>
                 </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border); margin: 24px 0;" />
+                <div class="form-group">
+                  <label>앱 버전(현재)</label>
+                  <input value="{{ defaults.app_version }}" readonly />
+                </div>
+                <div class="form-group">
+                  <label>업데이트 채널</label>
+                  <select name="update_channel">
+                    <option value="stable" {% if defaults.update_channel == 'stable' %}selected{% endif %}>stable</option>
+                    <option value="beta" {% if defaults.update_channel == 'beta' %}selected{% endif %}>beta</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>최신 버전(배포 대상)</label>
+                  <input name="update_latest_version" value="{{ defaults.update_latest_version }}" placeholder="예: 0.5.0" />
+                </div>
+                <div class="form-group">
+                  <label>업데이트 다운로드 URL</label>
+                  <input name="update_download_url" value="{{ defaults.update_download_url }}" placeholder="예: https://github.com/<org>/<repo>/releases/latest" />
+                </div>
+                <div class="form-group">
+                  <label>업데이트 자동 확인</label>
+                  <div class="card" style="padding: 12px; background: rgba(0,0,0,0.02);">
+                    <label style="display:flex; align-items:center; gap:12px; cursor:pointer; margin-bottom:0;">
+                      <input type="checkbox" name="update_auto_check_enabled" {% if defaults.update_auto_check_enabled %}checked{% endif %} style="width:auto;" />
+                      <span>앱 시작 시 최신 버전 확인</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>다음 알림 보류 시각(ISO)</label>
+                  <input name="update_snooze_until" value="{{ defaults.update_snooze_until }}" placeholder="예: 2026-03-06T10:00:00+09:00" />
+                </div>
+                <div class="form-group">
+                  <label>건너뛸 버전</label>
+                  <input name="update_skip_version" value="{{ defaults.update_skip_version }}" placeholder="예: 0.5.0" />
+                </div>
+                <div class="form-group">
+                  <label>마지막 확인 시각(ISO)</label>
+                  <input name="update_last_checked_at" value="{{ defaults.update_last_checked_at }}" placeholder="예: 2026-02-27T09:00:00+09:00" />
+                </div>
+                <div class="form-group">
+                  <label>마지막 확인 상태</label>
+                  <input value="{{ defaults.update_last_check_status }}" readonly />
+                </div>
               </div>
             </div>
           </div>
@@ -301,70 +358,112 @@
 
 <script>
 (() => {
-  window.updateThemeSelection = (theme) => {
-    document.querySelectorAll('.theme-option').forEach(opt => opt.classList.remove('selected'));
-    document.getElementById('label-theme-' + theme).classList.add('selected');
-    // Live preview by changing body class
-    document.body.className = 'theme-' + theme;
-  };
-
+  // --- UI Elements & Constants ---
+  const form = document.getElementById('setup-form');
+  const btnSyncNext = document.querySelector('.wizard__footer button');
+  
+  const themeOptions = document.querySelectorAll('.theme-option');
+  const tabs = document.querySelectorAll('.wizard__tab');
+  const panels = document.querySelectorAll('.tab-panel');
+  
+  const backendSelect = document.getElementById('llm-backend');
+  const localSection = document.getElementById('local-section');
+  const cloudSection = document.getElementById('cloud-section');
+  const cloudProvider = document.getElementById('cloud-provider');
+  const cloudModelSelect = document.getElementById('cloud-model-select');
+  const btnTestCloudKey = document.getElementById('btn-test-cloud-key');
+  const cloudTestStatus = document.getElementById('cloud-test-status');
+  
   const modelSelect = document.getElementById('local-model');
   const notesEl = document.getElementById('model-notes');
+
+  const CLOUD_MODELS = {
+    openai: [
+      { id: 'gpt-4o-mini', label: 'GPT-4o mini (추천)' },
+      { id: 'gpt-4o', label: 'GPT-4o (고성능)' }
+    ],
+    upstage: [
+      { id: 'solar-mini', label: 'Solar Mini (속도)' },
+      { id: 'solar-pro', label: 'Solar Pro (품질)' }
+    ],
+    google: [
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (속도)' },
+      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (품질)' }
+    ],
+    anthropic: [
+      { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+      { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' }
+    ],
+    openrouter: [
+      { id: 'meta-llama/llama-3.1-8b-instruct', label: 'Llama 3.1 8B' },
+      { id: 'mistralai/mistral-7b-instruct', label: 'Mistral 7B' }
+    ]
+  };
+
+  // --- Logic: Tabs ---
+  window.switchTab = (tabName) => {
+    tabs.forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === tabName));
+    panels.forEach(p => p.classList.toggle('active', p.id === `panel-${tabName}`));
+    
+    const hiddenTabInput = document.querySelector('input[name="current_tab"]');
+    if (hiddenTabInput) hiddenTabInput.value = tabName;
+    
+    // Update button text if it's the last tab
+    if (btnSyncNext) {
+       btnSyncNext.textContent = tabName === 'advanced' ? "{{ t(request, 'setup.wizard.done') }}" : "{{ t(request, 'setup.wizard.next') }}";
+    }
+
+    history.pushState(null, '', '/setup?tab=' + tabName);
+  };
+
+  // --- Logic: Themes ---
+  window.updateThemeSelection = async (theme) => {
+    themeOptions.forEach(opt => opt.classList.toggle('selected', opt.id === 'label-theme-' + theme));
+    document.body.className = 'theme-' + theme;
+    
+    try {
+      const fd = new FormData();
+      fd.append('ui_theme', theme);
+      await fetch('/setup/save-partial', { method: 'POST', body: fd });
+    } catch(e) { console.error('Theme auto-save failed', e); }
+  };
+
+  // --- Logic: AI Settings ---
+  function syncAiMenus() {
+    const v = backendSelect.value;
+    if (localSection) localSection.style.display = v === 'local' ? 'block' : 'none';
+    if (cloudSection) cloudSection.style.display = v === 'cloud' ? 'block' : 'none';
+    if (v === 'cloud') syncCloudModelList();
+  }
+
+  function syncCloudModelList() {
+    const p = cloudProvider.value;
+    document.querySelectorAll('.cloud-key-field').forEach(f => {
+      f.style.display = f.getAttribute('data-provider') === p ? 'block' : 'none';
+    });
+    if (cloudTestStatus) {
+      cloudTestStatus.textContent = '';
+      cloudTestStatus.style.color = '';
+    }
+
+    const models = CLOUD_MODELS[p] || [];
+    cloudModelSelect.innerHTML = '';
+    models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      if (m.id === "{{ defaults.openrouter_model }}") opt.selected = true;
+      cloudModelSelect.appendChild(opt);
+    });
+  }
+
   function syncModelNotes() {
     if (!notesEl || !modelSelect) return;
     const opt = modelSelect.options[modelSelect.selectedIndex];
     notesEl.textContent = opt ? opt.getAttribute('data-notes') : '';
   }
-  if (modelSelect) modelSelect.addEventListener('change', syncModelNotes);
-  syncModelNotes();
 
-  const backend = document.getElementById('llm-backend');
-  const localOpts = document.getElementById('local-options');
-  const cloudOpts = document.getElementById('cloud-options');
-  function syncBackend() {
-    const v = backend.value;
-    localOpts.style.display = v === 'local' ? 'block' : 'none';
-    cloudOpts.style.display = v === 'cloud' ? 'block' : 'none';
-  }
-  if (backend) backend.addEventListener('change', syncBackend);
-
-  const provider = document.getElementById('cloud-provider');
-  function syncCloudKeys() {
-    const p = provider.value;
-    document.querySelectorAll('.cloud-key').forEach(row => {
-      row.style.display = row.getAttribute('data-provider') === p ? 'block' : 'none';
-    });
-  }
-  if (provider) provider.addEventListener('change', syncCloudKeys);
-  syncCloudKeys();
-
-  window.switchTab = (tabName) => {
-    location.href = '/setup?tab=' + tabName;
-  };
-
-  const btnPick = document.getElementById('btn-pick-obsidian');
-  if (btnPick) {
-    btnPick.addEventListener('click', async () => {
-      btnPick.disabled = true;
-      try { await fetch('/setup/pick-obsidian', { method: 'POST' }); }
-      finally { location.reload(); }
-    });
-  }
-
-  const btnTest = document.getElementById('btn-test-imap');
-  const testStatus = document.getElementById('test-status');
-  if (btnTest) {
-    btnTest.addEventListener('click', async () => {
-        btnTest.disabled = true;
-        testStatus.textContent = "...";
-        const form = document.getElementById('setup-form');
-        const fd = new FormData(form);
-        const res = await fetch('/setup/test-imap', { method: 'POST', body: fd });
-        location.reload();
-    });
-  }
-
-  // --- Local Install Logic ---
+  // --- Logic: Workers & Actions ---
   const btnInstall = document.getElementById('btn-local-install');
   const localBar = document.getElementById('local-bar');
   const localText = document.getElementById('local-text');
@@ -388,35 +487,82 @@
     });
   }
 
+  // --- Event Listeners ---
+  if (backendSelect) backendSelect.addEventListener('change', syncAiMenus);
+  if (cloudProvider) cloudProvider.addEventListener('change', syncCloudModelList);
+  if (modelSelect) modelSelect.addEventListener('change', syncModelNotes);
+
   if (btnInstall) {
     btnInstall.addEventListener('click', async () => {
       btnInstall.disabled = true;
-      const modelId = document.getElementById('local-model').value;
+      const modelId = modelSelect.value;
       const res = await fetch('/api/jobs/local-install', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model_id: modelId })
       });
       const j = await res.json();
-      if (res.ok) watchInstall(j.job_id);
-      else btnInstall.disabled = false;
+      if (res.ok) watchInstall(j.job_id); else btnInstall.disabled = false;
     });
   }
 
-  const ACTIVE_INSTALL = "{{ (active.local_install.id if active and active.local_install else '') }}";
-  if (ACTIVE_INSTALL) watchInstall(ACTIVE_INSTALL);
-
-  const testStatus = document.getElementById('test-status');
-  if (btnTest) {
-    btnTest.addEventListener('click', async () => {
-        btnTest.disabled = true;
-        testStatus.textContent = "...";
-        const form = document.getElementById('setup-form');
+  if (btnTestCloudKey) {
+    btnTestCloudKey.addEventListener('click', async () => {
+      btnTestCloudKey.disabled = true;
+      if (cloudTestStatus) {
+        cloudTestStatus.textContent = '테스트 중...';
+        cloudTestStatus.style.color = 'var(--text-secondary)';
+      }
+      try {
         const fd = new FormData(form);
-        const res = await fetch('/setup/test-imap', { method: 'POST', body: fd });
+        const res = await fetch('/setup/test-cloud-key', { method: 'POST', body: fd });
+        const j = await res.json();
+        if (cloudTestStatus) {
+          cloudTestStatus.textContent = (j && j.message) ? j.message : '실패: 응답이 올바르지 않습니다.';
+          cloudTestStatus.style.color = (j && j.ok) ? '#16a34a' : '#dc2626';
+        }
+      } catch (e) {
+        if (cloudTestStatus) {
+          cloudTestStatus.textContent = '실패: 네트워크 또는 서버 오류';
+          cloudTestStatus.style.color = '#dc2626';
+        }
+      } finally {
+        btnTestCloudKey.disabled = false;
+      }
+    });
+  }
+
+  const btnPickObsidian = document.getElementById('btn-pick-obsidian');
+  if (btnPickObsidian) {
+    btnPickObsidian.addEventListener('click', async () => {
+      btnPickObsidian.disabled = true;
+      try { await fetch('/setup/pick-obsidian', { method: 'POST' }); }
+      finally { location.reload(); }
+    });
+  }
+
+  const btnTestImap = document.getElementById('btn-test-imap');
+  const testStatus = document.getElementById('test-status');
+  if (btnTestImap) {
+    btnTestImap.addEventListener('click', async () => {
+        btnTestImap.disabled = true;
+        testStatus.textContent = "...";
+        const fd = new FormData(form);
+        await fetch('/setup/test-imap', { method: 'POST', body: fd });
         location.reload();
     });
   }
+
+  // --- Init ---
+  syncAiMenus();
+  syncModelNotes();
+  const ACTIVE_INSTALL = "{{ (active.local_install.id if active and active.local_install else '') }}";
+  if (ACTIVE_INSTALL) watchInstall(ACTIVE_INSTALL);
+
+  // Set initial tab if specified in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const startTab = urlParams.get('tab');
+  if (startTab) window.switchTab(startTab);
 })();
 </script>
 {% endblock %}

@@ -59,26 +59,32 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
 
     if backend == "openrouter" or backend == "cloud":
         provider_name = (settings.cloud_provider or "openai").strip().lower()
+        selected_model = (settings.openrouter_model or "").strip()
 
         # Map internal provider names to base URLs and models
         # OpenAI, Google, Upstage are OpenAI-compatible.
         # Anthropic would need a separate adapter if we use their native SDK,
         # but for now we recommend OpenRouter for Anthropic or stick to OpenAI-compatible ones.
-        configs = {
-            "openai": ("https://api.openai.com/v1", "gpt-4o-mini"),
-            "google": (
-                "https://generativelanguage.googleapis.com",
-                "gemini-2.5-flash",
-            ),
-            "upstage": ("https://api.upstage.ai/v1/solar", "solar-mini"),
-            "anthropic": ("https://api.anthropic.com/v1", "claude-3-5-haiku-20241022"),
-            "openrouter": ("https://openrouter.ai/api/v1", settings.openrouter_model),
+        defaults = {
+            "openai": "gpt-4o-mini",
+            "google": "gemini-2.5-flash",
+            "upstage": "solar-mini",
+            "anthropic": "claude-3-5-haiku-20241022",
+            "openrouter": "openai/gpt-4o-mini",
+        }
+        base_urls = {
+            "openai": "https://api.openai.com/v1",
+            "google": "https://generativelanguage.googleapis.com",
+            "upstage": "https://api.upstage.ai/v1/solar",
+            "anthropic": "https://api.anthropic.com/v1",
+            "openrouter": "https://openrouter.ai/api/v1",
         }
 
-        if provider_name not in configs:
+        if provider_name not in base_urls:
             provider_name = "openai"
 
-        base_url, model = configs[provider_name]
+        base_url = base_urls[provider_name]
+        model = selected_model or defaults[provider_name]
         api_key_service = f"webmail-summary::{provider_name}"
         api_key = keyring.get_password(api_key_service, "api_key")
 

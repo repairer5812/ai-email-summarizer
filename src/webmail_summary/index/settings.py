@@ -22,6 +22,15 @@ class Settings:
     user_roles: list[str]
     user_interests: str
     ui_theme: str
+    update_channel: str
+    update_latest_version: str
+    update_auto_check_enabled: bool
+    update_repo: str
+    update_snooze_until: str
+    update_skip_version: str
+    update_last_checked_at: str
+    update_download_url: str
+    update_last_check_status: str
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -69,6 +78,21 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     except Exception:
         user_roles = []
     user_interests = get_setting(conn, "user_interests") or ""
+    update_channel = (get_setting(conn, "update_channel") or "stable").strip().lower()
+    if update_channel not in {"stable", "beta"}:
+        update_channel = "stable"
+    update_latest_version = (get_setting(conn, "update_latest_version") or "").strip()
+    update_auto_check_enabled = (
+        get_setting(conn, "update_auto_check_enabled") or "1"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    update_repo = (get_setting(conn, "update_repo") or "").strip()
+    update_snooze_until = (get_setting(conn, "update_snooze_until") or "").strip()
+    update_skip_version = (get_setting(conn, "update_skip_version") or "").strip()
+    update_last_checked_at = (get_setting(conn, "update_last_checked_at") or "").strip()
+    update_download_url = (get_setting(conn, "update_download_url") or "").strip()
+    update_last_check_status = (
+        get_setting(conn, "update_last_check_status") or ""
+    ).strip()
 
     return Settings(
         imap_host=imap_host,
@@ -86,4 +110,13 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         user_roles=user_roles,
         user_interests=user_interests,
         ui_theme=get_setting(conn, "ui_theme") or "trust",
+        update_channel=update_channel,
+        update_latest_version=update_latest_version,
+        update_auto_check_enabled=update_auto_check_enabled,
+        update_repo=update_repo,
+        update_snooze_until=update_snooze_until,
+        update_skip_version=update_skip_version,
+        update_last_checked_at=update_last_checked_at,
+        update_download_url=update_download_url,
+        update_last_check_status=update_last_check_status,
     )

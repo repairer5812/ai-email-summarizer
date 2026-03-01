@@ -61,7 +61,11 @@ def write_obsidian_markdown(vault_path: Path, subdir: str, doc: MdDoc) -> Path:
     content += "\n\n"
     if backlink_line:
         content += backlink_line + "\n\n"
-    content += "## Summary\n\n" + (doc.summary.strip() or "(no summary)") + "\n\n"
+    content += (
+        "## 핵심 요약 / 상세 요약\n\n"
+        + (doc.summary.strip() or "(no summary)")
+        + "\n\n"
+    )
     content += "## Body Excerpt\n\n" + (doc.body_excerpt.strip() or "(empty)") + "\n"
 
     out_path.write_text(content, encoding="utf-8")
