@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.2] - 2026-03-02
+
+### Added
+
+- Windows installer build (Inno Setup) in release workflow.
+- Installer script for per-user install with Start Menu/Desktop shortcuts.
+
+### Changed
+
+- CLI default now launches `serve` when no subcommand is provided.
+- Landing screenshot section improved readability (larger previews, no cropping, open original).
+
 ## [0.5.0] - 2026-03-02
 
 ### Added
