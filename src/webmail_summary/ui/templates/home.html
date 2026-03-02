@@ -21,9 +21,24 @@
       <p class="muted">{{ t(request, 'home.hero.sub') }}</p>
     </div>
     <div class="hero__actions">
-      <button id="btn-sync" class="btn" {% if not ai.ready %}disabled{% endif %}>{{ t(request, 'home.btn.sync') }}</button>
-      <button id="btn-refresh-overviews" class="btn btn--secondary">{{ t(request, 'home.btn.refresh_overviews') }}</button>
-      <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
+      {% if update %}
+      <div class="update-mini">
+        <div class="update-mini__title">버전 {{ update.current }}{% if update.latest %} -> {{ update.latest }}{% endif %}</div>
+        <div class="update-mini__actions">
+          <form method="post" action="/updates/check-now" style="margin:0;">
+            <button class="btn btn--secondary" type="submit">확인</button>
+          </form>
+          {% if update.show_notice %}
+          <a class="btn" href="{{ update.download_url if update.download_url else (update.release_page_url if update.release_page_url else '/setup?tab=advanced') }}" target="_blank">업데이트</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <div class="hero__btnrow">
+        <button id="btn-sync" class="btn" {% if not ai.ready %}disabled{% endif %}>{{ t(request, 'home.btn.sync') }}</button>
+        <button id="btn-refresh-overviews" class="btn btn--secondary">{{ t(request, 'home.btn.refresh_overviews') }}</button>
+        <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
+      </div>
     </div>
   </div>
 </section>
@@ -36,54 +51,6 @@
       <div style="margin-top:20px;">
       <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
       </div>
-    </div>
-  </div>
-{% endif %}
-
-{% if update %}
-  <div class="card span-4" style="margin-bottom: 24px;">
-    <div class="card__title" style="display:flex; justify-content:space-between; align-items:center;">
-      <span>버전 관리</span>
-      <span class="muted" style="font-size:0.85rem;">현재 {{ update.current }}{% if update.latest %} / 최신 {{ update.latest }}{% endif %}</span>
-    </div>
-    <div class="card__body">
-      <div class="muted" style="margin-bottom:10px; font-size:0.85rem;">
-        채널: {{ update.channel }}
-        {% if update.last_checked_at %} · 마지막 확인: {{ update.last_checked_at }}{% endif %}
-        {% if update.last_check_status %} · 상태: {{ update.last_check_status }}{% endif %}
-      </div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
-        <form method="post" action="/updates/check-now" style="margin:0;">
-          <button class="btn btn--secondary" type="submit">지금 확인</button>
-        </form>
-        <a class="btn btn--secondary" href="/setup?tab=advanced">업데이트 설정</a>
-        {% if update.repo %}<span class="muted" style="align-self:center;">repo: {{ update.repo }}</span>{% endif %}
-      </div>
-      {% if update.show_notice %}
-        <div style="margin-bottom: 12px; font-weight: 600; color: var(--accent);">새 버전이 있습니다.</div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <a class="btn" href="{{ update.download_url if update.download_url else (update.release_page_url if update.release_page_url else '/setup?tab=advanced') }}" target="_blank">지금 업데이트</a>
-          <a class="btn btn--secondary" href="/setup?tab=advanced">나중에</a>
-          <form method="post" action="/updates/snooze-week" style="margin:0;">
-            <button class="btn btn--secondary" type="submit">1주일 안 보기</button>
-          </form>
-          <form method="post" action="/updates/skip-latest" style="margin:0;">
-            <button class="btn btn--secondary" type="submit">이 버전 건너뛰기</button>
-          </form>
-        </div>
-      {% else %}
-        <div class="muted">
-          {% if update.has_update and update.is_snoozed %}
-            업데이트 알림 보류 중 ({{ update.snooze_until }}).
-          {% elif update.has_update and update.is_skipped %}
-            최신 버전( {{ update.latest }} )은 건너뛰기 상태입니다.
-          {% elif update.latest %}
-            최신 버전이 반영되었습니다.
-          {% else %}
-            최신 버전 정보가 아직 없습니다. 설정 > 고급 설정에서 최신 버전을 입력하세요.
-          {% endif %}
-        </div>
-      {% endif %}
     </div>
   </div>
 {% endif %}
