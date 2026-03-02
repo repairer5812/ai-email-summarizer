@@ -31,6 +31,8 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          Set-Content -Path src/webmail_summary/_version.txt -Value $ver -Encoding ascii
           pyinstaller --noconfirm --clean --onefile --name webmail-summary --icon landing/app/favicon.ico --collect-data webmail_summary --collect-submodules webmail_summary src/webmail_summary/cli.py
 
       - name: Install Inno Setup

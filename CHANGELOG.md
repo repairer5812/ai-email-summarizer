@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.3] - 2026-03-02
+
+### Fixed
+
+- Frozen(배포 exe) 실행에서 앱 버전이 0.0.0으로 표시되던 문제를 수정.
+
 ## [0.5.2] - 2026-03-02
 
 ### Added
