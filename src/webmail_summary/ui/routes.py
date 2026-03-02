@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta, timezone
+import os
 from importlib import metadata as importlib_metadata
+from importlib import resources as importlib_resources
 from pathlib import Path
 
 import keyring
@@ -311,11 +313,25 @@ def _get_repo_declared_version() -> str | None:
 
 
 def _get_app_version() -> str:
+    env_v = _normalize_version(os.environ.get("WEBMAIL_SUMMARY_VERSION", ""))
+    if env_v:
+        return env_v
+
     # In local src runs, prefer repo-declared version to avoid stale global
     # dist-info metadata overshadowing the working copy version.
     local_declared = _get_repo_declared_version()
     if local_declared:
         return local_declared
+
+    try:
+        p = importlib_resources.files("webmail_summary").joinpath("_version.txt")
+        if p.is_file():
+            raw = p.read_bytes()
+            v = _normalize_version(raw.decode("utf-8", errors="replace"))
+            if v:
+                return v
+    except Exception:
+        pass
     try:
         return _normalize_version(importlib_metadata.version("webmail-summary"))
     except Exception:

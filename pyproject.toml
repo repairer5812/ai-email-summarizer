@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "webmail-summary"
-version = "0.5.2"
+version = "0.5.3"
 description = "Daouoffice IMAP mail summarizer -> Obsidian markdown"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,7 @@ dependencies = [
 webmail-summary = "webmail_summary.cli:main"
 
 [tool.setuptools.package-data]
-"webmail_summary" = ["ui/templates/*.html", "ui/static/*"]
+"webmail_summary" = ["_version.txt", "ui/templates/*.html", "ui/static/*"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
