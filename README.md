@@ -79,7 +79,6 @@ python -m venv .venv
 ### 릴리즈
 
 - 태그 푸시: `vX.Y.Z`
-- GitHub Actions가 Windows 실행 파일/zip/SHA256 생성
 - 체크리스트: `docs/RELEASE_CHECKLIST.md`
 
 ### 문서
