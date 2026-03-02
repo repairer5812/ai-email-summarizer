@@ -6,7 +6,7 @@
       <p class="muted" style="margin-bottom: 4px;">{{ t(request, 'day.subtitle') }}</p>
       <h1>{{ day }}</h1>
     </div>
-    <div class="hero__actions">
+    <div class="hero__actions day-actions">
       {% if not setup_complete %}
         <a class="btn" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
       {% elif active_resum %}
@@ -85,7 +85,7 @@
             <div class="muted" style="font-size: 0.8rem;">{{ it.time_full }}{% if it.summarize_ms %} · 요약 {{ it.summarize_ms }}{% endif %}</div>
           </div>
         </div>
-        <div class="hero__actions" style="flex: 0 0 auto; margin-left: 20px;">
+        <div class="day-item-actions" style="flex: 0 0 auto; margin-left: 20px;">
           {% if it.has_rendered %}
             <a class="btn btn--secondary" href="/m/{{ it.id }}/rendered.html" target="_blank" style="padding: 6px 12px; font-size: 0.8rem;">원문</a>
           {% endif %}
