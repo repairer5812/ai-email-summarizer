@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import queue
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -168,6 +170,46 @@ class JobRunner:
                             connc.close()
                     if rc != 0 and not cancelled:
                         raise RuntimeError(f"sync worker failed: exit {rc}")
+                    if rc == 0 and not cancelled:
+                        connr = get_conn(db_path)
+                        try:
+                            active_refresh = repo.find_active_job(
+                                connr, kind="refresh-overviews"
+                            )
+                        finally:
+                            connr.close()
+
+                        if active_refresh is None:
+                            try:
+                                from webmail_summary.jobs.tasks_refresh_overviews import (
+                                    refresh_overviews_task,
+                                )
+
+                                refresh_job_id = self.enqueue(
+                                    kind="refresh-overviews",
+                                    fn=refresh_overviews_task(),
+                                )
+                                conn4 = get_conn(db_path)
+                                try:
+                                    repo.add_event(
+                                        conn4,
+                                        job_id=job.id,
+                                        level="info",
+                                        text=f"queued refresh-overviews job={refresh_job_id}",
+                                    )
+                                finally:
+                                    conn4.close()
+                            except Exception as e:
+                                conn5 = get_conn(db_path)
+                                try:
+                                    repo.add_event(
+                                        conn5,
+                                        job_id=job.id,
+                                        level="warn",
+                                        text=f"failed to queue refresh-overviews: {e}",
+                                    )
+                                finally:
+                                    conn5.close()
                 else:
                     job.fn(job.id, cancel)
             except Exception as e:
@@ -212,11 +254,20 @@ class JobRunner:
             pids = [p.pid for p in self._active_procs.values()]
             for pid in pids:
                 try:
-                    kill_sync_worker(pid)
+                    if sys.platform == "win32":
+                        subprocess.run(
+                            ["taskkill", "/PID", str(int(pid)), "/T", "/F"],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            check=False,
+                        )
+                    else:
+                        os.kill(int(pid), signal.SIGTERM)
                 except Exception:
                     pass
             self._active_procs.clear()
             self._active.clear()
+
 
 _runner: JobRunner | None = None
 
