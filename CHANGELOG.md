@@ -15,6 +15,12 @@ All notable changes to this project are documented in this file.
 - SignPath Foundation 온보딩 문서 및 코드서명 정책/프라이버시 문서.
 - 릴리즈 워크플로에 SignPath 서명(옵션) 단계 추가.
 
+## [0.5.5] - 2026-03-02
+
+### Fixed
+
+- GitHub Actions 릴리즈 워크플로에서 SignPath 시크릿 유무에 따라 조건부 실행이 실패하던 문제를 수정.
+
 ## [0.5.2] - 2026-03-02
 
 ### Added
