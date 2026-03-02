@@ -626,6 +626,19 @@ label {
 .hero__row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; }
 .hero__actions { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .hero__btnrow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.day-actions {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.day-item-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .update-mini {
   min-width: 250px;
   max-width: 360px;
@@ -655,6 +668,7 @@ label {
   .hero__row { align-items: flex-start; flex-direction: column; gap: 10px; }
   .hero__actions { width: 100%; align-items: flex-start; }
   .hero__btnrow { justify-content: flex-start; }
+  .day-actions { justify-content: flex-start; }
   .update-mini { width: 100%; max-width: none; }
 }
 
