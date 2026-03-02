@@ -14,8 +14,8 @@ class LongSummarizeConfig:
     chunk_if_body_chars_over: int = 4500
     # Target chunk size in chars (approx; respects paragraph boundaries when possible).
     chunk_chars: int = 2400
-    # If set, cap the number of chunks (None = summarize all chunks).
-    max_chunks: int | None = None
+    # Cap the number of chunks to keep latency bounded on very long emails.
+    max_chunks: int | None = 6
     # Cap merged bullets/tags/backlinks to keep output compact.
     max_bullets: int = 15
     # Per-part bullets to record in the detailed section.
@@ -501,6 +501,32 @@ def synthesize_daily_overview(
     if not compact_summaries:
         return ""
 
+    target_count = len(compact_summaries) if len(compact_summaries) <= 5 else 5
+
+    def _fallback_headlines(limit: int) -> list[str]:
+        out: list[str] = []
+        for raw in compact_summaries:
+            line = ""
+            for b in _extract_bullets(raw):
+                t = str(b or "").strip()
+                if not t:
+                    continue
+                normalized = t.lower().replace(" ", "").strip("[]").strip()
+                if normalized in {"핵심요약", "상세요약"}:
+                    continue
+                line = t
+                break
+            if not line:
+                line = re.sub(r"^[-*•·\s]+", "", str(raw or "").strip())
+            line = re.sub(r"\s+", " ", line).strip()
+            if len(line) > 120:
+                line = line[:120].rstrip() + "..."
+            if line:
+                out.append(line)
+            if len(out) >= limit:
+                break
+        return _dedupe_keep_order(out)
+
     profile_info = ""
     if user_profile:
         roles = ", ".join(user_profile.get("roles", []))
@@ -522,8 +548,31 @@ def synthesize_daily_overview(
 
     try:
         res = provider.summarize(subject=f"{day} Daily Overview", body=body)
-        # Extract bullets from the result
-        bullets = _extract_bullets(res.summary)
+        bullets = _dedupe_keep_order(_extract_bullets(res.summary))
+
+        fallback_limit = max(len(compact_summaries), target_count)
+        fallbacks = _fallback_headlines(fallback_limit)
+
+        if len(compact_summaries) <= 5:
+            if len(bullets) < target_count:
+                for fb in fallbacks:
+                    if fb.lower() not in {x.lower() for x in bullets}:
+                        bullets.append(fb)
+                    if len(bullets) >= target_count:
+                        break
+            bullets = bullets[:target_count]
+        else:
+            if len(bullets) < target_count:
+                for fb in fallbacks:
+                    if fb.lower() not in {x.lower() for x in bullets}:
+                        bullets.append(fb)
+                    if len(bullets) >= target_count:
+                        break
+
+        if not bullets:
+            bullets = fallbacks[:target_count]
+
         return "\n".join(["- " + b for b in bullets]).strip()
     except Exception:
-        return ""
+        fallbacks = _fallback_headlines(target_count)
+        return "\n".join(["- " + b for b in fallbacks]).strip()

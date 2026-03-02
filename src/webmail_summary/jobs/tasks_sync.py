@@ -68,6 +68,19 @@ def _email_date(internal_date: datetime | None) -> str:
     return internal_date.astimezone(_KST).isoformat()
 
 
+def _cloud_base_delay_seconds(cloud_provider: str, model: str) -> float:
+    provider = str(cloud_provider or "").strip().lower()
+    model_name = str(model or "").strip().lower()
+
+    if provider in {"openai", "anthropic", "openrouter"}:
+        return 0.3
+    if provider in {"google", "upstage"}:
+        return 0.5
+    if "gemini" in model_name:
+        return 0.5
+    return 0.4
+
+
 def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
     def run(job_id: str, cancel: threading.Event) -> None:
         data_dir = get_app_data_dir()
@@ -356,9 +369,14 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
 
                     t1 = time.monotonic()
 
-                    # Rate limit for cloud providers
+                    # Cloud pacing: keep a small provider-specific delay.
                     if provider.__class__.__name__ == "CloudProvider":
-                        time.sleep(2)
+                        time.sleep(
+                            _cloud_base_delay_seconds(
+                                s.cloud_provider,
+                                s.openrouter_model,
+                            )
+                        )
 
                     user_profile = {
                         "roles": s.user_roles,
@@ -487,38 +505,6 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         vault_root=vault_root, topic=t, message_notes=notes
                     )
 
-                # Daily Overviews synthesis
-                from webmail_summary.index.mail_repo import (
-                    get_daily_overview,
-                    list_messages_by_date,
-                    set_daily_overview,
-                )
-                from webmail_summary.llm.long_summarize import synthesize_daily_overview
-
-                for d in by_date.keys():
-                    conn_d = get_conn(db_path)
-                    try:
-                        # Fetch all summaries for this date to synthesize
-                        msg_rows = list_messages_by_date(conn_d, date_prefix=d)
-                        all_sums = [
-                            str(r["summary"] or "") for r in msg_rows if r["summary"]
-                        ]
-                        if all_sums:
-                            user_profile = {
-                                "roles": s.user_roles,
-                                "interests": s.user_interests,
-                            }
-                            overview = synthesize_daily_overview(
-                                provider,
-                                day=d,
-                                summaries=all_sums,
-                                user_profile=user_profile,
-                            )
-                            if overview:
-                                set_daily_overview(conn_d, day=d, overview=overview)
-                                conn_d.commit()
-                    finally:
-                        conn_d.close()
             finally:
                 if revert_seen and to_revert:
                     # Best-effort revert for smoke tests.

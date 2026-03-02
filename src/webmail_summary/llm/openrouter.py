@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 import requests
 
@@ -68,7 +71,14 @@ class CloudProvider(LlmProvider):
         }
 
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=120)
+            r = self._post_with_adaptive_retry(
+                url=url,
+                headers=headers,
+                payload=payload,
+                max_attempts=3,
+                initial_backoff_s=0.5,
+                max_backoff_s=6.0,
+            )
             if r.status_code != 200:
                 return LlmResult(
                     summary=f"(LLM error: {r.status_code} {r.text[:100]})",
@@ -92,6 +102,61 @@ class CloudProvider(LlmProvider):
             )
 
         return self._parse_result(text)
+
+    def _retry_after_seconds(self, header_value: str | None) -> float | None:
+        if not header_value:
+            return None
+        raw = str(header_value).strip()
+        if not raw:
+            return None
+
+        try:
+            sec = float(raw)
+            if sec >= 0:
+                return sec
+        except Exception:
+            pass
+
+        try:
+            dt = parsedate_to_datetime(raw)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            wait_s = (dt - now).total_seconds()
+            if wait_s > 0:
+                return wait_s
+        except Exception:
+            pass
+        return None
+
+    def _post_with_adaptive_retry(
+        self,
+        *,
+        url: str,
+        headers: dict[str, str],
+        payload: dict,
+        max_attempts: int,
+        initial_backoff_s: float,
+        max_backoff_s: float,
+    ) -> requests.Response:
+        last_resp: requests.Response | None = None
+        for attempt in range(max(1, int(max_attempts))):
+            r = requests.post(url, headers=headers, json=payload, timeout=120)
+            last_resp = r
+            if r.status_code != 429:
+                return r
+
+            if attempt >= max_attempts - 1:
+                return r
+
+            retry_after = self._retry_after_seconds(r.headers.get("Retry-After"))
+            if retry_after is None:
+                retry_after = min(max_backoff_s, initial_backoff_s * (2**attempt))
+            time.sleep(max(0.0, float(retry_after)))
+
+        if last_resp is None:
+            raise RuntimeError("request failed before receiving a response")
+        return last_resp
 
     def _summarize_gemini(self, prompt: str) -> LlmResult:
         model_id = self._cfg.model

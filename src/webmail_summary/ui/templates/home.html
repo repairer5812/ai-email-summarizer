@@ -23,7 +23,7 @@
     <div class="hero__actions">
       {% if update %}
       <div class="update-mini">
-        <div class="update-mini__title">버전 {{ update.current }}{% if update.latest %} -> {{ update.latest }}{% endif %}</div>
+        <div class="update-mini__title">버전 {{ update.current }}{% if update.latest and update.latest != update.current %} -> {{ update.latest }}{% endif %}</div>
         <div class="update-mini__actions">
           <form method="post" action="/updates/check-now" style="margin:0;">
             <button class="btn btn--secondary" type="submit">확인</button>

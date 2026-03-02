@@ -49,6 +49,19 @@ def _needs_resummarize(summary: str) -> bool:
     return False
 
 
+def _cloud_base_delay_seconds(cloud_provider: str, model: str) -> float:
+    provider = str(cloud_provider or "").strip().lower()
+    model_name = str(model or "").strip().lower()
+
+    if provider in {"openai", "anthropic", "openrouter"}:
+        return 0.3
+    if provider in {"google", "upstage"}:
+        return 0.5
+    if "gemini" in model_name:
+        return 0.5
+    return 0.4
+
+
 def resummarize_day_task(
     *,
     date_key: str,
@@ -275,9 +288,14 @@ def resummarize_day_task(
 
             t0 = time.monotonic()
 
-            # Rate limit for cloud providers (Gemini free tier etc.)
+            # Cloud pacing: keep a small provider-specific delay.
             if provider.__class__.__name__ == "CloudProvider":
-                time.sleep(2)
+                time.sleep(
+                    _cloud_base_delay_seconds(
+                        s.cloud_provider,
+                        s.openrouter_model,
+                    )
+                )
 
             user_profile = {"roles": s.user_roles, "interests": s.user_interests}
             llm_res = summarize_email_long_aware(

@@ -294,7 +294,28 @@ def _normalize_version(value: str) -> str:
     return v
 
 
+def _get_repo_declared_version() -> str | None:
+    try:
+        repo_root = Path(__file__).resolve().parents[3]
+        pyproject = repo_root / "pyproject.toml"
+        if not pyproject.exists():
+            return None
+        text = pyproject.read_text(encoding="utf-8", errors="replace")
+        m = re.search(r'^\s*version\s*=\s*"([^"]+)"\s*$', text, re.MULTILINE)
+        if not m:
+            return None
+        v = _normalize_version(m.group(1))
+        return v or None
+    except Exception:
+        return None
+
+
 def _get_app_version() -> str:
+    # In local src runs, prefer repo-declared version to avoid stale global
+    # dist-info metadata overshadowing the working copy version.
+    local_declared = _get_repo_declared_version()
+    if local_declared:
+        return local_declared
     try:
         return _normalize_version(importlib_metadata.version("webmail-summary"))
     except Exception:
