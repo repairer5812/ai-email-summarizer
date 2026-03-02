@@ -14,3 +14,9 @@ test.txt
 PRD.txt
 배포계획.TXT
 \# Design System Guide*.txt
+
+# landing app (Next.js)
+landing/node_modules/
+landing/.next/
+landing/.vercel/
+landing/out/

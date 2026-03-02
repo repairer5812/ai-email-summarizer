@@ -81,6 +81,19 @@ python -m venv .venv
 - 태그 푸시: `vX.Y.Z`
 - 체크리스트: `docs/RELEASE_CHECKLIST.md`
 
+### 랜딩페이지 (Next.js)
+
+- 위치: `landing/`
+- 실행:
+
+```bash
+cd landing
+npm install
+npm run dev
+```
+
+- Vercel 배포 시 Root Directory를 `landing`으로 설정합니다.
+
 ### 문서
 
 - 변경 이력: `CHANGELOG.md`
