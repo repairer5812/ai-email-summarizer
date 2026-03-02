@@ -1,4 +1,3 @@
-import { BentoGrid } from "@/components/ui/bento-grid";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RetroGrid } from "@/components/ui/retro-grid";
@@ -6,8 +5,41 @@ import { ShimmerButton } from "@/components/ui/shimmer-button";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50/70 via-background to-background">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-14 text-slate-800 md:px-10">
+    <div className="relative min-h-screen bg-background text-slate-800">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-50 via-background to-background" />
+        <div className="absolute -top-48 left-[-18%] h-[520px] w-[520px] rounded-full bg-blue-600/16 blur-3xl" />
+        <div className="absolute -top-36 right-[-12%] h-[440px] w-[440px] rounded-full bg-sky-500/12 blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.22] [background-image:radial-gradient(rgba(15,23,42,0.20)_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_top,black_32%,transparent_72%)]" />
+      </div>
+
+      <main className="relative mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-14 md:px-10">
+        <header className="flex items-center justify-between">
+          <a href="#" className="text-sm font-semibold tracking-tight text-slate-900">
+            webmail-summary
+          </a>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="sm" asChild className="text-slate-700">
+              <a
+                href="https://github.com/repairer5812/ai-email-summarizer/releases/latest"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                릴리즈 노트
+              </a>
+            </Button>
+            <form
+              action="https://github.com/repairer5812/ai-email-summarizer/releases/latest/download/webmail-summary.exe"
+              method="get"
+              target="_blank"
+            >
+              <ShimmerButton type="submit" className="h-10 px-5 text-sm font-semibold" background="rgb(37 99 235)">
+                Windows 다운로드
+              </ShimmerButton>
+            </form>
+          </div>
+        </header>
+
         <section className="relative overflow-hidden rounded-3xl border border-border bg-background/50 p-8 shadow-sm backdrop-blur md:p-12">
           <RetroGrid
             className="absolute inset-0"
@@ -40,7 +72,6 @@ export default function Home() {
                   action="https://github.com/repairer5812/ai-email-summarizer/releases/latest/download/webmail-summary.exe"
                   method="get"
                   target="_blank"
-                  rel="noopener noreferrer"
                 >
                   <ShimmerButton type="submit" className="h-11 px-7 text-base font-semibold" background="rgb(37 99 235)">
                     무료로 다운로드 (.exe)
@@ -109,7 +140,7 @@ export default function Home() {
 
         <section className="space-y-4">
           <h2 className="text-2xl font-extrabold tracking-tight text-slate-950">핵심 기능</h2>
-          <BentoGrid className="grid-cols-1 gap-4 md:auto-rows-[16rem] md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Card className="col-span-1 border-border bg-background/50 shadow-sm backdrop-blur md:col-span-2">
               <CardHeader>
                 <CardTitle className="text-xl font-bold text-slate-950">
@@ -181,7 +212,7 @@ export default function Home() {
                 </ul>
               </CardContent>
             </Card>
-          </BentoGrid>
+          </div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
