@@ -31,12 +31,12 @@ export default function Home() {
               </a>
             </Button>
             <form
-              action="https://github.com/repairer5812/ai-email-summarizer/releases/latest/download/webmail-summary.exe"
+              action="https://github.com/repairer5812/ai-email-summarizer/releases/latest"
               method="get"
               target="_blank"
             >
               <ShimmerButton type="submit" className="h-10 px-5 text-sm font-semibold" background="rgb(37 99 235)">
-                Windows 다운로드
+                설치 파일 다운로드
               </ShimmerButton>
             </form>
           </div>
@@ -71,14 +71,24 @@ export default function Home() {
 
               <div className="flex flex-wrap gap-3">
                 <form
-                  action="https://github.com/repairer5812/ai-email-summarizer/releases/latest/download/webmail-summary.exe"
+                  action="https://github.com/repairer5812/ai-email-summarizer/releases/latest"
                   method="get"
                   target="_blank"
                 >
                   <ShimmerButton type="submit" className="h-11 px-7 text-base font-semibold" background="rgb(37 99 235)">
-                    무료로 다운로드 (.exe)
+                    무료로 다운로드 (설치 파일)
                   </ShimmerButton>
                 </form>
+
+                <Button variant="outline" size="lg" asChild className="border-blue-200 bg-background/60">
+                  <a
+                    href="https://github.com/repairer5812/ai-email-summarizer/releases/latest/download/webmail-summary.exe"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    포터블(.exe)
+                  </a>
+                </Button>
 
                 <Button variant="outline" size="lg" asChild className="border-blue-200 bg-background/60">
                   <a
@@ -92,7 +102,11 @@ export default function Home() {
               </div>
 
               <p className="text-sm font-medium text-slate-700">
-                설치가 가장 쉬운 파일은 <span className="font-semibold text-slate-800">webmail-summary.exe</span>입니다.
+                설치가 가장 쉬운 파일은{" "}
+                <span className="font-semibold text-slate-800">webmail-summary-setup-windows-x64.exe</span>입니다.
+              </p>
+              <p className="text-xs text-slate-600">
+                버튼을 누르면 릴리즈 페이지가 열리며, 위 파일명을 선택해 다운로드합니다.
               </p>
             </div>
 

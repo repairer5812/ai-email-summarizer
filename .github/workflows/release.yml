@@ -31,15 +31,29 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --name webmail-summary --collect-data webmail_summary --collect-submodules webmail_summary src/webmail_summary/cli.py
+          pyinstaller --noconfirm --clean --onefile --name webmail-summary --icon landing/app/favicon.ico --collect-data webmail_summary --collect-submodules webmail_summary src/webmail_summary/cli.py
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { throw "ISCC not found at $iscc" }
+          & $iscc /Qp /O"release" /F"webmail-summary-setup-windows-x64" /DMyAppVersion=$ver "installer\webmail-summary.iss"
 
       - name: Prepare artifacts
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release | Out-Null
           Copy-Item dist/webmail-summary.exe release/webmail-summary.exe
           Compress-Archive -Path release/webmail-summary.exe -DestinationPath release/webmail-summary-windows-x64.zip -Force
           Get-FileHash release/webmail-summary.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary.exe" } | Out-File release/SHA256SUMS.txt -Encoding ascii
+          Get-FileHash release/webmail-summary-setup-windows-x64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary-setup-windows-x64.exe" } | Add-Content release/SHA256SUMS.txt
           Get-FileHash release/webmail-summary-windows-x64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary-windows-x64.zip" } | Add-Content release/SHA256SUMS.txt
 
       - name: Create GitHub release
@@ -47,6 +61,7 @@ jobs:
         with:
           files: |
             release/webmail-summary.exe
+            release/webmail-summary-setup-windows-x64.exe
             release/webmail-summary-windows-x64.zip
             release/SHA256SUMS.txt
           generate_release_notes: true
