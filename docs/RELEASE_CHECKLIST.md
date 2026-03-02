@@ -14,6 +14,7 @@
 - [ ] Confirm GitHub Action `Release` completed.
 - [ ] Verify attached assets:
   - `webmail-summary.exe`
+  - `webmail-summary-setup-windows-x64.exe`
   - `webmail-summary-windows-x64.zip`
   - `SHA256SUMS.txt`
 
