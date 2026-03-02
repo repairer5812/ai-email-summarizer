@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RetroGrid } from "@/components/ui/retro-grid";
@@ -135,6 +137,69 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <h2 className="text-2xl font-extrabold tracking-tight text-slate-950">실제 화면</h2>
+            <p className="max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
+              대시보드, 날짜별 요약, 메일 상세 화면을 미리 확인하세요.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="gap-4 border-border bg-background/60 py-5 shadow-sm backdrop-blur">
+              <CardHeader className="pb-0">
+                <CardTitle className="text-base font-semibold text-slate-900">대시보드</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  <Image
+                    src="/screenshots/dashboard.png"
+                    alt="webmail-summary 대시보드 화면"
+                    fill
+                    sizes="(min-width: 768px) 33vw, 100vw"
+                    className="object-cover"
+                    priority
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="gap-4 border-border bg-background/60 py-5 shadow-sm backdrop-blur">
+              <CardHeader className="pb-0">
+                <CardTitle className="text-base font-semibold text-slate-900">날짜별 요약</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  <Image
+                    src="/screenshots/daily.png"
+                    alt="webmail-summary 날짜별 요약 화면"
+                    fill
+                    sizes="(min-width: 768px) 33vw, 100vw"
+                    className="object-cover"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="gap-4 border-border bg-background/60 py-5 shadow-sm backdrop-blur">
+              <CardHeader className="pb-0">
+                <CardTitle className="text-base font-semibold text-slate-900">메일 상세</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  <Image
+                    src="/screenshots/message.png"
+                    alt="webmail-summary 메일 상세 요약 및 원문 화면"
+                    fill
+                    sizes="(min-width: 768px) 33vw, 100vw"
+                    className="object-cover"
+                  />
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </section>
 
