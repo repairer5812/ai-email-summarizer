@@ -1,4 +1,3 @@
-import { AnimatedShinyText } from "@/components/ui/animated-shiny-text";
 import { BentoGrid } from "@/components/ui/bento-grid";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,13 +7,13 @@ import { ShimmerButton } from "@/components/ui/shimmer-button";
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50/70 via-background to-background">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-14 md:px-10">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-14 text-slate-800 md:px-10">
         <section className="relative overflow-hidden rounded-3xl border border-border bg-background/50 p-8 shadow-sm backdrop-blur md:p-12">
           <RetroGrid
             className="absolute inset-0"
             lightLineColor="rgba(37,99,235,0.22)"
             darkLineColor="rgba(147,197,253,0.2)"
-            opacity={0.4}
+            opacity={0.28}
             cellSize={56}
             angle={62}
           />
@@ -25,13 +24,13 @@ export default function Home() {
                 Windows 전용 · 로컬 중심 보안
               </p>
 
-              <h1 className="text-4xl font-bold tracking-tight text-slate-900 md:text-5xl">
-                <AnimatedShinyText className="mx-0 max-w-none bg-gradient-to-r from-slate-900 via-blue-700 to-slate-900 bg-clip-text text-transparent dark:from-white dark:via-blue-300 dark:to-white">
+              <h1 className="text-5xl font-extrabold tracking-tight text-slate-950 md:text-6xl">
+                <span className="bg-gradient-to-r from-slate-950 via-blue-700 to-slate-950 bg-clip-text text-transparent">
                   메일함의 노이즈를 끄고, 핵심만 켜다.
-                </AnimatedShinyText>
+                </span>
               </h1>
 
-              <p className="max-w-2xl text-base leading-7 text-slate-700 md:text-lg">
+              <p className="max-w-2xl text-lg leading-8 text-slate-700">
                 중요한 메일이 일반 메일 사이에 묻히지 않도록.
                 내 PC에서 안전하게 작동하는 윈도우 전용 AI 메일 요약 앱.
               </p>
@@ -59,7 +58,7 @@ export default function Home() {
                 </Button>
               </div>
 
-              <p className="text-sm text-slate-600">
+              <p className="text-sm font-medium text-slate-700">
                 설치가 가장 쉬운 파일은 <span className="font-semibold text-slate-800">webmail-summary.exe</span>입니다.
               </p>
             </div>
@@ -109,41 +108,77 @@ export default function Home() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">핵심 기능</h2>
+          <h2 className="text-2xl font-extrabold tracking-tight text-slate-950">핵심 기능</h2>
           <BentoGrid className="grid-cols-1 gap-4 md:auto-rows-[16rem] md:grid-cols-3">
             <Card className="col-span-1 border-border bg-background/50 shadow-sm backdrop-blur md:col-span-2">
               <CardHeader>
-                <CardTitle className="text-lg text-blue-900">3분이면 충분한 아침</CardTitle>
+                <CardTitle className="text-xl font-bold text-slate-950">
+                  <span className="text-blue-700">3분이면 충분한 아침</span>
+                </CardTitle>
               </CardHeader>
-              <CardContent className="text-base leading-7 text-slate-700">
-                핵심 요약 중심으로 보여주어 매일 아침 메일 처리 시간을 획기적으로 단축합니다.
+              <CardContent className="space-y-3 text-base leading-7 text-slate-700">
+                <p className="font-medium">
+                  핵심 요약 중심으로 보여주어 매일 아침 메일 처리 시간을 획기적으로 단축합니다.
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-slate-700">
+                  <li>메일을 길게 읽기 전에 핵심 3줄로 먼저 파악.</li>
+                  <li>중요 요청/일정이 포함된 메일부터 우선 확인.</li>
+                  <li>처리할 메일이 남아도 “오늘 할 일”처럼 정리.</li>
+                </ul>
               </CardContent>
             </Card>
 
             <Card className="col-span-1 border-border bg-background/50 shadow-sm backdrop-blur">
               <CardHeader>
-                <CardTitle className="text-lg text-blue-900">로컬 중심의 강력한 보안</CardTitle>
+                <CardTitle className="text-xl font-bold text-slate-950">
+                  <span className="text-blue-700">로컬 중심의 강력한 보안</span>
+                </CardTitle>
               </CardHeader>
-              <CardContent className="text-base leading-7 text-slate-700">
-                메일 원문은 내 PC에만 보관되며, 민감한 키는 Windows 보안 저장소를 사용하여 안전합니다.
+              <CardContent className="space-y-3 text-base leading-7 text-slate-700">
+                <p className="font-medium">
+                  메일 원문은 내 PC에만 보관되며, 민감한 키는 Windows 보안 저장소를 사용하여 안전합니다.
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-slate-700">
+                  <li>메일 원문과 첨부파일을 로컬에 보관.</li>
+                  <li>키는 Windows Credential Manager에 저장.</li>
+                  <li>원하면 언제든 내 PC에서 삭제 가능.</li>
+                </ul>
               </CardContent>
             </Card>
 
             <Card className="col-span-1 border-border bg-background/50 shadow-sm backdrop-blur md:col-span-2">
               <CardHeader>
-                <CardTitle className="text-lg text-blue-900">놓치는 메일 제로</CardTitle>
+                <CardTitle className="text-xl font-bold text-slate-950">
+                  <span className="text-blue-700">놓치는 메일 제로</span>
+                </CardTitle>
               </CardHeader>
-              <CardContent className="text-base leading-7 text-slate-700">
-                날짜별로 깔끔하게 정리된 대시보드로 오늘 당장 처리할 메일부터 빠르게 확인하세요.
+              <CardContent className="space-y-3 text-base leading-7 text-slate-700">
+                <p className="font-medium">
+                  날짜별로 깔끔하게 정리된 대시보드로 오늘 당장 처리할 메일부터 빠르게 확인하세요.
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-slate-700">
+                  <li>날짜별 카드로 메일함이 한눈에 정리.</li>
+                  <li>요약/원문/상세를 원하는 수준으로 확인.</li>
+                  <li>동기화 진행 상황도 화면에서 바로 확인.</li>
+                </ul>
               </CardContent>
             </Card>
 
             <Card className="col-span-1 border-border bg-background/50 shadow-sm backdrop-blur">
               <CardHeader>
-                <CardTitle className="text-lg text-blue-900">누구나 쉬운 3단계 시작</CardTitle>
+                <CardTitle className="text-xl font-bold text-slate-950">
+                  <span className="text-blue-700">누구나 쉬운 3단계 시작</span>
+                </CardTitle>
               </CardHeader>
-              <CardContent className="text-base leading-7 text-slate-700">
-                복잡한 설정 없이 설치, 계정 연결, 요약 확인으로 바로 이어지는 직관적인 사용성을 제공합니다.
+              <CardContent className="space-y-3 text-base leading-7 text-slate-700">
+                <p className="font-medium">
+                  복잡한 설정 없이 설치, 계정 연결, 요약 확인으로 바로 이어지는 직관적인 사용성을 제공합니다.
+                </p>
+                <ul className="list-disc space-y-1 pl-5 text-slate-700">
+                  <li>설치 후 브라우저 화면이 자동으로 열림.</li>
+                  <li>연결 테스트로 로그인 성공 여부를 바로 확인.</li>
+                  <li>첫 요약이 생성되면 그날부터 바로 활용.</li>
+                </ul>
               </CardContent>
             </Card>
           </BentoGrid>
