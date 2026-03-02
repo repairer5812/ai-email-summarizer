@@ -18,6 +18,8 @@
   - `webmail-summary-windows-x64.zip`
   - `SHA256SUMS.txt`
 
+Note: If SignPath signing is enabled, the workflow will wait for signing approval and then publish signed executables.
+
 ## Post release
 
 - [ ] Download asset from release page and run smoke test on clean Windows VM.

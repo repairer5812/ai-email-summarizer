@@ -108,6 +108,16 @@ export default function Home() {
               <p className="text-xs text-slate-600">
                 버튼을 누르면 릴리즈 페이지가 열리며, 위 파일명을 선택해 다운로드합니다.
               </p>
+              <p className="text-xs text-slate-600">
+                <a
+                  className="underline decoration-slate-300 underline-offset-4 hover:decoration-slate-400"
+                  href="https://github.com/repairer5812/ai-email-summarizer/blob/main/CODE_SIGNING_POLICY.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Code signing policy
+                </a>
+              </p>
             </div>
 
             <Card className="border-border bg-background/60 shadow-sm backdrop-blur">

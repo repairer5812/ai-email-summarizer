@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   build-windows:
@@ -33,7 +34,45 @@ jobs:
         run: |
           $ver = "${{ github.ref_name }}".TrimStart('v')
           Set-Content -Path src/webmail_summary/_version.txt -Value $ver -Encoding ascii
-          pyinstaller --noconfirm --clean --onefile --name webmail-summary --icon landing/app/favicon.ico --collect-data webmail_summary --collect-submodules webmail_summary src/webmail_summary/cli.py
+          $parts = $ver.Split('.')
+          if ($parts.Length -lt 3) { throw "Version must be in form X.Y.Z (got: $ver)" }
+          $v4 = "$($parts[0]).$($parts[1]).$($parts[2]).0"
+          $versionInfoLines = @(
+            '# UTF-8',
+            'VSVersionInfo(', 
+            '  ffi=FixedFileInfo(', 
+            "    filevers=($($parts[0]), $($parts[1]), $($parts[2]), 0),", 
+            "    prodvers=($($parts[0]), $($parts[1]), $($parts[2]), 0),", 
+            '    mask=0x3f,',
+            '    flags=0x0,',
+            '    OS=0x4,',
+            '    fileType=0x1,',
+            '    subtype=0x0,',
+            '    date=(0, 0)',
+            '  ),',
+            '  kids=[',
+            '    StringFileInfo(',
+            '      [',
+            '        StringTable(',
+            "          '040904B0',",
+            '          [',
+            "            StringStruct('CompanyName', 'webmail-summary'),",
+            "            StringStruct('FileDescription', 'webmail-summary'),",
+            "            StringStruct('FileVersion', '$v4'),",
+            "            StringStruct('InternalName', 'webmail-summary'),",
+            "            StringStruct('OriginalFilename', 'webmail-summary.exe'),",
+            "            StringStruct('ProductName', 'webmail-summary'),",
+            "            StringStruct('ProductVersion', '$v4')",
+            '          ]',
+            '        )',
+            '      ]',
+            '    ),',
+            '    VarFileInfo([VarStruct(''Translation'', [1033, 1200])])',
+            '  ]',
+            ')'
+          )
+          Set-Content -Path version_info.txt -Value $versionInfoLines -Encoding utf8
+          pyinstaller --noconfirm --clean --onefile --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-submodules webmail_summary src/webmail_summary/cli.py
 
       - name: Install Inno Setup
         shell: pwsh
@@ -49,10 +88,50 @@ jobs:
           if (!(Test-Path $iscc)) { throw "ISCC not found at $iscc" }
           & $iscc /Qp /O"release" /F"webmail-summary-setup-windows-x64" /DMyAppVersion=$ver "installer\webmail-summary.iss"
 
+      - name: Prepare unsigned bundle (for optional signing)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path unsigned | Out-Null
+          Copy-Item dist/webmail-summary.exe unsigned/webmail-summary.exe
+          Copy-Item release/webmail-summary-setup-windows-x64.exe unsigned/webmail-summary-setup-windows-x64.exe
+
+      - name: Upload unsigned artifacts (for SignPath)
+        id: upload_unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows
+          if-no-files-found: error
+          path: |
+            unsigned/webmail-summary.exe
+            unsigned/webmail-summary-setup-windows-x64.exe
+
+      - name: Sign with SignPath (optional)
+        id: signpath
+        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload_unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+
       - name: Prepare artifacts
         shell: pwsh
         run: |
-          Copy-Item dist/webmail-summary.exe release/webmail-summary.exe
+          if (Test-Path signed/webmail-summary.exe) {
+            Copy-Item signed/webmail-summary.exe release/webmail-summary.exe -Force
+          } else {
+            Copy-Item unsigned/webmail-summary.exe release/webmail-summary.exe -Force
+          }
+          if (Test-Path signed/webmail-summary-setup-windows-x64.exe) {
+            Copy-Item signed/webmail-summary-setup-windows-x64.exe release/webmail-summary-setup-windows-x64.exe -Force
+          } else {
+            Copy-Item unsigned/webmail-summary-setup-windows-x64.exe release/webmail-summary-setup-windows-x64.exe -Force
+          }
           Compress-Archive -Path release/webmail-summary.exe -DestinationPath release/webmail-summary-windows-x64.zip -Force
           Get-FileHash release/webmail-summary.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary.exe" } | Out-File release/SHA256SUMS.txt -Encoding ascii
           Get-FileHash release/webmail-summary-setup-windows-x64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary-setup-windows-x64.exe" } | Add-Content release/SHA256SUMS.txt

@@ -19,6 +19,20 @@
 3) 파일을 실행합니다.
 4) 앱이 켜지면 브라우저 화면이 자동으로 열립니다.
 
+## 코드 서명 (SignPath Foundation)
+
+Windows는 서명되지 않은 설치 파일에 대해 "Windows PC 보호"(SmartScreen) 경고를 표시할 수 있습니다.
+이 프로젝트는 오픈소스 전환 후 SignPath Foundation을 통해 릴리즈 산출물을 코드 서명하는 흐름을 추가했습니다.
+
+- 설정 문서: `docs/SIGNPATH_FOUNDATION.md`
+
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation
+
+- 정책 문서: `CODE_SIGNING_POLICY.md`
+- 개인정보 처리/전송: `PRIVACY.md`
+
 ### 2. 처음 설정하기
 
 브라우저로 열린 화면에서 상단의 `설정(Setup)` 메뉴를 누르고 아래만 따라 하세요.
