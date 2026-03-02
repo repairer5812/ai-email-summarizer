@@ -8,6 +8,13 @@ All notable changes to this project are documented in this file.
 
 - Frozen(배포 exe) 실행에서 앱 버전이 0.0.0으로 표시되던 문제를 수정.
 
+## [0.5.4] - 2026-03-02
+
+### Added
+
+- SignPath Foundation 온보딩 문서 및 코드서명 정책/프라이버시 문서.
+- 릴리즈 워크플로에 SignPath 서명(옵션) 단계 추가.
+
 ## [0.5.2] - 2026-03-02
 
 ### Added
