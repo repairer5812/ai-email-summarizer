@@ -102,7 +102,7 @@ export default function Home() {
               </CardHeader>
               <CardContent className="space-y-3 text-base text-slate-700">
                 <p>1) 설치 파일 다운로드 후 실행</p>
-                <p>2) /setup에서 메일 연결 테스트</p>
+                <p>2) 상단 메뉴 설정에서 메일 연결 테스트</p>
                 <p>3) 동기화 시작 후 날짜별 요약 확인</p>
                 <p>4) 필요하면 대시보드에서 최신 버전 업데이트 확인</p>
                 <p className="text-sm text-slate-600">처음 설치부터 첫 요약 확인까지 보통 3분 내외입니다.</p>
