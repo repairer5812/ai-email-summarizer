@@ -5,3 +5,12 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+*.alyac
+
+# local/internal notes not for release
+ai.txt
+output.txt
+test.txt
+PRD.txt
+배포계획.TXT
+\# Design System Guide*.txt

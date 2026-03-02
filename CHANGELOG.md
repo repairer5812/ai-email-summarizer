@@ -9,7 +9,6 @@ All notable changes to this project are documented in this file.
 - Dashboard update management UI and actions.
 - GitHub Releases update check flow (manual + scheduled checks).
 - Update controls: snooze 1 week and skip selected version.
-- Deployment planning document: `배포계획.TXT`.
 
 ### Changed
 
