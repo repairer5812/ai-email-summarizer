@@ -1,51 +1,72 @@
 # webmail-summary
 
-Local-first email archive and summarization app for Windows.
+메일을 자동으로 모으고, 읽기 쉽게 요약해주는 Windows용 로컬 앱입니다.
 
-- Download: https://github.com/repairer5812/ai-email-summarizer/releases/latest
-- Project: https://github.com/repairer5812/ai-email-summarizer
-- Current version: `0.5.0`
+- 다운로드: https://github.com/repairer5812/ai-email-summarizer/releases/latest
+- 프로젝트: https://github.com/repairer5812/ai-email-summarizer
+- 현재 버전: `0.5.0`
 
-## 한국어
+## 일반 사용자용 안내 (먼저 읽어주세요)
 
-`webmail-summary`는 다우오피스 IMAP 메일을 로컬에 아카이빙하고, 요약/태그/주제로 정리해 웹 UI로 보여주는 Windows 앱입니다.
+컴퓨터를 잘 몰라도 아래 순서대로 하면 사용할 수 있습니다.
 
-### 주요 기능
+### 1. 설치하기
 
-- IMAP 메일 수집(폴더 선택)
-- 원본 보존(raw `.eml`, 첨부, HTML/텍스트)
-- HTML의 `cid:` 인라인 이미지 치환
-- 외부 리소스(이미지/영상/CSS) 로컬 다운로드 후 링크 재작성
-- 성공 처리 후에만 `\\Seen` 처리
-- Obsidian용 Markdown 항상 생성(메일별/Daily/Topic)
-- 업데이트 확인(최신 버전 체크, 1주일 숨김, 버전 건너뛰기)
+1) 위 `다운로드` 링크를 클릭합니다.
+2) 최신 버전 파일을 내려받습니다.
+3) 파일을 실행합니다.
+4) 앱이 켜지면 브라우저 화면이 자동으로 열립니다.
 
-### 설치(일반 사용자)
+### 2. 처음 설정하기
 
-1. `releases/latest`에서 최신 Windows 배포 파일을 다운로드합니다.
-2. 파일을 실행합니다(경고가 나오면 게시자/파일 출처를 확인하세요).
-3. 앱 실행 후 `/setup`에서 IMAP 연결 테스트를 완료합니다.
-4. 폴더와 AI 설정을 저장한 뒤 동기화를 시작합니다.
+열린 화면에서 `/setup`을 열고 아래만 따라 하세요.
 
-### 업데이트
+1) 메일 서버(IMAP) 정보 입력
+2) `연결 테스트` 버튼 클릭
+3) 가져올 메일 폴더 선택
+4) AI 설정(로컬 또는 클라우드)
+5) 저장 후 대시보드로 이동
 
-- 대시보드 우측 상단의 버전 위젯에서 `확인`으로 최신 버전을 조회합니다.
-- 새 버전이 있으면 `업데이트` 버튼으로 GitHub Releases 다운로드 페이지로 이동합니다.
-- 알림은 `1주일 안 보기` 또는 `이 버전 건너뛰기`를 선택할 수 있습니다.
+### 3. 실제 사용하기
 
-### 보안/개인정보
+1) 대시보드에서 `동기화 시작` 클릭
+2) 메일 수집/요약이 끝날 때까지 잠시 기다리기
+3) 날짜별 카드에서 요약 확인
+4) 필요하면 Obsidian 내보내기 사용
 
-- API 키는 SQLite가 아니라 Windows Credential Manager(keyring)에 저장합니다.
-- 메일 원본과 인덱스는 로컬 디스크에 저장됩니다.
-- 클라우드 LLM 사용 시에만 요약 요청이 외부 API로 전송됩니다.
+### 4. 업데이트하기
 
-### 문제 해결
+- 대시보드 우측 상단 버전 영역에서 `확인` 버튼을 누르면 최신 버전을 확인합니다.
+- 새 버전이 있으면 `업데이트` 버튼으로 다운로드 페이지로 이동합니다.
+- 당장 업데이트가 어렵다면 `1주일 안 보기` 또는 `이 버전 건너뛰기`를 사용할 수 있습니다.
 
-- 앱이 실행되지 않으면 먼저 재실행 후 `/setup` 연결 테스트를 다시 진행하세요.
-- 네트워크 문제로 요약 실패 시(예: DNS 오류) 잠시 후 다시 시도하세요.
-- 이슈 제보: https://github.com/repairer5812/ai-email-summarizer/issues
+### 5. 자주 겪는 문제
 
-### 개발자 실행
+앱이 실행되지 않아요.
+- 앱을 완전히 종료한 뒤 다시 실행해 보세요.
+
+요약이 실패해요.
+- 인터넷 연결을 확인하고 잠시 후 다시 시도해 보세요.
+
+비밀번호/API 키가 걱정돼요.
+- 키는 DB가 아니라 Windows Credential Manager에 저장됩니다.
+
+문제가 계속되면 여기에 알려주세요:
+https://github.com/repairer5812/ai-email-summarizer/issues
+
+## 이 앱이 하는 일
+
+- IMAP 메일 수집 (폴더 선택 가능)
+- 메일 원본 보존 (`.eml`, 첨부, HTML/텍스트)
+- 외부 리소스를 로컬에 저장하고 링크 재작성
+- 성공 처리 후에만 `\Seen` 처리
+- Obsidian용 Markdown 생성 (메일별, Daily, Topic)
+
+## 개발자용 안내
+
+아래는 코드를 수정하거나 개발할 때만 필요합니다.
+
+### 로컬 개발 실행
 
 ```powershell
 python -m venv .venv
@@ -55,39 +76,14 @@ python -m venv .venv
 & ".\.venv\Scripts\webmail-summary.exe" serve
 ```
 
-## English
+### 릴리즈
 
-`webmail-summary` is a Windows local-first app that archives IMAP emails and presents summaries, tags, and topics in a localhost web UI.
+- 태그 푸시: `vX.Y.Z`
+- GitHub Actions가 Windows 실행 파일/zip/SHA256 생성
+- 체크리스트: `docs/RELEASE_CHECKLIST.md`
 
-### What It Does
+### 문서
 
-- Fetches IMAP emails from selected folders
-- Preserves raw `.eml`, attachments, and HTML/plain bodies
-- Rewrites `cid:` inline images and external assets to local paths
-- Marks `\\Seen` only after successful local processing
-- Always exports Obsidian-friendly Markdown (email/daily/topic)
-- Supports update checks with snooze/skip controls
-
-### Install (End Users)
-
-1. Download the latest Windows package from:
-   - https://github.com/repairer5812/ai-email-summarizer/releases/latest
-2. Run the installer/package.
-3. Open `/setup`, complete IMAP test and AI setup.
-4. Start sync from the dashboard.
-
-### Update Flow
-
-- Use the top-right version widget on dashboard to check updates.
-- Click `업데이트` to open the latest GitHub release download.
-
-### Security Notes
-
-- API keys are stored in Windows Credential Manager, not SQLite.
-- Email archive/index stays local on your machine.
-
-## Documents
-
-- Changelog: `CHANGELOG.md`
-- Security policy: `SECURITY.md`
-- Contributing guide: `CONTRIBUTING.md`
+- 변경 이력: `CHANGELOG.md`
+- 보안 정책: `SECURITY.md`
+- 기여 가이드: `CONTRIBUTING.md`
