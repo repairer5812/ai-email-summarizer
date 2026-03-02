@@ -162,22 +162,36 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card className="gap-4 border-border bg-background/60 py-5 shadow-sm backdrop-blur">
+          <p className="text-sm text-slate-600">미리보기는 축소되어 보일 수 있어요. 이미지를 클릭하면 원본 크기로 열립니다.</p>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="gap-4 border-border bg-background/60 py-5 shadow-sm backdrop-blur md:col-span-2">
               <CardHeader className="pb-0">
                 <CardTitle className="text-base font-semibold text-slate-900">대시보드</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  <Image
-                    src="/screenshots/dashboard.png"
-                    alt="webmail-summary 대시보드 화면"
-                    fill
-                    sizes="(min-width: 768px) 33vw, 100vw"
-                    className="object-cover"
-                    priority
-                  />
-                </div>
+                <a
+                  href="/screenshots/dashboard.png"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group block"
+                >
+                  <div className="relative aspect-[16/9] overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <Image
+                      src="/screenshots/dashboard.png"
+                      alt="webmail-summary 대시보드 화면"
+                      fill
+                      sizes="(min-width: 768px) 100vw, 100vw"
+                      className="object-contain"
+                      priority
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-end bg-gradient-to-t from-white/90 to-transparent px-3 py-2">
+                      <span className="rounded-md border border-slate-200 bg-white/80 px-2 py-1 text-xs font-medium text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
+                        원본 보기
+                      </span>
+                    </div>
+                  </div>
+                </a>
               </CardContent>
             </Card>
 
@@ -186,15 +200,27 @@ export default function Home() {
                 <CardTitle className="text-base font-semibold text-slate-900">날짜별 요약</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  <Image
-                    src="/screenshots/daily.png"
-                    alt="webmail-summary 날짜별 요약 화면"
-                    fill
-                    sizes="(min-width: 768px) 33vw, 100vw"
-                    className="object-cover"
-                  />
-                </div>
+                <a
+                  href="/screenshots/daily.png"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group block"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <Image
+                      src="/screenshots/daily.png"
+                      alt="webmail-summary 날짜별 요약 화면"
+                      fill
+                      sizes="(min-width: 768px) 50vw, 100vw"
+                      className="object-contain"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-end bg-gradient-to-t from-white/90 to-transparent px-3 py-2">
+                      <span className="rounded-md border border-slate-200 bg-white/80 px-2 py-1 text-xs font-medium text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
+                        원본 보기
+                      </span>
+                    </div>
+                  </div>
+                </a>
               </CardContent>
             </Card>
 
@@ -203,15 +229,27 @@ export default function Home() {
                 <CardTitle className="text-base font-semibold text-slate-900">메일 상세</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                  <Image
-                    src="/screenshots/message.png"
-                    alt="webmail-summary 메일 상세 요약 및 원문 화면"
-                    fill
-                    sizes="(min-width: 768px) 33vw, 100vw"
-                    className="object-cover"
-                  />
-                </div>
+                <a
+                  href="/screenshots/message.png"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group block"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <Image
+                      src="/screenshots/message.png"
+                      alt="webmail-summary 메일 상세 요약 및 원문 화면"
+                      fill
+                      sizes="(min-width: 768px) 50vw, 100vw"
+                      className="object-contain"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-end bg-gradient-to-t from-white/90 to-transparent px-3 py-2">
+                      <span className="rounded-md border border-slate-200 bg-white/80 px-2 py-1 text-xs font-medium text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
+                        원본 보기
+                      </span>
+                    </div>
+                  </div>
+                </a>
               </CardContent>
             </Card>
           </div>
