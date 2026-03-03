@@ -664,6 +664,52 @@ label {
 .update-mini__actions { display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0; }
 .update-mini .btn { padding: 6px 10px; font-size: 0.78rem; }
 
+/* Modal (update notice) */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal[aria-hidden="true"] { display: none; }
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.modal__panel {
+  position: relative;
+  width: min(720px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  padding: 18px 18px 16px;
+}
+
+.modal__title {
+  font-size: 18px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.modal__body {
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 @media (max-width: 900px) {
   .hero__row { align-items: flex-start; flex-direction: column; gap: 10px; }
   .hero__actions { width: 100%; align-items: flex-start; }

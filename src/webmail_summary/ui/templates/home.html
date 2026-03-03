@@ -20,7 +20,7 @@
       <h1>{{ t(request, 'home.hero.title') }}</h1>
       <p class="muted">{{ t(request, 'home.hero.sub') }}</p>
     </div>
-    <div class="hero__actions">
+  <div class="hero__actions">
       {% if update %}
       <div class="update-mini">
         <div class="update-mini__title">버전 {{ update.current }}{% if update.latest and update.latest != update.current %} -> {{ update.latest }}{% endif %}</div>
@@ -42,6 +42,39 @@
     </div>
   </div>
 </section>
+
+{% if update and update.show_notice %}
+<div class="modal" id="update-modal" aria-hidden="true">
+  <div class="modal__backdrop"></div>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="update-modal-title">
+    <div class="modal__title" id="update-modal-title">새 버전이 있습니다</div>
+    <div class="modal__body">
+      <div style="margin-bottom:8px;">현재 {{ update.current }} / 최신 {{ update.latest }}</div>
+      <div class="muted" style="font-size: 13px;">설치 파일을 다운로드해 설치하면 업데이트됩니다.</div>
+    </div>
+    <div class="modal__actions">
+      <a class="btn" href="{{ update.download_url if update.download_url else (update.release_page_url if update.release_page_url else '/setup?tab=advanced') }}" target="_blank">지금 업데이트</a>
+      <button class="btn btn--secondary" type="button" id="update-modal-close">나중에</button>
+      <form method="post" action="/updates/snooze-day" style="margin:0;"><button class="btn btn--secondary" type="submit">오늘 하루 안보기</button></form>
+      <form method="post" action="/updates/snooze-week" style="margin:0;"><button class="btn btn--secondary" type="submit">1주일 동안 안보기</button></form>
+      <form method="post" action="/updates/skip-latest" style="margin:0;"><button class="btn btn--secondary" type="submit">이 버전 건너뛰기</button></form>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const modal = document.getElementById('update-modal');
+  if (!modal) return;
+  modal.setAttribute('aria-hidden', 'false');
+  const closeBtn = document.getElementById('update-modal-close');
+  const close = () => { modal.setAttribute('aria-hidden', 'true'); modal.style.display = 'none'; };
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  const backdrop = modal.querySelector('.modal__backdrop');
+  if (backdrop) backdrop.addEventListener('click', close);
+})();
+</script>
+{% endif %}
 
 {% if not ai.setup_complete %}
   <div class="card span-4" style="margin-bottom: 24px; text-align: center; border-color: var(--accent);">
