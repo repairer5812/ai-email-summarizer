@@ -2,11 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
-## [0.5.3] - 2026-03-02
+## [0.5.6] - 2026-03-03
+
+### Added
+
+- 앱 시작 시 업데이트 안내 팝업(지금 업데이트/나중에/오늘 하루/1주일/이 버전 건너뛰기).
+
+### Changed
+
+- Windows 배포 exe 실행 시 콘솔 창이 뜨지 않도록 빌드 옵션 변경(PyInstaller `--noconsole`).
 
 ### Fixed
 
-- Frozen(배포 exe) 실행에서 앱 버전이 0.0.0으로 표시되던 문제를 수정.
+- /setup IMAP 연결 테스트에서 422가 발생하던 문제를 완화하고, 비밀번호 오류/네트워크 오류를 구분해 안내.
+
+## [0.5.5] - 2026-03-02
+
+### Fixed
+
+- GitHub Actions 릴리즈 워크플로에서 SignPath 시크릿 유무에 따라 조건부 실행이 실패하던 문제를 수정.
 
 ## [0.5.4] - 2026-03-02
 
@@ -15,11 +29,11 @@ All notable changes to this project are documented in this file.
 - SignPath Foundation 온보딩 문서 및 코드서명 정책/프라이버시 문서.
 - 릴리즈 워크플로에 SignPath 서명(옵션) 단계 추가.
 
-## [0.5.5] - 2026-03-02
+## [0.5.3] - 2026-03-02
 
 ### Fixed
 
-- GitHub Actions 릴리즈 워크플로에서 SignPath 시크릿 유무에 따라 조건부 실행이 실패하던 문제를 수정.
+- Frozen(배포 exe) 실행에서 앱 버전이 0.0.0으로 표시되던 문제를 수정.
 
 ## [0.5.2] - 2026-03-02
 
