@@ -16,6 +16,12 @@ All notable changes to this project are documented in this file.
 
 - /setup IMAP 연결 테스트에서 422가 발생하던 문제를 완화하고, 비밀번호 오류/네트워크 오류를 구분해 안내.
 
+## [0.5.7] - 2026-03-03
+
+### Fixed
+
+- SignPath 서명 단계가 실패해도 릴리즈 빌드가 실패하지 않도록 워크플로를 개선(서명은 선택 사항).
+
 ## [0.5.5] - 2026-03-02
 
 ### Fixed
