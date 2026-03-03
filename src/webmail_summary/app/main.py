@@ -4,6 +4,8 @@ import socket
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
+import sys
+import os
 
 import uvicorn
 from fastapi import FastAPI
@@ -130,6 +132,7 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     def shutdown_event():
         from webmail_summary.jobs.runner import get_runner
+
         get_runner().terminate_all()
 
     return app
@@ -150,4 +153,22 @@ def serve(opts: ServeOptions = ServeOptions()) -> None:
     url = f"http://{opts.host}:{port}/"
     if opts.open_browser:
         webbrowser.open(url)
-    uvicorn.run(app, host=opts.host, port=port, log_level="info")
+
+    # In PyInstaller --noconsole builds, stdio can be None. Uvicorn's default
+    # log formatters may call isatty() on sys.stderr; ensure it's always safe.
+    if getattr(sys, "frozen", False):
+        data_dir = get_app_data_dir()
+        log_dir = data_dir / "logs"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / "server.log"
+            stream = open(log_path, "a", encoding="utf-8", buffering=1)
+        except Exception:
+            stream = open(os.devnull, "w", encoding="utf-8")
+
+        if getattr(sys, "stdout", None) is None:
+            sys.stdout = stream
+        if getattr(sys, "stderr", None) is None:
+            sys.stderr = stream
+
+    uvicorn.run(app, host=opts.host, port=port, log_level="info", use_colors=False)
