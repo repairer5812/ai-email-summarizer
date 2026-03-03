@@ -22,6 +22,12 @@ All notable changes to this project are documented in this file.
 
 - SignPath 서명 단계가 실패해도 릴리즈 빌드가 실패하지 않도록 워크플로를 개선(서명은 선택 사항).
 
+## [0.5.8] - 2026-03-03
+
+### Fixed
+
+- Windows 배포(no-console) 실행 시 Uvicorn 로깅 설정에서 크래시 나던 문제를 수정.
+
 ## [0.5.5] - 2026-03-02
 
 ### Fixed
