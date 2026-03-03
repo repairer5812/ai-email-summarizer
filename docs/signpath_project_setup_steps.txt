@@ -1,0 +1,56 @@
+SignPath 프로젝트 생성 (웹 UI) 입력 가이드
+
+0) 이 작업은 GitHub가 아니라 SignPath 웹사이트(app.signpath.io)에서 합니다.
+
+1) Projects -> Create project 화면
+
+- Name: webmail-summary
+  (현재 화면에 wemail-summary로 보이면 오타이니 webmail-summary로 수정 권장)
+
+- Slug: webmail-summary
+
+- Description (예시, 1문단):
+  Local-first IMAP email archiver and summarizer with a local web UI. Windows releases are built by GitHub Actions and published on GitHub Releases.
+
+- Repository URLs:
+  https://github.com/repairer5812/ai-email-summarizer
+
+2) Artifact configuration (중요)
+
+우리 릴리즈 산출물은 ClickOnce가 아니라 EXE 2개입니다:
+- webmail-summary.exe (portable)
+- webmail-summary-setup-windows-x64.exe (installer)
+
+GitHub Actions 연동에서는 아티팩트가 ZIP으로 전달되므로, Artifact configuration 루트가 <zip-file>이어야 합니다.
+참고: https://docs.signpath.io/trusted-build-systems/github
+
+권장 설정 방법
+
+1) 드롭다운에서 "Portable Executable file (.exe, .dll, ...)" 선택
+2) "Sign multiple files" 체크
+3) "Customize" 클릭
+4) XML을 아래로 설정
+
+----- XML (그대로 붙여넣기) -----
+<?xml version="1.0" encoding="utf-8" ?>
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="**/webmail-summary.exe">
+      <authenticode-sign/>
+    </pe-file>
+    <pe-file path="**/webmail-summary-setup-windows-x64.exe">
+      <authenticode-sign/>
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
+--------------------------------
+
+3) Create and add signing policy
+
+- 보통 "Create and add signing policy"를 눌러서 release-signing 정책을 같이 생성합니다.
+- Foundation/OSS 정책에서는 대개 Signing request 승인(approval)이 필요합니다.
+
+참고 문서
+- 프로젝트/정책/아티팩트 구성 개요: https://docs.signpath.io/projects
+- GitHub 연동 전제조건: https://docs.signpath.io/trusted-build-systems/github
+- 아티팩트 구성 예시: https://docs.signpath.io/artifact-configuration/examples

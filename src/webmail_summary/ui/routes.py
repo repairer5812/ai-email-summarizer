@@ -878,99 +878,119 @@ def setup_get(request: Request):
     return templates.TemplateResponse("setup.html", ctx)
 
 
-@router.post("/setup/test-imap", response_class=HTMLResponse)
+@router.post("/setup/test-imap")
 def setup_test_imap(
-    request: Request,
-    imap_host: str = Form(...),
-    imap_port: int = Form(...),
-    imap_user: str = Form(...),
-    imap_password: str = Form(...),
+    imap_host: str = Form(""),
+    imap_port: str = Form(""),
+    imap_user: str = Form(""),
+    imap_password: str = Form(""),
 ):
+    """Test IMAP connection and return a user-friendly result.
+
+    IMPORTANT:
+    - Do not overwrite the stored password when the user did not re-enter it.
+    - Avoid FastAPI 422 for empty fields; validate and return readable messages.
+    """
     from webmail_summary.index.db import get_conn
 
-    folders: list[str] = []
-    status = "ok"
-    error = None
-    try:
-        with ImapSession(imap_host, int(imap_port), imap_user, imap_password) as imap:
-            folders = imap.list_folders()
-    except Exception as e:
-        status = "error"
-        error = str(e)
+    host = (imap_host or "").strip()
+    user = (imap_user or "").strip()
+    port_raw = (imap_port or "").strip()
+    pw_input = str(imap_password or "")
 
+    if not host:
+        return JSONResponse(
+            {"ok": False, "kind": "input", "message": "IMAP 호스트를 입력하세요."}
+        )
+    if not user:
+        return JSONResponse(
+            {"ok": False, "kind": "input", "message": "IMAP 계정(아이디)을 입력하세요."}
+        )
+
+    try:
+        port = int(port_raw or "993")
+    except Exception:
+        return JSONResponse(
+            {"ok": False, "kind": "input", "message": "IMAP 포트가 올바르지 않습니다."}
+        )
+
+    service = f"webmail-summary::{host}"
+    pw = pw_input.strip()
+    if not pw:
+        try:
+            pw = (keyring.get_password(service, user) or "").strip()
+        except Exception:
+            pw = ""
+
+    if not pw:
+        return JSONResponse(
+            {
+                "ok": False,
+                "kind": "input",
+                "message": "비밀번호가 비어 있습니다. 비밀번호를 입력하거나 먼저 저장해주세요.",
+            }
+        )
+
+    # Persist non-secret settings early so users don't lose what they typed.
     conn = get_conn(_db_path())
     try:
-        _set_setting(conn, "imap_host", imap_host)
-        _set_setting(conn, "imap_port", str(imap_port))
-        _set_setting(conn, "imap_user", imap_user)
+        _set_setting(conn, "imap_host", host)
+        _set_setting(conn, "imap_port", str(port))
+        _set_setting(conn, "imap_user", user)
         conn.commit()
     finally:
         conn.close()
 
-    service = f"webmail-summary::{imap_host}"
+    folders: list[str] = []
 
-    keyring.set_password(service, imap_user, imap_password)
+    def _is_auth_error(msg: str) -> bool:
+        m = (msg or "").lower()
+        needles = [
+            "authenticationfailed",
+            "auth failed",
+            "invalid credentials",
+            "login failed",
+            "authentication failure",
+            "authenticat",
+            "invalid login",
+        ]
+        return any(n in m for n in needles)
 
-    conn2 = get_conn(_db_path())
     try:
-        settings = load_settings(conn2)
-        active_jobs = _get_active_jobs(conn2)
-        provider_name = (settings.cloud_provider or "openai").strip().lower()
-        cloud_keys = _get_cloud_keys()
-        local_ready = check_local_ready(model_id=settings.local_model_id)
-        ctx = {
-            "request": request,
-            "theme": settings.ui_theme,
-            "active": active_jobs,
-            "current_tab": "connection",
-            "imap_pass_set": True,
-            "defaults": {
-                "imap_host": imap_host,
-                "imap_port": str(imap_port),
-                "imap_user": imap_user,
-                "imap_folder": _get_setting(conn2, "imap_folder") or "INBOX",
-                "sender_filter": _get_setting(conn2, "sender_filter")
-                or "hslee@tekville.com",
-                "obsidian_root": _get_setting(conn2, "obsidian_root")
-                or str(default_obsidian_root()),
-                "llm_backend": settings.llm_backend,
-                "cloud_provider": provider_name,
-                "local_model_id": settings.local_model_id,
-                "openrouter_model": settings.openrouter_model,
-                "external_max_bytes": _get_setting(conn2, "external_max_bytes")
-                or str(1024**3),
-                "revert_seen_after_sync": _get_setting(conn2, "revert_seen_after_sync")
-                or "0",
-                "user_roles": settings.user_roles,
-                "user_interests": settings.user_interests,
-                "ui_theme": settings.ui_theme,
-                "app_version": _get_app_version(),
-                "update_channel": settings.update_channel,
-                "update_latest_version": settings.update_latest_version,
-                "update_auto_check_enabled": settings.update_auto_check_enabled,
-                "update_repo": settings.update_repo,
-                "update_snooze_until": settings.update_snooze_until,
-                "update_skip_version": settings.update_skip_version,
-                "update_last_checked_at": settings.update_last_checked_at,
-                "update_download_url": settings.update_download_url,
-                "update_last_check_status": settings.update_last_check_status,
-            },
-            "folders": folders,
-            "status": {"status": status, "error": error},
-            "cloud": {
-                "key_set": cloud_keys.get(provider_name, False),
-                "cloud_cloud_keys": cloud_keys,
-            },
-            "local_models": LOCAL_MODELS,
-            "local_ready": {
-                "engine_ok": local_ready.engine_ok,
-                "model_ok": local_ready.model_ok,
-            },
-        }
-    finally:
-        conn2.close()
+        with ImapSession(host, int(port), user, pw) as imap:
+            folders = imap.list_folders()
+    except Exception as e:
+        msg = str(e)
+        if _is_auth_error(msg) or e.__class__.__name__.lower() in {
+            "loginerror",
+            "authenticationerror",
+        }:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "kind": "auth",
+                    "message": "비밀번호가 틀렸거나 로그인이 거부되었습니다. 아이디/비밀번호를 다시 확인해주세요.",
+                }
+            )
+        return JSONResponse(
+            {
+                "ok": False,
+                "kind": "network",
+                "message": f"연결 실패: {msg[:160]}",
+            }
+        )
 
-    return templates.TemplateResponse("setup.html", ctx)
+    if pw_input.strip():
+        keyring.set_password(service, user, pw_input.strip())
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "kind": "ok",
+            "message": "연결 성공",
+            "folders": folders,
+        }
+    )
 
 
 @router.post("/setup/test-cloud-key")
@@ -1186,6 +1206,20 @@ def updates_snooze_week():
     conn = get_conn(_db_path())
     try:
         until = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        _set_setting(conn, "update_snooze_until", until)
+        conn.commit()
+    finally:
+        conn.close()
+    return RedirectResponse("/", status_code=303)
+
+
+@router.post("/updates/snooze-day")
+def updates_snooze_day():
+    from webmail_summary.index.db import get_conn
+
+    conn = get_conn(_db_path())
+    try:
+        until = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         _set_setting(conn, "update_snooze_until", until)
         conn.commit()
     finally:
