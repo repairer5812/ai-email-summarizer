@@ -140,11 +140,21 @@ class JobRunner:
                         "--job-id",
                         job.id,
                     ]
+                    popen_kwargs: dict = {
+                        "stdout": subprocess.DEVNULL,
+                        "stderr": subprocess.DEVNULL,
+                        "text": True,
+                    }
+                    if sys.platform == "win32":
+                        # Prevent child worker from opening a console window.
+                        si = subprocess.STARTUPINFO()
+                        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        si.wShowWindow = subprocess.SW_HIDE
+                        popen_kwargs["startupinfo"] = si
+                        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
                     proc = subprocess.Popen(
                         cmd,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        text=True,
+                        **popen_kwargs,
                     )
                     with self._lock:
                         self._active_procs[job.id] = proc

@@ -81,6 +81,9 @@
     <div class="card__title"><strong>{{ t(request, 'setup.ai.not_ready.title') }}</strong></div>
     <div class="card__body">
       <p>{{ t(request, 'setup.ai.not_ready.body') }}</p>
+      {% if ai.not_ready_reason %}
+      <p class="muted" style="margin-top: 8px; color: #dc2626;">원인: {{ ai.not_ready_reason }}</p>
+      {% endif %}
       <div style="margin-top:20px;">
       <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
       </div>
@@ -483,7 +486,17 @@
     btn.disabled = true; btn.textContent = LABEL_STOP; setProgress(0, STR_STARTING);
     const res = await fetch('/api/jobs/sync', { method: 'POST' });
     const j = await res.json();
-    if (!res.ok) { setProgress(0, STR_ERROR + ': ' + (j.error || 'failed')); btn.disabled = false; btn.textContent = LABEL_START; return; }
+    if (!res.ok) {
+      let msg = (j && (j.message || j.error)) ? String(j.message || j.error) : 'failed';
+      if (j && j.detail && j.detail.backend === 'local') {
+        if (j.detail.engine_ok === false) msg += ' (로컬 엔진 미설치)';
+        else if (j.detail.model_ok === false) msg += ' (모델/완료파일 미설치)';
+      }
+      setProgress(0, STR_ERROR + ': ' + msg);
+      btn.disabled = false;
+      btn.textContent = LABEL_START;
+      return;
+    }
     watch(j.job_id);
   });
 

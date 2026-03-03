@@ -86,13 +86,23 @@ class LlamaCppBinProvider(LlmProvider):
         ]
 
         try:
+            run_kwargs: dict = {
+                "capture_output": True,
+                "text": True,
+                "encoding": "utf-8",
+                "errors": "replace",
+                "timeout": 600,
+            }
+            if os.name == "nt":
+                # Prevent llama-cli from opening a console window.
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = subprocess.SW_HIDE
+                run_kwargs["startupinfo"] = si
+                run_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             proc = subprocess.run(
                 cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=600,
+                **run_kwargs,
             )
         except Exception:
             return LlmResult(

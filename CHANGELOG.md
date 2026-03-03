@@ -28,6 +28,16 @@ All notable changes to this project are documented in this file.
 
 - Windows 배포(no-console) 실행 시 Uvicorn 로깅 설정에서 크래시 나던 문제를 수정.
 
+## [0.5.9] - 2026-03-03
+
+### Changed
+
+- Windows에서 동기화/로컬 LLM 백그라운드 프로세스 실행 시 콘솔 창이 뜨지 않도록 프로세스 시작 플래그를 보강.
+
+### Fixed
+
+- 동기화 시작 전 LLM 준비 상태를 사전 점검하고, 사용자에게 원인(엔진 미설치/모델 미설치 등)을 즉시 안내.
+
 ## [0.5.5] - 2026-03-02
 
 ### Fixed

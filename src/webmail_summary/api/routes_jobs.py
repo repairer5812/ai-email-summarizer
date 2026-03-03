@@ -16,6 +16,12 @@ from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.jobs.tasks_local_install import local_install_task
 from webmail_summary.llm.local_models import get_local_model, recommend_local_model
 from webmail_summary.llm.local_status import check_local_ready
+from webmail_summary.llm.local_status import (
+    get_local_model_complete_marker,
+    get_local_model_path,
+)
+from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
+from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs.tasks_resummarize import resummarize_day_task
 from webmail_summary.jobs.worker_probe import is_sync_worker_running, kill_sync_worker
 
@@ -69,6 +75,45 @@ def start_sync():
             )
     finally:
         conn0.close()
+
+    # Preflight AI readiness so users immediately see a clear reason.
+    connp = get_conn(_db_path())
+    try:
+        s = load_settings(connp)
+    finally:
+        connp.close()
+
+    try:
+        get_llm_provider(s)
+    except LlmNotReady as e:
+        detail = {
+            "backend": (s.llm_backend or "").strip().lower(),
+        }
+        if detail["backend"] == "local":
+            ready = check_local_ready(model_id=s.local_model_id)
+            detail.update(
+                {
+                    "model_id": s.local_model_id,
+                    "engine_ok": bool(ready.engine_ok),
+                    "engine_path": ready.engine_path,
+                    "model_ok": bool(ready.model_ok),
+                    "expected_model_path": str(
+                        get_local_model_path(model_id=s.local_model_id)
+                    ),
+                    "expected_marker_path": str(
+                        get_local_model_complete_marker(model_id=s.local_model_id)
+                    ),
+                }
+            )
+
+        return JSONResponse(
+            {
+                "error": "llm_not_ready",
+                "message": str(e),
+                "detail": detail,
+            },
+            status_code=409,
+        )
 
     try:
         job_id = get_runner().enqueue(kind="sync", fn=sync_mailbox_task())
