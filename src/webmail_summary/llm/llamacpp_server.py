@@ -114,11 +114,21 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
         ]
 
         # Use a quiet subprocess; server logs are not critical for the app.
+        popen_kwargs: dict = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "text": True,
+        }
+        if os.name == "nt":
+            # Prevent llama-server from opening a console window.
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            popen_kwargs["startupinfo"] = si
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         _proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
+            **popen_kwargs,
         )
         _running_cfg = cfg
 
