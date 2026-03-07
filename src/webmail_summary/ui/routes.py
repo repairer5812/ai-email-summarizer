@@ -4,6 +4,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 import os
+import platform
 from importlib import metadata as importlib_metadata
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -351,6 +352,32 @@ def _parse_iso_datetime(value: str) -> datetime | None:
     return d
 
 
+def _is_probably_not_installer_url(url: str) -> bool:
+    u = (url or "").strip().lower()
+    if not u:
+        return True
+    needles = [
+        "sha256sums",
+        "sha256",
+        "checksum",
+        "checksums",
+        "signature",
+        "signatures",
+    ]
+    if any(x in u for x in needles):
+        return True
+    bad_ext = (
+        ".txt",
+        ".sha256",
+        ".sha256sum",
+        ".sig",
+        ".asc",
+        ".md",
+        ".json",
+    )
+    return u.endswith(bad_ext)
+
+
 def _build_update_state(settings: Settings) -> dict:
     now = datetime.now(timezone.utc)
     current = _get_app_version()
@@ -369,6 +396,10 @@ def _build_update_state(settings: Settings) -> dict:
         settings.update_skip_version and settings.update_skip_version == latest
     )
 
+    download_url = settings.update_download_url
+    if _is_probably_not_installer_url(download_url):
+        download_url = _github_release_url(settings) or download_url
+
     return {
         "current": current,
         "latest": latest,
@@ -377,7 +408,7 @@ def _build_update_state(settings: Settings) -> dict:
         "auto_check_enabled": bool(settings.update_auto_check_enabled),
         "last_checked_at": settings.update_last_checked_at,
         "last_check_status": settings.update_last_check_status,
-        "download_url": settings.update_download_url,
+        "download_url": download_url,
         "release_page_url": _github_release_url(settings),
         "snooze_until": settings.update_snooze_until,
         "has_update": has_update,
@@ -415,6 +446,99 @@ def _github_release_url(settings: Settings) -> str | None:
         return None
     owner, repo = parsed
     return f"https://github.com/{owner}/{repo}/releases/latest"
+
+
+def _pick_best_release_asset_url(assets: list[object]) -> str | None:
+    """Pick the most appropriate installer asset from GitHub release assets.
+
+    GitHub releases often include checksum/signature text files (e.g. SHA256SUMS.txt)
+    that may appear first in the API response; we should prefer the actual installer
+    for the current OS.
+    """
+
+    os_name = (platform.system() or "").strip().lower()
+
+    def _is_noise_filename(name: str) -> bool:
+        n = (name or "").strip().lower()
+        if not n:
+            return True
+        needles = [
+            "sha256sums",
+            "sha256",
+            "checksum",
+            "checksums",
+            "signature",
+            "signatures",
+        ]
+        if any(x in n for x in needles):
+            return True
+        bad_ext = (
+            ".txt",
+            ".sha256",
+            ".sha256sum",
+            ".sig",
+            ".asc",
+            ".md",
+            ".json",
+        )
+        return n.endswith(bad_ext)
+
+    def _score(name: str) -> int:
+        n = (name or "").strip().lower()
+        s = 0
+
+        if "x64" in n or "amd64" in n:
+            s += 10
+        if "arm64" in n or "aarch64" in n:
+            s -= 2
+
+        # OS-specific installer preferences
+        if os_name == "windows":
+            if n.endswith(".exe"):
+                s += 50
+            if n.endswith(".msi"):
+                s += 45
+            if "setup" in n or "installer" in n:
+                s += 30
+        elif os_name == "darwin":
+            if n.endswith(".dmg"):
+                s += 50
+            if n.endswith(".pkg"):
+                s += 45
+        else:
+            if n.endswith(".appimage"):
+                s += 50
+            if n.endswith(".deb"):
+                s += 45
+            if n.endswith(".rpm"):
+                s += 40
+            if n.endswith(".tar.gz") or n.endswith(".tgz"):
+                s += 30
+
+        # Generic fallback preferences
+        if "portable" in n:
+            s += 5
+
+        return s
+
+    best_url: str | None = None
+    best_score = -10_000
+
+    for a in assets or []:
+        if not isinstance(a, dict):
+            continue
+        name = str(a.get("name") or "").strip()
+        if _is_noise_filename(name):
+            continue
+        url = str(a.get("browser_download_url") or "").strip()
+        if not url:
+            continue
+        sc = _score(name)
+        if sc > best_score:
+            best_score = sc
+            best_url = url
+
+    return best_url
 
 
 def _check_github_release(conn, settings: Settings, *, force: bool = False) -> dict:
@@ -512,11 +636,9 @@ def _check_github_release(conn, settings: Settings, *, force: bool = False) -> d
         download_url = html_url
         assets = release.get("assets")
         if isinstance(assets, list) and assets:
-            first = assets[0]
-            if isinstance(first, dict):
-                dl = str(first.get("browser_download_url") or "").strip()
-                if dl:
-                    download_url = dl
+            picked = _pick_best_release_asset_url(assets)
+            if picked:
+                download_url = picked
 
         _set_setting(conn, "update_latest_version", tag)
         _set_setting(conn, "update_download_url", download_url)
