@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.10] - 2026-03-07
+
+### Fixed
+
+- 업데이트 버튼이 `SHA256SUMS.txt`를 여는 문제를 수정하고, OS별 설치 파일을 우선 선택하도록 개선.
+- 설치본(Windows exe)에서 동기화 시작 시 `sync worker failed: exit 2`로 실패하던 워커 실행 경로를 수정.
+
 ## [0.5.6] - 2026-03-03
 
 ### Added
