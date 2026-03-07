@@ -3,18 +3,16 @@ from __future__ import annotations
 import argparse
 import threading
 
+from collections.abc import Sequence
+
 from webmail_summary.index.db import get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
 from webmail_summary.util.app_data import get_app_data_dir
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(prog="webmail-summary-sync-worker")
-    p.add_argument("--job-id", required=True)
-    args = p.parse_args()
-    job_id = str(args.job_id)
-
+def run_worker(job_id: str) -> None:
+    job_id = str(job_id)
     db_path = get_app_data_dir() / "db.sqlite3"
 
     conn = get_conn(db_path)
@@ -48,6 +46,13 @@ def main() -> None:
                 repo.set_job_status(conn3, job_id=job_id, status="succeeded")
         finally:
             conn3.close()
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    p = argparse.ArgumentParser(prog="webmail-summary-sync-worker")
+    p.add_argument("--job-id", required=True)
+    args = p.parse_args(argv)
+    run_worker(str(args.job_id))
 
 
 if __name__ == "__main__":

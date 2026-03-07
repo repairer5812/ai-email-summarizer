@@ -19,6 +19,24 @@ from webmail_summary.util.app_data import get_app_data_dir
 JobFunc = Callable[[str, threading.Event], None]
 
 
+def _sync_worker_command(job_id: str) -> list[str]:
+    """Build sync worker command for source and frozen builds.
+
+    - Source/dev runs: python -m webmail_summary.jobs.worker_sync --job-id <id>
+    - Frozen exe runs:  webmail-summary.exe sync-worker --job-id <id>
+    """
+
+    if bool(getattr(sys, "frozen", False)):
+        return [sys.executable, "sync-worker", "--job-id", str(job_id)]
+    return [
+        sys.executable,
+        "-m",
+        "webmail_summary.jobs.worker_sync",
+        "--job-id",
+        str(job_id),
+    ]
+
+
 @dataclass(frozen=True)
 class EnqueuedJob:
     id: str
@@ -133,13 +151,7 @@ class JobRunner:
             try:
                 if job.kind == "sync":
                     # Run sync in a separate process so cancel can stop immediately.
-                    cmd = [
-                        sys.executable,
-                        "-m",
-                        "webmail_summary.jobs.worker_sync",
-                        "--job-id",
-                        job.id,
-                    ]
+                    cmd = _sync_worker_command(job.id)
                     popen_kwargs: dict = {
                         "stdout": subprocess.DEVNULL,
                         "stderr": subprocess.DEVNULL,
