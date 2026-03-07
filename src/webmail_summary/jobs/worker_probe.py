@@ -16,14 +16,23 @@ def _cmdline_contains(cmdline: Iterable[str] | None, needle: str) -> bool:
 
 
 def find_sync_worker_pids(*, job_id: str) -> list[int]:
-    """Find running worker_sync processes for a given job_id."""
+    """Find running sync worker processes for a given job_id.
+
+    Supports both launch styles:
+    - python -m webmail_summary.jobs.worker_sync --job-id <id>
+    - webmail-summary(.exe) sync-worker --job-id <id>
+    """
 
     jid = str(job_id)
     out: list[int] = []
     for p in psutil.process_iter(attrs=["pid", "cmdline"]):
         try:
             cmd = p.info.get("cmdline")
-            if not _cmdline_contains(cmd, "webmail_summary.jobs.worker_sync"):
+            is_module_worker = _cmdline_contains(
+                cmd, "webmail_summary.jobs.worker_sync"
+            )
+            is_cli_worker = _cmdline_contains(cmd, "sync-worker")
+            if not (is_module_worker or is_cli_worker):
                 continue
             if not _cmdline_contains(cmd, "--job-id"):
                 continue
