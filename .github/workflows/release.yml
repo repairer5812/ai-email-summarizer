@@ -125,6 +125,8 @@ jobs:
       - name: Prepare artifacts
         shell: pwsh
         run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $installerName = "webmail-summary-setup-windows-x64-v$ver.exe"
           $signedPortable = Get-ChildItem -Path signed -Recurse -File -Filter webmail-summary.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($null -ne $signedPortable) {
             Copy-Item $signedPortable.FullName release/webmail-summary.exe -Force
@@ -134,13 +136,13 @@ jobs:
 
           $signedInstaller = Get-ChildItem -Path signed -Recurse -File -Filter webmail-summary-setup-windows-x64.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($null -ne $signedInstaller) {
-            Copy-Item $signedInstaller.FullName release/webmail-summary-setup-windows-x64.exe -Force
+            Copy-Item $signedInstaller.FullName ("release/" + $installerName) -Force
           } else {
-            Copy-Item unsigned/webmail-summary-setup-windows-x64.exe release/webmail-summary-setup-windows-x64.exe -Force
+            Copy-Item unsigned/webmail-summary-setup-windows-x64.exe ("release/" + $installerName) -Force
           }
           Compress-Archive -Path release/webmail-summary.exe -DestinationPath release/webmail-summary-windows-x64.zip -Force
           Get-FileHash release/webmail-summary.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary.exe" } | Out-File release/SHA256SUMS.txt -Encoding ascii
-          Get-FileHash release/webmail-summary-setup-windows-x64.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary-setup-windows-x64.exe" } | Add-Content release/SHA256SUMS.txt
+          Get-FileHash ("release/" + $installerName) -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $installerName" } | Add-Content release/SHA256SUMS.txt
           Get-FileHash release/webmail-summary-windows-x64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary-windows-x64.zip" } | Add-Content release/SHA256SUMS.txt
 
       - name: Create GitHub release
@@ -148,7 +150,7 @@ jobs:
         with:
           files: |
             release/webmail-summary.exe
-            release/webmail-summary-setup-windows-x64.exe
+            release/webmail-summary-setup-windows-x64-v*.exe
             release/webmail-summary-windows-x64.zip
             release/SHA256SUMS.txt
           generate_release_notes: true

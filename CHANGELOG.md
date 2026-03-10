@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.12] - 2026-03-10
+
+### Changed
+
+- Windows 설치 파일 이름에 버전(`vX.Y.Z`)이 포함되도록 릴리즈 산출물 명명 규칙을 개선.
+- 설치 시 실행 중인 `webmail-summary` 프로세스를 자동/강제 종료하도록 인스톨러 동작을 강화.
+- 추가 작업의 바탕화면 바로가기 체크 상태가 기본 선택되도록 설치 옵션을 고정.
+
 ## [0.5.11] - 2026-03-10
 
 ### Changed
