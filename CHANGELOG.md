@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.11] - 2026-03-10
+
+### Changed
+
+- 앱 아이콘 자산을 하나로 통일해 브라우저 탭 아이콘과 앱 실행 아이콘의 일관성을 개선.
+
 ## [0.5.10] - 2026-03-07
 
 ### Fixed
