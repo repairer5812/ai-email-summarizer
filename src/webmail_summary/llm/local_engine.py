@@ -148,7 +148,15 @@ def find_llama_cpp_installed() -> LlamaCppInstall | None:
 
 def _find_llama_cli(root: Path) -> Path | None:
     # Common names across releases
-    for name in ["llama-cli.exe", "llama.exe", "main.exe", "llama-cli", "llama"]:
+    for name in [
+        "llama-cli.exe",
+        "llama.exe",
+        "main.exe",
+        "llama-cli",
+        "llama",
+        "llama-gemma3-cli.exe",
+        "llama-gemma3-cli",
+    ]:
         for p in root.rglob(name):
             if p.is_file():
                 return p

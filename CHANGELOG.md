@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.13] - 2026-03-12
+
+### Changed
+
+- 로컬 AI 기본 모델 기본값을 `표준`에서 `빠름`으로 조정.
+- `빠름` 프리셋 모델을 `Gemma 2 2B`에서 `Gemma 3 4B (Q4_K_M)`로 업데이트.
+- OpenRouter 모델 선택 목록에 Gemma 3 (4B/12B/27B) 옵션을 추가.
+
 ## [0.5.12] - 2026-03-10
 
 ### Changed

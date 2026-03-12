@@ -377,7 +377,7 @@ def summarize_email_long_aware(
             custom_tailor = f"\n중요: 아래 사용자 프로필에 맞춰 사용자가 특히 관심있어 할 내용을 강조하여 요약하세요.{profile_info}"
 
         if tier == "fast":
-            # Lite version for small models (like Gemma 2 2B)
+            # Lite version for smaller local models (e.g., Gemma 3 4B)
             system_role = "뉴스레터를 요약하는 어시스턴트"
             guidelines = (
                 "1. 형식 고정: 반드시 '### 핵심 요약' 섹션과 '### 상세 요약' 섹션 2개로 작성하세요.\n"

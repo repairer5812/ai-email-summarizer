@@ -18,11 +18,11 @@ class LocalModelChoice:
 LOCAL_MODELS: list[LocalModelChoice] = [
     LocalModelChoice(
         id="fast",
-        label="빠름 — Gemma 2 2B (Q4_K_M)",
+        label="빠름 — Gemma 3 4B (Q4_K_M)",
         tier="fast",
-        hf_repo_id="bartowski/gemma-2-2b-it-GGUF",
-        hf_filename="gemma-2-2b-it-Q4_K_M.gguf",
-        notes="작지만 매우 똑똑한 구글 모델입니다. 속도와 지능의 균형이 우수합니다.",
+        hf_repo_id="bartowski/google_gemma-3-4b-it-GGUF",
+        hf_filename="google_gemma-3-4b-it-Q4_K_M.gguf",
+        notes="Gemma 3 최신 계열(4B) 모델입니다. 빠른 반응과 준수한 추론을 목표로 합니다.",
     ),
     LocalModelChoice(
         id="standard",
@@ -46,7 +46,7 @@ LOCAL_MODELS: list[LocalModelChoice] = [
 def recommend_local_model() -> LocalModelChoice:
     _ = psutil
     for m in LOCAL_MODELS:
-        if m.id == "standard":
+        if m.id == "fast":
             return m
     return LOCAL_MODELS[0]
 
