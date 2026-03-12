@@ -88,7 +88,7 @@ jobs:
           $ver = "${{ github.ref_name }}".TrimStart('v')
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { throw "ISCC not found at $iscc" }
-          & $iscc /Qp /O"release" /F"webmail-summary-setup-windows-x64" /DMyAppVersion=$ver "installer\webmail-summary.iss"
+          & $iscc /O"release" /F"webmail-summary-setup-windows-x64" /DMyAppVersion=$ver "installer\webmail-summary.iss"
 
       - name: Prepare unsigned bundle (for optional signing)
         shell: pwsh
