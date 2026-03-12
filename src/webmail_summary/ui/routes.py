@@ -324,19 +324,27 @@ def _get_app_version() -> str:
     if local_declared:
         return local_declared
 
+    metadata_v = ""
+    try:
+        metadata_v = _normalize_version(importlib_metadata.version("webmail-summary"))
+        if metadata_v and metadata_v != "0.0.0":
+            return metadata_v
+    except Exception:
+        metadata_v = ""
+
     try:
         p = importlib_resources.files("webmail_summary").joinpath("_version.txt")
         if p.is_file():
             raw = p.read_bytes()
             v = _normalize_version(raw.decode("utf-8", errors="replace"))
-            if v:
+            if v and v != "0.0.0":
                 return v
     except Exception:
         pass
-    try:
-        return _normalize_version(importlib_metadata.version("webmail-summary"))
-    except Exception:
-        return "0.0.0"
+
+    if metadata_v:
+        return metadata_v
+    return "0.0.0"
 
 
 def _parse_iso_datetime(value: str) -> datetime | None:

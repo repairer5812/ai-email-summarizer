@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.14] - 2026-03-12
+
+### Fixed
+
+- 앱 버전 계산 순서를 조정해 패키지 메타데이터 버전이 있을 때 `_version.txt`의 기본값(`0.0.0`)에 가려지지 않도록 수정.
+
+### Changed
+
+- GitHub Actions 워크플로 액션 버전을 Node 24 런타임 대응 버전(`checkout/setup-python/setup-node/upload-artifact`)으로 업데이트.
+
 ## [0.5.13] - 2026-03-12
 
 ### Changed
