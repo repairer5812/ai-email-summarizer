@@ -31,7 +31,7 @@ from webmail_summary.ui.i18n import t as _t
 from webmail_summary.ui.i18n import ui_lang as _ui_lang
 from webmail_summary.ui.timefmt import format_kst, time_kst, format_date_with_weekday_ko
 
-from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
+from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.jsonish import coerce_summary_text
 
 
@@ -1180,7 +1180,7 @@ def setup_save(
     sender_filter: str = Form("hslee@tekville.com"),
     obsidian_root: str = Form(""),
     llm_backend: str = Form("local"),
-    local_model_id: str = Form("standard"),
+    local_model_id: str = Form("fast"),
     cloud_provider: str = Form("openai"),
     openrouter_model: str = Form(""),
     openai_api_key: str = Form(""),

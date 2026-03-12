@@ -4,7 +4,7 @@
 
 - 다운로드: https://github.com/repairer5812/ai-email-summarizer/releases/latest
 - 프로젝트: https://github.com/repairer5812/ai-email-summarizer
-- 현재 버전: `0.5.0`
+- 현재 버전: `0.5.13`
 
 ## 일반 사용자용 안내 (먼저 읽어주세요)
 
@@ -43,6 +43,7 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 2) `연결 테스트` 버튼 클릭
 3) 가져올 메일 폴더 선택
 4) AI 설정(로컬 또는 클라우드)
+   - 로컬 기본값은 `빠름 — Gemma 3 4B`이며, 필요 시 `표준/성능`으로 변경할 수 있습니다.
 5) 저장 후 대시보드로 이동
 
 ### 3. 실제 사용하기
@@ -55,7 +56,7 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 ### 4. 업데이트하기
 
 - 대시보드 우측 상단 버전 영역에서 `확인` 버튼을 누르면 최신 버전을 확인합니다.
-- 새 버전이 있으면 `업데이트` 버튼으로 다운로드 페이지로 이동합니다.
+- 새 버전이 있으면 `업데이트` 버튼으로 설치 파일(또는 릴리즈 페이지)로 이동합니다.
 - 당장 업데이트가 어렵다면 `1주일 안 보기` 또는 `이 버전 건너뛰기`를 사용할 수 있습니다.
 
 ### 5. 자주 겪는 문제
@@ -96,7 +97,8 @@ python -m venv .venv
 
 ### 릴리즈
 
-- 태그 푸시: `vX.Y.Z`
+- `pyproject.toml`의 버전과 `CHANGELOG.md`를 먼저 갱신합니다.
+- 태그 푸시: `vX.Y.Z` (태그 푸시가 있어야 GitHub Release 워크플로가 실행됩니다)
 - 체크리스트: `docs/RELEASE_CHECKLIST.md`
 
 ### 랜딩페이지 (Next.js)
