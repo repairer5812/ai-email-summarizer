@@ -43,5 +43,36 @@
       });
     })();
     </script>
+
+    <script>
+    (() => {
+      const HEARTBEAT_MS = 5000;
+      const sendHeartbeat = () => {
+        try {
+          if (navigator.sendBeacon) {
+            const blob = new Blob(['1'], { type: 'text/plain' });
+            navigator.sendBeacon('/lifecycle/heartbeat', blob);
+            return;
+          }
+        } catch (e) {}
+        fetch('/lifecycle/heartbeat', { method: 'POST', keepalive: true }).catch(() => {});
+      };
+
+      sendHeartbeat();
+      const timer = setInterval(sendHeartbeat, HEARTBEAT_MS);
+
+      window.addEventListener('beforeunload', () => {
+        try {
+          clearInterval(timer);
+          if (navigator.sendBeacon) {
+            const blob = new Blob(['1'], { type: 'text/plain' });
+            navigator.sendBeacon('/lifecycle/tab-closed', blob);
+            return;
+          }
+        } catch (e) {}
+        fetch('/lifecycle/tab-closed', { method: 'POST', keepalive: true }).catch(() => {});
+      });
+    })();
+    </script>
   </body>
 </html>
