@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 import os
+import threading
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from webmail_summary.index.db import init_db
@@ -16,7 +18,9 @@ from webmail_summary.index.db import get_conn
 from webmail_summary.api.routes_jobs import router as api_router
 from webmail_summary.ui.routes import router as ui_router
 from webmail_summary.util.app_data import get_app_data_dir
+from webmail_summary.util.single_instance import SingleInstanceLock
 from webmail_summary.llm.local_status import delete_gguf_and_marker
+from webmail_summary.util.ui_lifecycle import should_exit_for_ui_close
 
 
 def _find_free_port() -> int:
@@ -25,71 +29,41 @@ def _find_free_port() -> int:
         return int(s.getsockname()[1])
 
 
+def _load_close_behavior(data_dir: Path) -> str:
+    conn = get_conn(data_dir / "db.sqlite3")
+    try:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", ("close_behavior",)
+        ).fetchone()
+    finally:
+        conn.close()
+    v = str(row[0] if row else "background").strip().lower()
+    if v not in {"background", "exit"}:
+        return "background"
+    return v
+
+
+def _force_exit_process() -> None:
+    from webmail_summary.jobs.runner import get_runner
+    from webmail_summary.llm.llamacpp_server import stop_server
+
+    try:
+        get_runner().terminate_all()
+    except Exception:
+        pass
+    try:
+        stop_server()
+    except Exception:
+        pass
+    os._exit(0)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Webmail Summary", docs_url=None, redoc_url=None)
 
     @app.get("/favicon.ico")
     def favicon():
-        # Real favicon bytes (simple 16x16 BGRA square) so browsers show an icon.
-        import struct
-
-        from fastapi import Response
-
-        w = 16
-        h = 16
-
-        # ICONDIR (6) + ICONDIRENTRY (16)
-        header = struct.pack("<HHH", 0, 1, 1)
-
-        # BITMAPINFOHEADER (40)
-        biSize = 40
-        biWidth = w
-        biHeight = h * 2  # includes AND mask
-        biPlanes = 1
-        biBitCount = 32
-        biCompression = 0
-        biSizeImage = w * h * 4
-        dib = struct.pack(
-            "<IIIHHIIIIII",
-            biSize,
-            biWidth,
-            biHeight,
-            biPlanes,
-            biBitCount,
-            biCompression,
-            biSizeImage,
-            0,
-            0,
-            0,
-            0,
-        )
-
-        # Pixel data (bottom-up). Solid teal-ish color.
-        # BGRA = (0xD4,0xBF,0x2D,0xFF) ~ #2DBFD4
-        px = bytes([0xD4, 0xBF, 0x2D, 0xFF])
-        row = px * w
-        pixels = row * h
-
-        # AND mask: 1 bit per pixel, padded to 32-bit. All zeros = opaque.
-        and_row_bytes = ((w + 31) // 32) * 4
-        and_mask = b"\x00" * (and_row_bytes * h)
-
-        image = dib + pixels + and_mask
-        image_offset = 6 + 16
-        entry = struct.pack(
-            "<BBBBHHII",
-            w,
-            h,
-            0,
-            0,
-            1,
-            32,
-            len(image),
-            image_offset,
-        )
-
-        ico = header + entry + image
-        return Response(content=ico, media_type="image/x-icon")
+        return RedirectResponse(url="/static/app-icon.png", status_code=307)
 
     data_dir = get_app_data_dir()
     init_db(data_dir / "db.sqlite3")
@@ -132,10 +106,10 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     def shutdown_event():
         from webmail_summary.jobs.runner import get_runner
+        from webmail_summary.llm.llamacpp_server import stop_server
 
         get_runner().terminate_all()
-
-    return app
+        stop_server()
 
     return app
 
@@ -148,27 +122,70 @@ class ServeOptions:
 
 
 def serve(opts: ServeOptions = ServeOptions()) -> None:
+    data_dir = get_app_data_dir()
+    lock = SingleInstanceLock(data_dir / "serve.lock")
+    url_path = data_dir / "active_url.txt"
+
+    if not lock.acquire():
+        if opts.open_browser:
+            try:
+                existing = url_path.read_text(
+                    encoding="utf-8", errors="replace"
+                ).strip()
+            except Exception:
+                existing = ""
+            if existing.startswith("http://") or existing.startswith("https://"):
+                webbrowser.open(existing)
+        return
+
     app = create_app()
     port = opts.port or _find_free_port()
     url = f"http://{opts.host}:{port}/"
-    if opts.open_browser:
-        webbrowser.open(url)
+    stop_watchdog = threading.Event()
 
-    # In PyInstaller --noconsole builds, stdio can be None. Uvicorn's default
-    # log formatters may call isatty() on sys.stderr; ensure it's always safe.
-    if getattr(sys, "frozen", False):
-        data_dir = get_app_data_dir()
-        log_dir = data_dir / "logs"
+    def _close_watchdog() -> None:
+        while not stop_watchdog.wait(2.0):
+            try:
+                mode = _load_close_behavior(data_dir)
+                if should_exit_for_ui_close(mode):
+                    _force_exit_process()
+                    return
+            except Exception:
+                continue
+
+    watchdog = threading.Thread(target=_close_watchdog, daemon=True)
+    watchdog.start()
+
+    try:
         try:
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log_path = log_dir / "server.log"
-            stream = open(log_path, "a", encoding="utf-8", buffering=1)
+            url_path.write_text(url, encoding="utf-8")
         except Exception:
-            stream = open(os.devnull, "w", encoding="utf-8")
+            pass
+        if opts.open_browser:
+            webbrowser.open(url)
 
-        if getattr(sys, "stdout", None) is None:
-            sys.stdout = stream
-        if getattr(sys, "stderr", None) is None:
-            sys.stderr = stream
+        # In PyInstaller --noconsole builds, stdio can be None. Uvicorn's default
+        # log formatters may call isatty() on sys.stderr; ensure it's always safe.
+        if getattr(sys, "frozen", False):
+            data_dir = get_app_data_dir()
+            log_dir = data_dir / "logs"
+            try:
+                log_dir.mkdir(parents=True, exist_ok=True)
+                log_path = log_dir / "server.log"
+                stream = open(log_path, "a", encoding="utf-8", buffering=1)
+            except Exception:
+                stream = open(os.devnull, "w", encoding="utf-8")
 
-    uvicorn.run(app, host=opts.host, port=port, log_level="info", use_colors=False)
+            if getattr(sys, "stdout", None) is None:
+                sys.stdout = stream
+            if getattr(sys, "stderr", None) is None:
+                sys.stderr = stream
+
+        uvicorn.run(app, host=opts.host, port=port, log_level="info", use_colors=False)
+    finally:
+        stop_watchdog.set()
+        try:
+            url_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        lock.release()

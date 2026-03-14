@@ -22,6 +22,7 @@ class Settings:
     user_roles: list[str]
     user_interests: str
     ui_theme: str
+    close_behavior: str
     update_channel: str
     update_latest_version: str
     update_auto_check_enabled: bool
@@ -78,6 +79,11 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     except Exception:
         user_roles = []
     user_interests = get_setting(conn, "user_interests") or ""
+    close_behavior = (
+        (get_setting(conn, "close_behavior") or "background").strip().lower()
+    )
+    if close_behavior not in {"background", "exit"}:
+        close_behavior = "background"
     update_channel = (get_setting(conn, "update_channel") or "stable").strip().lower()
     if update_channel not in {"stable", "beta"}:
         update_channel = "stable"
@@ -110,6 +116,7 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         user_roles=user_roles,
         user_interests=user_interests,
         ui_theme=get_setting(conn, "ui_theme") or "trust",
+        close_behavior=close_behavior,
         update_channel=update_channel,
         update_latest_version=update_latest_version,
         update_auto_check_enabled=update_auto_check_enabled,
