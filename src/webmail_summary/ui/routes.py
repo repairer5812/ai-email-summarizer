@@ -5,9 +5,15 @@ import re
 from datetime import datetime, timedelta, timezone
 import os
 import platform
+import hashlib
+import subprocess
+import sys
+import threading
+import time
 from importlib import metadata as importlib_metadata
 from importlib import resources as importlib_resources
 from pathlib import Path
+from urllib.parse import urlparse
 
 import keyring
 import requests
@@ -33,6 +39,7 @@ from webmail_summary.ui.timefmt import format_kst, time_kst, format_date_with_we
 
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.jsonish import coerce_summary_text
+from webmail_summary.util.ui_lifecycle import mark_ui_heartbeat, mark_ui_tab_closed
 
 
 def _fmt_summarize_ms(ms: int | None) -> str:
@@ -664,6 +671,161 @@ def _check_github_release(conn, settings: Settings, *, force: bool = False) -> d
         conn.commit()
 
 
+def _updates_dir() -> Path:
+    p = get_app_data_dir() / "updates"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _download_to_path(url: str, dst: Path) -> None:
+    tmp = dst.with_suffix(dst.suffix + ".part")
+    with requests.get(url, stream=True, timeout=(5, 90)) as r:
+        r.raise_for_status()
+        with tmp.open("wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 256):
+                if not chunk:
+                    continue
+                f.write(chunk)
+    tmp.replace(dst)
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            b = f.read(1024 * 1024)
+            if not b:
+                break
+            h.update(b)
+    return h.hexdigest().lower()
+
+
+def _parse_sha256sums(text: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in str(text or "").splitlines():
+        m = re.match(r"^\s*([A-Fa-f0-9]{64})\s+\*?(.+?)\s*$", line)
+        if not m:
+            continue
+        out[str(m.group(2)).strip().lower()] = str(m.group(1)).strip().lower()
+    return out
+
+
+def _guess_expected_sha256_from_release(
+    settings: Settings, installer_name: str
+) -> str | None:
+    parsed = _parse_github_repo(_effective_update_repo(settings))
+    if not parsed:
+        return None
+    owner, repo = parsed
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": f"webmail-summary/{_get_app_version()}",
+    }
+    url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+    r = requests.get(url, headers=headers, timeout=(3.05, 10))
+    if r.status_code != 200:
+        return None
+    release = r.json() or {}
+    assets = release.get("assets") or []
+    if not isinstance(assets, list):
+        return None
+
+    checksum_url = ""
+    for a in assets:
+        if not isinstance(a, dict):
+            continue
+        name = str(a.get("name") or "").strip().lower()
+        dl = str(a.get("browser_download_url") or "").strip()
+        if not dl:
+            continue
+        if "sha256" in name and name.endswith(".txt"):
+            checksum_url = dl
+            break
+        if "sha256sums" in name:
+            checksum_url = dl
+            break
+    if not checksum_url:
+        return None
+
+    rr = requests.get(checksum_url, timeout=(3.05, 15))
+    if rr.status_code != 200:
+        return None
+    mapping = _parse_sha256sums(rr.text)
+    target = installer_name.strip().lower()
+    if target in mapping:
+        return mapping[target]
+    for k, v in mapping.items():
+        if k.endswith(target):
+            return v
+    return None
+
+
+def _relaunch_command() -> tuple[str, str]:
+    exe = sys.executable
+    if bool(getattr(sys, "frozen", False)):
+        return exe, ""
+    return exe, "-m webmail_summary serve"
+
+
+def _write_updater_script(path: Path) -> None:
+    script = r"""
+param(
+  [int]$ParentPid,
+  [string]$InstallerPath,
+  [string]$RelaunchExe,
+  [string]$RelaunchArgs,
+  [string]$InstallLogPath
+)
+$ErrorActionPreference = 'Continue'
+Start-Sleep -Seconds 2
+try {
+  Wait-Process -Id $ParentPid -Timeout 180 -ErrorAction SilentlyContinue | Out-Null
+} catch {}
+try {
+  if (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {
+    Stop-Process -Id $ParentPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+  }
+} catch {}
+
+$args = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/LOG=' + $InstallLogPath))
+$p = Start-Process -FilePath $InstallerPath -ArgumentList $args -Wait -PassThru
+$code = 0
+if ($null -ne $p) { $code = [int]$p.ExitCode }
+
+if ($code -eq 0 -and (Test-Path $RelaunchExe)) {
+  if ([string]::IsNullOrWhiteSpace($RelaunchArgs)) {
+    Start-Process -FilePath $RelaunchExe | Out-Null
+  } else {
+    Start-Process -FilePath $RelaunchExe -ArgumentList $RelaunchArgs | Out-Null
+  }
+}
+exit $code
+""".strip()
+    path.write_text(script + "\n", encoding="utf-8")
+
+
+def _schedule_app_shutdown(delay_s: float = 1.2) -> None:
+    def _worker() -> None:
+        time.sleep(float(delay_s))
+        try:
+            from webmail_summary.jobs.runner import get_runner
+
+            get_runner().terminate_all()
+        except Exception:
+            pass
+        try:
+            from webmail_summary.llm.llamacpp_server import stop_server
+
+            stop_server()
+        except Exception:
+            pass
+        os._exit(0)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
     from webmail_summary.index.db import get_conn
@@ -994,6 +1156,7 @@ def setup_get(request: Request):
                 "user_roles": settings.user_roles,
                 "user_interests": settings.user_interests,
                 "ui_theme": settings.ui_theme,
+                "close_behavior": settings.close_behavior,
                 "app_version": _get_app_version(),
                 "update_channel": settings.update_channel,
                 "update_latest_version": settings.update_latest_version,
@@ -1208,6 +1371,7 @@ def setup_save(
     update_last_checked_at: str = Form(""),
     update_download_url: str = Form(""),
     ui_theme: str = Form("trust"),
+    close_behavior: str = Form("background"),
     current_tab: str = Form("profile"),
 ):
     from webmail_summary.index.db import get_conn
@@ -1243,6 +1407,11 @@ def setup_save(
             _set_setting(conn, "external_max_bytes", external_max_bytes.strip())
         if ui_theme:
             _set_setting(conn, "ui_theme", ui_theme)
+
+        cb = (close_behavior or "background").strip().lower()
+        if cb not in {"background", "exit"}:
+            cb = "background"
+        _set_setting(conn, "close_behavior", cb)
 
         if user_roles:
             _set_setting(conn, "user_roles", json.dumps(user_roles))
@@ -1341,6 +1510,144 @@ def setup_save_partial(
     finally:
         conn.close()
     return {"ok": True}
+
+
+@router.post("/lifecycle/heartbeat")
+def lifecycle_heartbeat():
+    try:
+        mark_ui_heartbeat()
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@router.post("/lifecycle/tab-closed")
+def lifecycle_tab_closed():
+    try:
+        mark_ui_tab_closed()
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@router.post("/updates/apply-now")
+def updates_apply_now():
+    if (platform.system() or "").strip().lower() != "windows":
+        return JSONResponse(
+            {
+                "ok": False,
+                "message": "자동 업데이트 설치는 현재 Windows에서만 지원됩니다.",
+            },
+            status_code=400,
+        )
+
+    from webmail_summary.index.db import get_conn
+
+    conn = get_conn(_db_path())
+    try:
+        settings = load_settings(conn)
+        _check_github_release(conn, settings, force=True)
+        settings = load_settings(conn)
+        st = _build_update_state(settings)
+        if not bool(st.get("has_update")):
+            return JSONResponse(
+                {"ok": False, "message": "이미 최신 버전입니다."}, status_code=409
+            )
+
+        download_url = str(st.get("download_url") or "").strip()
+        if not download_url or _is_probably_not_installer_url(download_url):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "message": "설치 파일 URL을 찾지 못했습니다. 릴리즈 페이지에서 수동 설치를 시도하세요.",
+                },
+                status_code=409,
+            )
+
+        parsed = urlparse(download_url)
+        filename = Path(parsed.path).name or "webmail-summary-setup-windows-x64.exe"
+        if not filename.lower().endswith(".exe"):
+            filename = "webmail-summary-setup-windows-x64.exe"
+
+        updates_dir = _updates_dir()
+        installer_path = updates_dir / filename
+        _download_to_path(download_url, installer_path)
+
+        downloaded_sha = _sha256_file(installer_path)
+        expected_sha = _guess_expected_sha256_from_release(settings, filename)
+        verified = False
+        if expected_sha:
+            if downloaded_sha != expected_sha.strip().lower():
+                try:
+                    installer_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "message": "다운로드 파일 검증(SHA256)에 실패했습니다. 업데이트를 중단합니다.",
+                    },
+                    status_code=409,
+                )
+            verified = True
+
+        script_path = updates_dir / "apply_update.ps1"
+        _write_updater_script(script_path)
+        install_log_path = updates_dir / "installer.log"
+        relaunch_exe, relaunch_args = _relaunch_command()
+
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            str(script_path),
+            "-ParentPid",
+            str(os.getpid()),
+            "-InstallerPath",
+            str(installer_path),
+            "-RelaunchExe",
+            str(relaunch_exe),
+            "-RelaunchArgs",
+            str(relaunch_args),
+            "-InstallLogPath",
+            str(install_log_path),
+        ]
+        creationflags = (
+            int(getattr(subprocess, "DETACHED_PROCESS", 0))
+            | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        )
+        subprocess.Popen(
+            cmd,
+            close_fds=True,
+            creationflags=creationflags,
+        )
+
+        _set_setting(conn, "update_last_check_status", "install_started")
+        conn.commit()
+    except requests.RequestException as e:
+        return JSONResponse(
+            {"ok": False, "message": f"업데이트 다운로드 실패: {str(e)[:200]}"},
+            status_code=502,
+        )
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "message": f"업데이트 시작 실패: {str(e)[:200]}"},
+            status_code=500,
+        )
+    finally:
+        conn.close()
+
+    _schedule_app_shutdown()
+    return {
+        "ok": True,
+        "message": "업데이트 설치를 시작합니다. 잠시 후 앱이 종료되고 자동으로 다시 실행됩니다.",
+        "verified": verified,
+    }
 
 
 @router.post("/updates/snooze-week")
