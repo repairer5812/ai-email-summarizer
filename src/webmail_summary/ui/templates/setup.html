@@ -278,6 +278,15 @@
                     </div>
                 </div>
 
+                <div class="form-group">
+                  <label>브라우저 탭 닫기 동작</label>
+                  <select name="close_behavior">
+                    <option value="background" {% if defaults.close_behavior == 'background' %}selected{% endif %}>백그라운드에서 계속 실행</option>
+                    <option value="exit" {% if defaults.close_behavior == 'exit' %}selected{% endif %}>앱 완전 종료</option>
+                  </select>
+                  <div class="help">"앱 완전 종료"를 선택하면 마지막 탭을 닫을 때 서버도 자동 종료됩니다.</div>
+                </div>
+
                 <hr style="border: 0; border-top: 1px solid var(--border); margin: 24px 0;" />
                 <div class="form-group">
                   <label>앱 버전(현재)</label>
