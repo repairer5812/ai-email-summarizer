@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import platform
 
+from webmail_summary.util.ssl_certs import configure_requests_ca_bundle
+
 from webmail_summary.app.main import ServeOptions, serve
 from webmail_summary.jobs.runner import get_runner
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
@@ -11,6 +13,7 @@ from webmail_summary.ui.native_window import run_ui
 
 
 def main(argv: list[str] | None = None) -> None:
+    configure_requests_ca_bundle()
     parser = argparse.ArgumentParser(prog="webmail-summary")
     # Treat missing subcommand as launching the app UI.
     sub = parser.add_subparsers(dest="cmd")
