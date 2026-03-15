@@ -11,6 +11,12 @@ All notable changes to this project are documented in this file.
 - fast 로컬 모델에서 생성 토큰 수를 줄여(속도 우선) 요약 지연을 완화.
 - 트레이 아이콘 더블클릭 시 창이 다시 표시되도록 기본 동작을 지정.
 
+## [0.5.19] - 2026-03-15
+
+### Fixed
+
+- 독립 창(UI) 실행 시 로컬 서버 준비가 느리거나 `active_url.txt`가 stale 상태일 때 예외로 종료되지 않도록 개선(재시도/대기 증가 + 오류 안내 메시지).
+
 ## [0.5.17] - 2026-03-15
 
 ### Added
