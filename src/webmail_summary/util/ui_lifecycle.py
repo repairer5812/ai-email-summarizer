@@ -20,6 +20,14 @@ def _tab_closed_path() -> Path:
     return _runtime_dir() / "ui_tab_closed.txt"
 
 
+def _bring_to_front_path() -> Path:
+    return _runtime_dir() / "ui_bring_to_front.txt"
+
+
+def _ui_pid_path() -> Path:
+    return _runtime_dir() / "ui_pid.txt"
+
+
 def _write_ts(path: Path, ts: float) -> None:
     path.write_text(f"{ts:.6f}", encoding="utf-8")
 
@@ -37,6 +45,33 @@ def mark_ui_heartbeat(ts: float | None = None) -> None:
 
 def mark_ui_tab_closed(ts: float | None = None) -> None:
     _write_ts(_tab_closed_path(), float(ts if ts is not None else time.time()))
+
+
+def write_ui_pid(pid: int) -> None:
+    _ui_pid_path().write_text(str(int(pid)), encoding="utf-8")
+
+
+def clear_ui_pid() -> None:
+    try:
+        _ui_pid_path().unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def read_ui_pid() -> int:
+    try:
+        v = _ui_pid_path().read_text(encoding="utf-8", errors="replace").strip()
+        return int(v)
+    except Exception:
+        return 0
+
+
+def signal_bring_to_front(ts: float | None = None) -> None:
+    _write_ts(_bring_to_front_path(), float(ts if ts is not None else time.time()))
+
+
+def read_bring_to_front_ts() -> float:
+    return _read_ts(_bring_to_front_path())
 
 
 def should_exit_for_ui_close(
