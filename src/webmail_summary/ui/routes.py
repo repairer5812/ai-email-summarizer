@@ -39,7 +39,11 @@ from webmail_summary.ui.timefmt import format_kst, time_kst, format_date_with_we
 
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.jsonish import coerce_summary_text
-from webmail_summary.util.ui_lifecycle import mark_ui_heartbeat, mark_ui_tab_closed
+from webmail_summary.util.ui_lifecycle import (
+    mark_ui_heartbeat,
+    mark_ui_tab_closed,
+    read_ui_pid,
+)
 
 
 def _fmt_summarize_ms(ms: int | None) -> str:
@@ -325,19 +329,11 @@ def _get_app_version() -> str:
     if env_v:
         return env_v
 
-    # In local src runs, prefer repo-declared version to avoid stale global
-    # dist-info metadata overshadowing the working copy version.
-    local_declared = _get_repo_declared_version()
-    if local_declared:
-        return local_declared
-
-    metadata_v = ""
-    try:
-        metadata_v = _normalize_version(importlib_metadata.version("webmail-summary"))
-        if metadata_v and metadata_v != "0.0.0":
-            return metadata_v
-    except Exception:
-        metadata_v = ""
+    # In local src runs, prefer repo-declared version.
+    if not bool(getattr(sys, "frozen", False)):
+        local_declared = _get_repo_declared_version()
+        if local_declared:
+            return local_declared
 
     try:
         p = importlib_resources.files("webmail_summary").joinpath("_version.txt")
@@ -349,8 +345,13 @@ def _get_app_version() -> str:
     except Exception:
         pass
 
-    if metadata_v:
-        return metadata_v
+    try:
+        metadata_v = _normalize_version(importlib_metadata.version("webmail-summary"))
+        if metadata_v and metadata_v != "0.0.0":
+            return metadata_v
+    except Exception:
+        pass
+
     return "0.0.0"
 
 
@@ -678,14 +679,45 @@ def _updates_dir() -> Path:
 
 
 def _download_to_path(url: str, dst: Path) -> None:
+    def _noop(_cur: int, _total: int) -> None:
+        return
+
+    _download_to_path_with_progress(url, dst, progress_cb=_noop)
+
+
+def _download_to_path_with_progress(
+    url: str,
+    dst: Path,
+    *,
+    progress_cb,
+) -> None:
     tmp = dst.with_suffix(dst.suffix + ".part")
     with requests.get(url, stream=True, timeout=(5, 90)) as r:
         r.raise_for_status()
+        total = 0
+        try:
+            total = int(r.headers.get("Content-Length") or 0)
+        except Exception:
+            total = 0
+        written = 0
+        last_report = 0.0
         with tmp.open("wb") as f:
             for chunk in r.iter_content(chunk_size=1024 * 256):
                 if not chunk:
                     continue
                 f.write(chunk)
+                written += len(chunk)
+                now = time.time()
+                if now - last_report >= 0.25:
+                    last_report = now
+                    try:
+                        progress_cb(int(written), int(total))
+                    except Exception:
+                        pass
+        try:
+            progress_cb(int(written), int(total))
+        except Exception:
+            pass
     tmp.replace(dst)
 
 
@@ -764,21 +796,50 @@ def _guess_expected_sha256_from_release(
 def _relaunch_command() -> tuple[str, str]:
     exe = sys.executable
     if bool(getattr(sys, "frozen", False)):
-        return exe, ""
-    return exe, "-m webmail_summary serve"
+        return exe, json.dumps(["ui"], ensure_ascii=True)
+
+    # In dev runs, the update installs the packaged app. Prefer relaunching the
+    # installed executable so the version reflects the installed build.
+    try:
+        local_appdata = os.environ.get("LOCALAPPDATA") or ""
+        installed_exe = (
+            Path(local_appdata) / "Programs" / "webmail-summary" / "webmail-summary.exe"
+        )
+        if installed_exe.is_file():
+            return str(installed_exe), json.dumps(["ui"], ensure_ascii=True)
+    except Exception:
+        pass
+
+    return exe, json.dumps(["-m", "webmail_summary", "ui"], ensure_ascii=True)
 
 
 def _write_updater_script(path: Path) -> None:
     script = r"""
 param(
   [int]$ParentPid,
+  [int]$UiPid = 0,
   [string]$InstallerPath,
   [string]$RelaunchExe,
-  [string]$RelaunchArgs,
+  [string]$RelaunchArgsJson,
   [string]$InstallLogPath
 )
 $ErrorActionPreference = 'Continue'
 Start-Sleep -Seconds 2
+
+function Stop-PidIfRunning([int]$Pid) {
+  if ($Pid -le 0) { return }
+  try {
+    Wait-Process -Id $Pid -Timeout 30 -ErrorAction SilentlyContinue | Out-Null
+  } catch {}
+  try {
+    if (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
+      Stop-Process -Id $Pid -Force -ErrorAction SilentlyContinue
+      Start-Sleep -Seconds 1
+    }
+  } catch {}
+}
+
+Stop-PidIfRunning $UiPid
 try {
   Wait-Process -Id $ParentPid -Timeout 180 -ErrorAction SilentlyContinue | Out-Null
 } catch {}
@@ -795,10 +856,20 @@ $code = 0
 if ($null -ne $p) { $code = [int]$p.ExitCode }
 
 if ($code -eq 0 -and (Test-Path $RelaunchExe)) {
-  if ([string]::IsNullOrWhiteSpace($RelaunchArgs)) {
+  $argsList = @()
+  if (![string]::IsNullOrWhiteSpace($RelaunchArgsJson)) {
+    try {
+      $tmp = ConvertFrom-Json $RelaunchArgsJson
+      if ($tmp -is [System.Array]) { $argsList = $tmp }
+      elseif ($null -ne $tmp) { $argsList = @($tmp) }
+    } catch {
+      $argsList = @($RelaunchArgsJson)
+    }
+  }
+  if ($argsList.Count -eq 0) {
     Start-Process -FilePath $RelaunchExe | Out-Null
   } else {
-    Start-Process -FilePath $RelaunchExe -ArgumentList $RelaunchArgs | Out-Null
+    Start-Process -FilePath $RelaunchExe -ArgumentList $argsList | Out-Null
   }
 }
 exit $code
@@ -824,6 +895,233 @@ def _schedule_app_shutdown(delay_s: float = 1.2) -> None:
         os._exit(0)
 
     threading.Thread(target=_worker, daemon=True).start()
+
+
+_update_apply_lock = threading.Lock()
+_update_apply_thread: threading.Thread | None = None
+
+
+def _set_update_apply_state(conn, *, stage: str, percent: int, message: str) -> None:
+    _set_setting(conn, "update_apply_stage", str(stage))
+    _set_setting(conn, "update_apply_percent", str(int(percent)))
+    _set_setting(conn, "update_apply_message", str(message or ""))
+    _set_setting(
+        conn, "update_apply_updated_at", datetime.now(timezone.utc).isoformat()
+    )
+    conn.commit()
+
+
+def _get_update_apply_state(conn) -> dict:
+    stage = str(_get_setting(conn, "update_apply_stage") or "idle")
+    try:
+        percent = int(float(_get_setting(conn, "update_apply_percent") or 0))
+    except Exception:
+        percent = 0
+    msg = str(_get_setting(conn, "update_apply_message") or "")
+    updated_at = str(_get_setting(conn, "update_apply_updated_at") or "")
+    if percent < 0:
+        percent = 0
+    if percent > 100:
+        percent = 100
+    return {
+        "stage": stage,
+        "percent": percent,
+        "message": msg,
+        "updated_at": updated_at,
+    }
+
+
+def _run_update_apply_thread(*, db_path: Path) -> None:
+    from webmail_summary.index.db import get_conn
+
+    conn = get_conn(db_path)
+    try:
+        settings = load_settings(conn)
+        _check_github_release(conn, settings, force=True)
+        settings = load_settings(conn)
+        st = _build_update_state(settings)
+        if not bool(st.get("has_update")):
+            _set_update_apply_state(
+                conn, stage="idle", percent=0, message="이미 최신 버전입니다."
+            )
+            return
+
+        download_url = str(st.get("download_url") or "").strip()
+        if not download_url or _is_probably_not_installer_url(download_url):
+            _set_update_apply_state(
+                conn,
+                stage="error",
+                percent=0,
+                message="설치 파일 URL을 찾지 못했습니다. 수동 업데이트를 시도하세요.",
+            )
+            return
+
+        parsed = urlparse(download_url)
+        filename = Path(parsed.path).name or "webmail-summary-setup-windows-x64.exe"
+        if not filename.lower().endswith(".exe"):
+            filename = "webmail-summary-setup-windows-x64.exe"
+
+        updates_dir = _updates_dir()
+        installer_path = updates_dir / filename
+
+        _set_update_apply_state(
+            conn, stage="downloading", percent=0, message="업데이트 파일 다운로드 중..."
+        )
+
+        def _progress(cur: int, total: int) -> None:
+            c = int(cur)
+            t = int(total)
+            p = 0
+            if t > 0:
+                p = int((c * 100) / t)
+            msg = "업데이트 파일 다운로드 중..."
+            if t > 0:
+                mb = 1024 * 1024
+                msg = f"업데이트 파일 다운로드 중... ({c / mb:.1f}MB / {t / mb:.1f}MB)"
+            else:
+                msg = f"업데이트 파일 다운로드 중... ({c / 1024 / 1024:.1f}MB)"
+            _set_update_apply_state(conn, stage="downloading", percent=p, message=msg)
+
+        _download_to_path_with_progress(
+            download_url, installer_path, progress_cb=_progress
+        )
+
+        _set_update_apply_state(
+            conn, stage="verifying", percent=100, message="다운로드 검증 중..."
+        )
+        downloaded_sha = _sha256_file(installer_path)
+        expected_sha = _guess_expected_sha256_from_release(settings, filename)
+        if expected_sha and downloaded_sha != expected_sha.strip().lower():
+            try:
+                installer_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            _set_update_apply_state(
+                conn,
+                stage="error",
+                percent=0,
+                message="다운로드 파일 검증(SHA256)에 실패했습니다. 업데이트를 중단합니다.",
+            )
+            return
+
+        _set_update_apply_state(
+            conn,
+            stage="launching",
+            percent=100,
+            message="설치 프로그램 실행 준비 중...",
+        )
+        script_path = updates_dir / "apply_update.ps1"
+        _write_updater_script(script_path)
+        install_log_path = updates_dir / "installer.log"
+        relaunch_exe, relaunch_args_json = _relaunch_command()
+        ui_pid = int(read_ui_pid() or 0)
+
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            str(script_path),
+            "-ParentPid",
+            str(os.getpid()),
+            "-UiPid",
+            str(ui_pid),
+            "-InstallerPath",
+            str(installer_path),
+            "-RelaunchExe",
+            str(relaunch_exe),
+            "-RelaunchArgsJson",
+            str(relaunch_args_json),
+            "-InstallLogPath",
+            str(install_log_path),
+        ]
+        creationflags = (
+            int(getattr(subprocess, "DETACHED_PROCESS", 0))
+            | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        )
+        subprocess.Popen(cmd, close_fds=True, creationflags=creationflags)
+
+        _set_update_apply_state(
+            conn,
+            stage="installer_started",
+            percent=100,
+            message="설치 프로그램을 실행했습니다. 잠시 후 앱이 종료되고 자동으로 다시 실행됩니다.",
+        )
+    except Exception as e:
+        try:
+            _set_update_apply_state(
+                conn,
+                stage="error",
+                percent=0,
+                message=f"업데이트 실패: {str(e)[:200]}",
+            )
+        except Exception:
+            pass
+    finally:
+        conn.close()
+
+    _schedule_app_shutdown()
+
+
+@router.get("/updates/apply-status")
+def updates_apply_status():
+    from webmail_summary.index.db import get_conn
+
+    conn = get_conn(_db_path())
+    try:
+        return {"ok": True, **_get_update_apply_state(conn)}
+    finally:
+        conn.close()
+
+
+@router.post("/updates/apply-start")
+def updates_apply_start():
+    if (platform.system() or "").strip().lower() != "windows":
+        return JSONResponse(
+            {
+                "ok": False,
+                "message": "자동 업데이트 설치는 현재 Windows에서만 지원됩니다.",
+            },
+            status_code=400,
+        )
+
+    global _update_apply_thread
+    # Set a visible initial status immediately.
+    try:
+        from webmail_summary.index.db import get_conn
+
+        conn0 = get_conn(_db_path())
+        try:
+            _set_update_apply_state(
+                conn0,
+                stage="starting",
+                percent=0,
+                message="업데이트 준비 중...",
+            )
+        finally:
+            conn0.close()
+    except Exception:
+        pass
+
+    with _update_apply_lock:
+        t = _update_apply_thread
+        if t is not None and t.is_alive():
+            return JSONResponse(
+                {"ok": False, "message": "이미 업데이트를 진행 중입니다."},
+                status_code=409,
+            )
+        _update_apply_thread = threading.Thread(
+            target=_run_update_apply_thread,
+            kwargs={"db_path": _db_path()},
+            daemon=True,
+        )
+        _update_apply_thread.start()
+
+    return {"ok": True, "message": "업데이트를 시작합니다."}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -1530,124 +1828,17 @@ def lifecycle_tab_closed():
     return {"ok": True}
 
 
+@router.post("/lifecycle/request-exit")
+def lifecycle_request_exit():
+    # Used by native window wrappers to request a clean shutdown.
+    _schedule_app_shutdown(delay_s=0.2)
+    return {"ok": True}
+
+
 @router.post("/updates/apply-now")
 def updates_apply_now():
-    if (platform.system() or "").strip().lower() != "windows":
-        return JSONResponse(
-            {
-                "ok": False,
-                "message": "자동 업데이트 설치는 현재 Windows에서만 지원됩니다.",
-            },
-            status_code=400,
-        )
-
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(_db_path())
-    try:
-        settings = load_settings(conn)
-        _check_github_release(conn, settings, force=True)
-        settings = load_settings(conn)
-        st = _build_update_state(settings)
-        if not bool(st.get("has_update")):
-            return JSONResponse(
-                {"ok": False, "message": "이미 최신 버전입니다."}, status_code=409
-            )
-
-        download_url = str(st.get("download_url") or "").strip()
-        if not download_url or _is_probably_not_installer_url(download_url):
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "message": "설치 파일 URL을 찾지 못했습니다. 릴리즈 페이지에서 수동 설치를 시도하세요.",
-                },
-                status_code=409,
-            )
-
-        parsed = urlparse(download_url)
-        filename = Path(parsed.path).name or "webmail-summary-setup-windows-x64.exe"
-        if not filename.lower().endswith(".exe"):
-            filename = "webmail-summary-setup-windows-x64.exe"
-
-        updates_dir = _updates_dir()
-        installer_path = updates_dir / filename
-        _download_to_path(download_url, installer_path)
-
-        downloaded_sha = _sha256_file(installer_path)
-        expected_sha = _guess_expected_sha256_from_release(settings, filename)
-        verified = False
-        if expected_sha:
-            if downloaded_sha != expected_sha.strip().lower():
-                try:
-                    installer_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                return JSONResponse(
-                    {
-                        "ok": False,
-                        "message": "다운로드 파일 검증(SHA256)에 실패했습니다. 업데이트를 중단합니다.",
-                    },
-                    status_code=409,
-                )
-            verified = True
-
-        script_path = updates_dir / "apply_update.ps1"
-        _write_updater_script(script_path)
-        install_log_path = updates_dir / "installer.log"
-        relaunch_exe, relaunch_args = _relaunch_command()
-
-        cmd = [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-WindowStyle",
-            "Hidden",
-            "-File",
-            str(script_path),
-            "-ParentPid",
-            str(os.getpid()),
-            "-InstallerPath",
-            str(installer_path),
-            "-RelaunchExe",
-            str(relaunch_exe),
-            "-RelaunchArgs",
-            str(relaunch_args),
-            "-InstallLogPath",
-            str(install_log_path),
-        ]
-        creationflags = (
-            int(getattr(subprocess, "DETACHED_PROCESS", 0))
-            | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-            | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        )
-        subprocess.Popen(
-            cmd,
-            close_fds=True,
-            creationflags=creationflags,
-        )
-
-        _set_setting(conn, "update_last_check_status", "install_started")
-        conn.commit()
-    except requests.RequestException as e:
-        return JSONResponse(
-            {"ok": False, "message": f"업데이트 다운로드 실패: {str(e)[:200]}"},
-            status_code=502,
-        )
-    except Exception as e:
-        return JSONResponse(
-            {"ok": False, "message": f"업데이트 시작 실패: {str(e)[:200]}"},
-            status_code=500,
-        )
-    finally:
-        conn.close()
-
-    _schedule_app_shutdown()
-    return {
-        "ok": True,
-        "message": "업데이트 설치를 시작합니다. 잠시 후 앱이 종료되고 자동으로 다시 실행됩니다.",
-        "verified": verified,
-    }
+    # Backward-compatible alias.
+    return updates_apply_start()
 
 
 @router.post("/updates/snooze-week")
