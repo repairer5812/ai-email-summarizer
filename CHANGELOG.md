@@ -25,6 +25,13 @@ All notable changes to this project are documented in this file.
   - 릴리즈 빌드에서 `certifi` CA 파일을 명시적으로 포함.
   - 런타임에서 `REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`을 best-effort로 설정.
 
+## [0.5.21] - 2026-03-15
+
+### Fixed
+
+- 이전 실행에서 상속된 stale `_MEI...\certifi\cacert.pem` 환경변수 경로가 남아 TLS가 다시 실패하던 케이스를 추가로 수정.
+  - `REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`이 유효하지 않으면 현재 실행의 유효한 certifi 경로로 강제 교정.
+
 ## [0.5.17] - 2026-03-15
 
 ### Added
