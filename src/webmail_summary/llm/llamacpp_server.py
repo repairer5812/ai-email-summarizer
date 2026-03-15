@@ -32,11 +32,15 @@ _lock = threading.Lock()
 _proc: subprocess.Popen[str] | None = None
 _running_cfg: LlamaCppServerConfig | None = None
 _idle_timer: threading.Timer | None = None
-_IDLE_TIMEOUT_S = 120.0
+_IDLE_TIMEOUT_S = 600.0
+_in_flight = 0
 
 
 def _arm_idle_shutdown() -> None:
     global _idle_timer
+    with _lock:
+        if _in_flight > 0:
+            return
     t = threading.Timer(_IDLE_TIMEOUT_S, stop_server)
     t.daemon = True
     with _lock:
@@ -164,6 +168,8 @@ def stop_server() -> None:
     global _proc, _running_cfg, _idle_timer
 
     with _lock:
+        if _in_flight > 0:
+            return
         proc = _proc
         _proc = None
         _running_cfg = None
@@ -231,6 +237,7 @@ class LlamaCppServerProvider(LlmProvider):
             return "".join(parts)
 
         def _post(prompt: str) -> dict | None:
+            global _in_flight
             payload = {
                 "model": self._cfg.alias,
                 "messages": [
@@ -242,11 +249,25 @@ class LlamaCppServerProvider(LlmProvider):
                 "stream": False,
             }
 
-            r = requests.post(
-                _base_url(self._cfg) + "/v1/chat/completions",
-                json=payload,
-                timeout=120,
-            )
+            with _lock:
+                _in_flight += 1
+                try:
+                    if _idle_timer is not None:
+                        _idle_timer.cancel()
+                        # Keep reference; it will be replaced when re-armed.
+                except Exception:
+                    pass
+
+            try:
+                r = requests.post(
+                    _base_url(self._cfg) + "/v1/chat/completions",
+                    json=payload,
+                    timeout=600,
+                )
+            finally:
+                with _lock:
+                    _in_flight = max(0, int(_in_flight) - 1)
+                _arm_idle_shutdown()
 
             # Many llama-server errors return structured JSON. Handle context overflow
             # by retrying with a shorter body.

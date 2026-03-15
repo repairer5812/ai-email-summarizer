@@ -43,8 +43,15 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
         server_exe = inst.llama_cli_path.with_name("llama-server.exe")
         if server_exe.exists():
             try:
+                max_tokens = 1280
+                if tier == "fast":
+                    max_tokens = 512
                 return LlamaCppServerProvider(
-                    LlamaCppServerConfig(server_exe=server_exe, model_path=model_path),
+                    LlamaCppServerConfig(
+                        server_exe=server_exe,
+                        model_path=model_path,
+                        max_tokens=int(max_tokens),
+                    ),
                     tier=tier,
                 )
             except Exception:
