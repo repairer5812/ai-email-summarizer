@@ -4,7 +4,7 @@
 
 - 다운로드: https://github.com/repairer5812/ai-email-summarizer/releases/latest
 - 프로젝트: https://github.com/repairer5812/ai-email-summarizer
-- 현재 버전: `0.5.14`
+- 현재 버전: `0.5.17`
 
 ## 일반 사용자용 안내 (먼저 읽어주세요)
 
@@ -17,7 +17,7 @@
    - 설치 파일(추천): `webmail-summary-setup-windows-x64.exe`
    - 포터블(설치 없이 실행): `webmail-summary.exe`
 3) 파일을 실행합니다.
-4) 앱이 켜지면 브라우저 화면이 자동으로 열립니다.
+4) 앱이 켜지면 창이 자동으로 열립니다.
 
 ## 코드 서명 (SignPath Foundation)
 
