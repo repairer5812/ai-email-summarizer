@@ -17,6 +17,14 @@ All notable changes to this project are documented in this file.
 
 - 독립 창(UI) 실행 시 로컬 서버 준비가 느리거나 `active_url.txt`가 stale 상태일 때 예외로 종료되지 않도록 개선(재시도/대기 증가 + 오류 안내 메시지).
 
+## [0.5.20] - 2026-03-15
+
+### Fixed
+
+- Windows 설치본에서 업데이트/클라우드 호출 시 TLS CA 번들(certifi) 경로 오류로 HTTPS 요청이 실패하던 문제를 수정.
+  - 릴리즈 빌드에서 `certifi` CA 파일을 명시적으로 포함.
+  - 런타임에서 `REQUESTS_CA_BUNDLE`/`SSL_CERT_FILE`을 best-effort로 설정.
+
 ## [0.5.17] - 2026-03-15
 
 ### Added
