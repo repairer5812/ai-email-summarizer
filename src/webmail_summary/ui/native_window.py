@@ -215,7 +215,7 @@ def run_ui(*, port: int | None = None) -> None:
                     pass
 
             menu = pystray.Menu(
-                pystray.MenuItem("프로그램 열기", _open),
+                pystray.MenuItem("프로그램 열기", _open, default=True),
                 pystray.MenuItem("프로그램 종료", _exit),
             )
             icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
