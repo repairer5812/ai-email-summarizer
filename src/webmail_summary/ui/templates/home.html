@@ -51,6 +51,11 @@
     <div class="modal__body">
       <div style="margin-bottom:8px;">현재 {{ update.current }} / 최신 {{ update.latest }}</div>
       <div class="muted" style="font-size: 13px;">자동 업데이트를 실행하면 설치 후 앱이 자동 재시작됩니다.</div>
+
+      <div id="update-progress" style="display:none; margin-top: 14px;">
+        <div class="bar"><div class="bar__fill" id="update-bar" style="width:0%"></div></div>
+        <div class="muted" id="update-text" style="margin-top: 8px; font-size: 13px;">대기</div>
+      </div>
     </div>
     <div class="modal__actions">
       <button class="btn" type="button" onclick="startAutoUpdate(this)">지금 업데이트</button>
@@ -66,20 +71,75 @@
 <script>
 (() => {
   window.startAutoUpdate = async (btnEl) => {
+    const modal = document.getElementById('update-modal');
+    if (modal) {
+      modal.setAttribute('aria-hidden', 'false');
+      // Keep CSS-driven layout (modal uses flex centering).
+      modal.style.display = '';
+    }
     const btn = btnEl && btnEl.tagName ? btnEl : null;
     const oldText = btn ? btn.textContent : '';
     if (btn) {
       btn.disabled = true;
       btn.textContent = '업데이트 준비 중...';
     }
+    const box = document.getElementById('update-progress');
+    const bar = document.getElementById('update-bar');
+    const text = document.getElementById('update-text');
+    if (box) box.style.display = 'block';
+    if (bar) bar.style.width = '0%';
+    if (text) text.textContent = '업데이트 준비 중...';
+
+    let timer = null;
+    let preparedExit = false;
+    const poll = async () => {
+      try {
+        const res = await fetch('/updates/apply-status', { method: 'GET', cache: 'no-store' });
+        const j = await res.json();
+        if (!res.ok || !j.ok) return;
+        const p = Math.max(0, Math.min(100, Number(j.percent || 0)));
+        if (bar) bar.style.width = p + '%';
+        if (text) text.textContent = (j.message || j.stage || '...');
+        if (j.stage === 'installer_started') {
+          if (btn) btn.textContent = '설치 프로그램 실행됨...';
+
+          // In native window mode, ask the wrapper to close so installer can proceed.
+          if (!preparedExit) {
+            preparedExit = true;
+            try {
+              if (window.pywebview && window.pywebview.api && window.pywebview.api.prepare_update) {
+                await window.pywebview.api.prepare_update();
+              }
+            } catch (e) {}
+          }
+
+          if (timer) { clearInterval(timer); timer = null; }
+        }
+        if (j.stage === 'error') {
+          if (timer) { clearInterval(timer); timer = null; }
+          throw new Error(j.message || '업데이트 실패');
+        }
+      } catch (e) {
+        if (timer) { clearInterval(timer); timer = null; }
+        throw e;
+      }
+    };
+
     try {
-      const res = await fetch('/updates/apply-now', { method: 'POST' });
+      const res = await fetch('/updates/apply-start', { method: 'POST' });
       const j = await res.json();
       if (!res.ok || !j.ok) {
         throw new Error((j && j.message) ? j.message : '업데이트 시작 실패');
       }
-      if (btn) btn.textContent = '설치 시작됨...';
-      alert((j && j.message) ? j.message : '업데이트를 시작합니다.');
+      if (btn) btn.textContent = '다운로드 중...';
+      timer = setInterval(() => { poll().catch((e) => {
+        alert(String((e && e.message) ? e.message : e));
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = oldText || '업데이트 설치';
+        }
+      }); }, 400);
+      await poll();
     } catch (e) {
       alert(String((e && e.message) ? e.message : e));
       if (btn) {
@@ -93,7 +153,10 @@
   if (!modal) return;
   modal.setAttribute('aria-hidden', 'false');
   const closeBtn = document.getElementById('update-modal-close');
-  const close = () => { modal.setAttribute('aria-hidden', 'true'); modal.style.display = 'none'; };
+  const close = () => {
+    modal.setAttribute('aria-hidden', 'true');
+    modal.style.display = '';
+  };
   if (closeBtn) closeBtn.addEventListener('click', close);
   const backdrop = modal.querySelector('.modal__backdrop');
   if (backdrop) backdrop.addEventListener('click', close);
