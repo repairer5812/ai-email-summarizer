@@ -31,6 +31,20 @@ class LlamaCppServerConfig:
 _lock = threading.Lock()
 _proc: subprocess.Popen[str] | None = None
 _running_cfg: LlamaCppServerConfig | None = None
+_idle_timer: threading.Timer | None = None
+_IDLE_TIMEOUT_S = 120.0
+
+
+def _arm_idle_shutdown() -> None:
+    global _idle_timer
+    t = threading.Timer(_IDLE_TIMEOUT_S, stop_server)
+    t.daemon = True
+    with _lock:
+        old = _idle_timer
+        _idle_timer = t
+    if old is not None:
+        old.cancel()
+    t.start()
 
 
 def _base_url(cfg: LlamaCppServerConfig) -> str:
@@ -82,6 +96,7 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
     with _lock:
         if _proc is not None and _running_cfg == cfg and _proc.poll() is None:
             if _is_healthy(cfg):
+                _arm_idle_shutdown()
                 return
 
         # If a different config is requested, stop the old server.
@@ -138,10 +153,44 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
         if _proc is not None and _proc.poll() is not None:
             raise RuntimeError("llama-server exited during startup")
         if _is_healthy(cfg):
+            _arm_idle_shutdown()
             return
         time.sleep(0.25)
 
     raise RuntimeError("llama-server did not become ready")
+
+
+def stop_server() -> None:
+    global _proc, _running_cfg, _idle_timer
+
+    with _lock:
+        proc = _proc
+        _proc = None
+        _running_cfg = None
+        timer = _idle_timer
+        _idle_timer = None
+
+    if timer is not None:
+        timer.cancel()
+
+    if proc is None or proc.poll() is not None:
+        return
+
+    try:
+        proc.terminate()
+    except Exception:
+        return
+
+    deadline = time.time() + 3.0
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(0.05)
+
+    try:
+        proc.kill()
+    except Exception:
+        pass
 
 
 class LlamaCppServerProvider(LlmProvider):
