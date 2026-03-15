@@ -382,6 +382,34 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         "roles": s.user_roles,
                         "interests": s.user_interests,
                     }
+
+                    # While the LLM call runs, keep updating progress so the UI
+                    # doesn't look frozen on slow machines.
+                    llm_done = threading.Event()
+
+                    def _llm_heartbeat() -> None:
+                        start_ts = time.monotonic()
+                        while not llm_done.wait(5.0):
+                            elapsed = time.monotonic() - start_ts
+                            mm = int(elapsed // 60)
+                            ss = int(elapsed % 60)
+                            conn_hb = get_conn(db_path)
+                            try:
+                                repo.update_progress(
+                                    conn_hb,
+                                    job_id=job_id,
+                                    current=i - 0.99,
+                                    total=max(len(msgs), 1),
+                                    message=(
+                                        f"[{display_date}] 요약 중: {display_sub} ({i}/{len(msgs)}) "
+                                        f"(경과 {mm:02d}:{ss:02d})"
+                                    ),
+                                )
+                            finally:
+                                conn_hb.close()
+
+                    hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
+                    hb_t.start()
                     llm_res = summarize_email_long_aware(
                         provider,
                         subject=sanitize_text_for_llm(str(subject)),
@@ -389,6 +417,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         on_progress=update_sub_progress,
                         user_profile=user_profile,
                     )
+                    llm_done.set()
 
                     topics = llm_res.backlinks
 
