@@ -8,7 +8,6 @@ import threading
 import time
 import sqlite3
 from typing import Any, Protocol, cast
-
 import requests
 
 from webmail_summary.util.app_data import get_app_data_dir
@@ -54,10 +53,51 @@ def _wait_for_active_url(data_dir, *, timeout_s: float = 12.0) -> str:
     return last
 
 
-def _wait_for_http_ready(url: str, *, timeout_s: float = 12.0) -> None:
+def _wait_for_active_url_change(
+    data_dir,
+    *,
+    old_text: str,
+    old_mtime: float,
+    timeout_s: float = 30.0,
+) -> str:
+    url_path = data_dir / "active_url.txt"
+    deadline = time.time() + float(timeout_s)
+    last = ""
+    while time.time() < deadline:
+        try:
+            if url_path.is_file():
+                st = url_path.stat()
+                txt = url_path.read_text(encoding="utf-8", errors="replace").strip()
+                last = txt
+                if not (txt.startswith("http://") or txt.startswith("https://")):
+                    time.sleep(0.05)
+                    continue
+                if float(st.st_mtime) > float(old_mtime) + 1e-6:
+                    return txt
+                if txt and txt != old_text:
+                    return txt
+        except Exception:
+            pass
+        time.sleep(0.05)
+    return last
+
+
+def _wait_for_http_ready(
+    url: str,
+    *,
+    timeout_s: float = 60.0,
+    server_proc: subprocess.Popen | None = None,
+) -> None:
     deadline = time.time() + float(timeout_s)
     last_exc: Exception | None = None
     while time.time() < deadline:
+        if server_proc is not None:
+            try:
+                if server_proc.poll() is not None:
+                    raise RuntimeError("server process exited")
+            except Exception as e:
+                last_exc = e
+                break
         try:
             r = requests.get(url, timeout=(0.5, 1.5))
             if r.status_code >= 200 and r.status_code < 500:
@@ -67,6 +107,25 @@ def _wait_for_http_ready(url: str, *, timeout_s: float = 12.0) -> None:
         time.sleep(0.1)
     if last_exc:
         raise last_exc
+
+
+def _is_reachable(url: str) -> bool:
+    try:
+        r = requests.get(url, timeout=(0.25, 0.75))
+        return r.status_code >= 200 and r.status_code < 500
+    except Exception:
+        return False
+
+
+def _show_error(title: str, message: str) -> None:
+    if (platform.system() or "").strip().lower() != "windows":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, str(message), str(title), 0x10)
+    except Exception:
+        return
 
 
 def _load_close_behavior(data_dir) -> str:
@@ -126,19 +185,50 @@ def run_ui(*, port: int | None = None) -> None:
 
     server_proc: subprocess.Popen | None = None
     try:
-        # Ensure server is running (separate process) and avoid Chrome.
-        cmd = _server_command(port)
-        creationflags = (
-            int(getattr(subprocess, "DETACHED_PROCESS", 0))
-            | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-            | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        )
-        server_proc = subprocess.Popen(cmd, close_fds=True, creationflags=creationflags)
+        url_path = data_dir / "active_url.txt"
+        old_text = ""
+        old_mtime = 0.0
+        try:
+            if url_path.is_file():
+                old_text = url_path.read_text(
+                    encoding="utf-8", errors="replace"
+                ).strip()
+                old_mtime = float(url_path.stat().st_mtime)
+        except Exception:
+            old_text = ""
+            old_mtime = 0.0
 
-        url = _wait_for_active_url(data_dir)
+        # If a server is already running, reuse it.
+        if old_text.startswith("http://") or old_text.startswith("https://"):
+            if _is_reachable(old_text):
+                url = old_text
+            else:
+                url = ""
+        else:
+            url = ""
+
         if not url:
-            raise RuntimeError("Failed to obtain active_url.txt from server")
-        _wait_for_http_ready(url)
+            # Ensure server is running (separate process) and avoid Chrome.
+            cmd = _server_command(port)
+            creationflags = (
+                int(getattr(subprocess, "DETACHED_PROCESS", 0))
+                | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+                | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            )
+            server_proc = subprocess.Popen(
+                cmd, close_fds=True, creationflags=creationflags
+            )
+
+            # Wait for the server to write a fresh URL (avoid stale active_url.txt).
+            url = _wait_for_active_url_change(
+                data_dir, old_text=old_text, old_mtime=old_mtime
+            )
+            if not url:
+                url = _wait_for_active_url(data_dir, timeout_s=12.0)
+            if not url:
+                raise RuntimeError("Failed to obtain active_url.txt from server")
+
+            _wait_for_http_ready(url, timeout_s=90.0, server_proc=server_proc)
 
         import webview
 
@@ -292,6 +382,18 @@ def run_ui(*, port: int | None = None) -> None:
 
         # Prefer WebView2 when available; pywebview will fall back if missing.
         webview.start()
+    except Exception as e:
+        logs_hint = str(get_app_data_dir() / "logs" / "server.log")
+        rt_hint = str(get_app_data_dir() / "runtime")
+        _show_error(
+            "webmail-summary",
+            "UI start failed.\n\n"
+            f"Reason: {type(e).__name__}: {str(e)[:200]}\n\n"
+            f"Try: wait a few seconds and run again.\n"
+            f"Logs: {logs_hint}\n"
+            f"Runtime: {rt_hint}",
+        )
+        return
     finally:
         clear_ui_pid()
         ui_lock.release()
