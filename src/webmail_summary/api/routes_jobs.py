@@ -5,6 +5,7 @@ import time
 import sqlite3
 from datetime import datetime, timezone
 
+import keyring
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -20,7 +21,7 @@ from webmail_summary.llm.local_status import (
     get_local_model_complete_marker,
     get_local_model_path,
 )
-from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
+from webmail_summary.llm.provider import LlmNotReady
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs.tasks_resummarize import resummarize_day_task
 from webmail_summary.jobs.worker_probe import is_sync_worker_running, kill_sync_worker
@@ -83,33 +84,47 @@ def start_sync():
     finally:
         connp.close()
 
-    try:
-        get_llm_provider(s)
-    except LlmNotReady as e:
-        detail = {
-            "backend": (s.llm_backend or "").strip().lower(),
-        }
-        if detail["backend"] == "local":
-            ready = check_local_ready(model_id=s.local_model_id)
-            detail.update(
-                {
-                    "model_id": s.local_model_id,
-                    "engine_ok": bool(ready.engine_ok),
-                    "engine_path": ready.engine_path,
-                    "model_ok": bool(ready.model_ok),
-                    "expected_model_path": str(
-                        get_local_model_path(model_id=s.local_model_id)
-                    ),
-                    "expected_marker_path": str(
-                        get_local_model_complete_marker(model_id=s.local_model_id)
-                    ),
-                }
+    detail: dict[str, object] = {
+        "backend": (s.llm_backend or "").strip().lower(),
+    }
+    err_msg = ""
+    if detail["backend"] == "local":
+        ready = check_local_ready(model_id=s.local_model_id)
+        detail["model_id"] = s.local_model_id
+        detail["engine_ok"] = bool(ready.engine_ok)
+        detail["engine_path"] = ready.engine_path
+        detail["model_ok"] = bool(ready.model_ok)
+        detail["expected_model_path"] = str(
+            get_local_model_path(model_id=s.local_model_id)
+        )
+        detail["expected_marker_path"] = str(
+            get_local_model_complete_marker(model_id=s.local_model_id)
+        )
+        if not ready.engine_ok:
+            err_msg = "Local engine not installed"
+        elif not ready.model_ok:
+            err_msg = "Local model not installed"
+    elif detail["backend"] in {"openrouter", "cloud"}:
+        provider_name = (s.cloud_provider or "openai").strip().lower()
+        detail["provider"] = provider_name
+        api_key = ""
+        try:
+            api_key = (
+                keyring.get_password(f"webmail-summary::{provider_name}", "api_key")
+                or ""
             )
+        except Exception:
+            api_key = ""
+        if not api_key.strip():
+            err_msg = f"{provider_name.upper()} API key not set in setup"
+    else:
+        err_msg = f"Unsupported LLM backend: {detail['backend']}"
 
+    if err_msg:
         return JSONResponse(
             {
                 "error": "llm_not_ready",
-                "message": str(e),
+                "message": str(LlmNotReady(err_msg)),
                 "detail": detail,
             },
             status_code=409,
