@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.22] - 2026-03-16
+
+### Changed
+
+- 로컬 `fast` 요약 경로를 지연시간 우선으로 재튜닝해 1건 처리 시간이 길어지는 체감을 줄였습니다.
+  - fast tier의 llama-server 요청 타임아웃을 단축하고 생성 토큰 수를 추가로 축소.
+  - 장문 메일 요약 시 fast tier의 청크/합성 전략을 간소화해 호출 횟수를 줄임.
+
+### Fixed
+
+- 동기화 중 heartbeat 진행 갱신이 실제 진행값을 되돌려 보이는 경우가 있어, 기존 진행값보다 뒤로 가지 않도록 보정했습니다.
+- 트레이 `프로그램 종료` 시 `webmail-summary` 서버 프로세스가 종료되지 않던 문제를 수정했습니다.
+  - `/lifecycle/request-exit` 경로를 실제 종료 루트로 연결하고 종료 직전에 탭 종료 신호를 기록.
+  - 앱 강제 종료 경로에서 llama-server 정리 시 in-flight 조건과 무관하게 종료하도록 `force` 종료를 적용.
+
 ## [0.5.18] - 2026-03-15
 
 ### Fixed

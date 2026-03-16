@@ -889,7 +889,7 @@ def _schedule_app_shutdown(delay_s: float = 1.2) -> None:
         try:
             from webmail_summary.llm.llamacpp_server import stop_server
 
-            stop_server()
+            stop_server(force=True)
         except Exception:
             pass
         os._exit(0)
@@ -1831,6 +1831,10 @@ def lifecycle_tab_closed():
 @router.post("/lifecycle/request-exit")
 def lifecycle_request_exit():
     # Used by native window wrappers to request a clean shutdown.
+    try:
+        mark_ui_tab_closed()
+    except Exception:
+        pass
     _schedule_app_shutdown(delay_s=0.2)
     return {"ok": True}
 

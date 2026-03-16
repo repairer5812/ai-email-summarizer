@@ -294,6 +294,17 @@ def summarize_email_long_aware(
             max_tags=cfg.max_tags,
             max_backlinks=cfg.max_backlinks,
         )
+    elif tier == "fast":
+        # Fast tier should prioritize latency over completeness.
+        active_cfg = LongSummarizeConfig(
+            chunk_if_body_chars_over=3200,
+            chunk_chars=2200,
+            max_chunks=2,
+            max_bullets=cfg.max_bullets,
+            part_bullets=4,
+            max_tags=cfg.max_tags,
+            max_backlinks=cfg.max_backlinks,
+        )
 
     if len(body_s) <= active_cfg.chunk_if_body_chars_over:
         res = provider.summarize(subject=subject, body=body_s)

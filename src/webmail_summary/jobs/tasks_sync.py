@@ -395,10 +395,20 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                             ss = int(elapsed % 60)
                             conn_hb = get_conn(db_path)
                             try:
+                                cur_job = repo.get_job(conn_hb, job_id)
+                                cur_progress = i - 0.99
+                                if cur_job is not None:
+                                    try:
+                                        cur_progress = max(
+                                            float(cur_progress),
+                                            float(cur_job.progress_current or 0),
+                                        )
+                                    except Exception:
+                                        cur_progress = i - 0.99
                                 repo.update_progress(
                                     conn_hb,
                                     job_id=job_id,
-                                    current=i - 0.99,
+                                    current=cur_progress,
                                     total=max(len(msgs), 1),
                                     message=(
                                         f"[{display_date}] 요약 중: {display_sub} ({i}/{len(msgs)}) "

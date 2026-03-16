@@ -52,7 +52,7 @@ def _force_exit_process() -> None:
     except Exception:
         pass
     try:
-        stop_server()
+        stop_server(force=True)
     except Exception:
         pass
     os._exit(0)
@@ -109,7 +109,7 @@ def create_app() -> FastAPI:
         from webmail_summary.llm.llamacpp_server import stop_server
 
         get_runner().terminate_all()
-        stop_server()
+        stop_server(force=True)
 
     return app
 
