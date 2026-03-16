@@ -24,6 +24,7 @@ class LlamaCppServerConfig:
     port: int = 4891
     ctx_size: int = 4096
     max_tokens: int = 1280
+    request_timeout_s: float = 180.0
     temperature: float = 0.2
     alias: str = "local"
 
@@ -164,11 +165,11 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
     raise RuntimeError("llama-server did not become ready")
 
 
-def stop_server() -> None:
+def stop_server(*, force: bool = False) -> None:
     global _proc, _running_cfg, _idle_timer
 
     with _lock:
-        if _in_flight > 0:
+        if (not force) and _in_flight > 0:
             return
         proc = _proc
         _proc = None
@@ -262,7 +263,7 @@ class LlamaCppServerProvider(LlmProvider):
                 r = requests.post(
                     _base_url(self._cfg) + "/v1/chat/completions",
                     json=payload,
-                    timeout=600,
+                    timeout=(3.05, float(self._cfg.request_timeout_s)),
                 )
             finally:
                 with _lock:
