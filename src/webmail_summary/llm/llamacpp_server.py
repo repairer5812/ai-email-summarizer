@@ -23,8 +23,10 @@ class LlamaCppServerConfig:
     host: str = "127.0.0.1"
     port: int = 4891
     ctx_size: int = 4096
-    max_tokens: int = 1280
-    request_timeout_s: float = 180.0
+    max_tokens: int = 320
+    request_timeout_s: float = 70.0
+    max_attempts: int = 2
+    total_request_budget_s: float = 90.0
     temperature: float = 0.2
     alias: str = "local"
 
@@ -212,6 +214,7 @@ class LlamaCppServerProvider(LlmProvider):
 
     def summarize(self, *, subject: str, body: str) -> LlmResult:
         ensure_server(self._cfg)
+        started_at = time.monotonic()
 
         def _build_prompt(body_limit: int) -> str:
             b = str(body or "")[: max(0, int(body_limit))]
@@ -239,6 +242,10 @@ class LlamaCppServerProvider(LlmProvider):
 
         def _post(prompt: str) -> dict | None:
             global _in_flight
+            body_len = len(str(body or ""))
+            dynamic_max_tokens = int(self._cfg.max_tokens)
+            if body_len <= 2500:
+                dynamic_max_tokens = min(dynamic_max_tokens, 192)
             payload = {
                 "model": self._cfg.alias,
                 "messages": [
@@ -246,7 +253,7 @@ class LlamaCppServerProvider(LlmProvider):
                     {"role": "user", "content": prompt},
                 ],
                 "temperature": float(self._cfg.temperature),
-                "max_tokens": int(self._cfg.max_tokens),
+                "max_tokens": int(dynamic_max_tokens),
                 "stream": False,
             }
 
@@ -296,7 +303,13 @@ class LlamaCppServerProvider(LlmProvider):
 
         data = None
         body_limit = 6000
-        for _attempt in range(5):
+        max_attempts = max(1, int(self._cfg.max_attempts))
+        budget_s = max(10.0, float(self._cfg.total_request_budget_s))
+        for _attempt in range(max_attempts):
+            if (time.monotonic() - started_at) >= budget_s:
+                return LlmResult(
+                    summary="(LLM timeout)", tags=[], backlinks=[], personal=False
+                )
             prompt = _build_prompt(body_limit)
             try:
                 data = _post(prompt)

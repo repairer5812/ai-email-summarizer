@@ -286,9 +286,9 @@ def summarize_email_long_aware(
     elif tier == "standard" and cfg.chunk_chars <= 2400:
         # Local standard models usually handle medium context windows.
         active_cfg = LongSummarizeConfig(
-            chunk_if_body_chars_over=6000,
-            chunk_chars=5000,
-            max_chunks=cfg.max_chunks,
+            chunk_if_body_chars_over=8000,
+            chunk_chars=4200,
+            max_chunks=2,
             max_bullets=cfg.max_bullets,
             part_bullets=cfg.part_bullets,
             max_tags=cfg.max_tags,
@@ -297,8 +297,8 @@ def summarize_email_long_aware(
     elif tier == "fast":
         # Fast tier should prioritize latency over completeness.
         active_cfg = LongSummarizeConfig(
-            chunk_if_body_chars_over=3200,
-            chunk_chars=2200,
+            chunk_if_body_chars_over=5200,
+            chunk_chars=2600,
             max_chunks=2,
             max_bullets=cfg.max_bullets,
             part_bullets=4,
@@ -335,8 +335,9 @@ def summarize_email_long_aware(
     backlinks: list[str] = []
     personal = False
 
-    # Total units: chunks + synthesis
-    total_units = len(chunks) + 1
+    skip_synthesis = tier == "fast"
+    # Total units: chunks + (optional) synthesis
+    total_units = len(chunks) + (0 if skip_synthesis else 1)
 
     # Format user profile for prompt
     profile_info = ""
@@ -374,74 +375,75 @@ def summarize_email_long_aware(
 
     # Synthesize a compact, structured report from the part summaries.
     final_summary_text = ""
-    try:
-        if on_detail:
-            on_detail({"type": "stage", "stage": "synthesis"})
+    if not skip_synthesis:
+        try:
+            if on_detail:
+                on_detail({"type": "stage", "stage": "synthesis"})
 
-        synth_body = "\n\n---\n\n".join(detailed_parts)
+            synth_body = "\n\n---\n\n".join(detailed_parts)
 
-        # Branch prompts based on provider tier
-        tier = getattr(provider, "tier", "standard")
+            # Branch prompts based on provider tier
+            tier = getattr(provider, "tier", "standard")
 
-        custom_tailor = ""
-        if profile_info:
-            custom_tailor = f"\n중요: 아래 사용자 프로필에 맞춰 사용자가 특히 관심있어 할 내용을 강조하여 요약하세요.{profile_info}"
+            custom_tailor = ""
+            if profile_info:
+                custom_tailor = f"\n중요: 아래 사용자 프로필에 맞춰 사용자가 특히 관심있어 할 내용을 강조하여 요약하세요.{profile_info}"
 
-        if tier == "fast":
-            # Lite version for smaller local models (e.g., Gemma 3 4B)
-            system_role = "뉴스레터를 요약하는 어시스턴트"
-            guidelines = (
-                "1. 형식 고정: 반드시 '### 핵심 요약' 섹션과 '### 상세 요약' 섹션 2개로 작성하세요.\n"
-                "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
-                "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
-                "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
-                "5. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
+            if tier == "fast":
+                # Lite version for smaller local models (e.g., Gemma 3 4B)
+                system_role = "뉴스레터를 요약하는 어시스턴트"
+                guidelines = (
+                    "1. 형식 고정: 반드시 '### 핵심 요약' 섹션과 '### 상세 요약' 섹션 2개로 작성하세요.\n"
+                    "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
+                    "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
+                    "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
+                    "5. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
+                )
+            elif tier == "cloud":
+                # Executive version for high-capability models (Gemini, OpenAI etc)
+                system_role = "전문적인 전략 분석가 및 수석 에디터"
+                guidelines = (
+                    "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
+                    "2. 핵심 요약: 최상단에 전체를 관통하는 핵심 결론 3~5개를 불릿으로 작성하세요.\n"
+                    "3. 상세 요약: 본문 사실에 근거해 주제별 핵심 사실을 최대 7개 불릿으로 정리하세요(7개 미만 가능).\n"
+                    "4. 데이터 밀도: 수치, 인물, 결정 사항을 포함하되 과장/추측은 금지하세요.\n"
+                    "5. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
+                    "6. 반드시 한국어로만 격식 있는 문체로 작성하세요."
+                )
+            else:
+                # Standard version (EXAONE, Qwen 3B etc)
+                system_role = "뉴스레터를 요약하는 전문 에디터"
+                guidelines = (
+                    "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
+                    "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿으로 작성하세요.\n"
+                    "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
+                    "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
+                    "5. 반드시 한국어로 작성하고 모든 문장은 마침표(.)로 끝맺으세요."
+                )
+
+            synth = provider.summarize(
+                subject=subject,
+                body=(
+                    f"[System Role: {system_role}]\n"
+                    "아래 초안들을 바탕으로 최종 리포트를 작성하세요.\n\n"
+                    f"작성 지침:\n{guidelines}{custom_tailor}\n\n"
+                    "요약 초안 목록:\n" + synth_body
+                ),
             )
-        elif tier == "cloud":
-            # Executive version for high-capability models (Gemini, OpenAI etc)
-            system_role = "전문적인 전략 분석가 및 수석 에디터"
-            guidelines = (
-                "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
-                "2. 핵심 요약: 최상단에 전체를 관통하는 핵심 결론 3~5개를 불릿으로 작성하세요.\n"
-                "3. 상세 요약: 본문 사실에 근거해 주제별 핵심 사실을 최대 7개 불릿으로 정리하세요(7개 미만 가능).\n"
-                "4. 데이터 밀도: 수치, 인물, 결정 사항을 포함하되 과장/추측은 금지하세요.\n"
-                "5. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
-                "6. 반드시 한국어로만 격식 있는 문체로 작성하세요."
-            )
-        else:
-            # Standard version (EXAONE, Qwen 3B etc)
-            system_role = "뉴스레터를 요약하는 전문 에디터"
-            guidelines = (
-                "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
-                "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿으로 작성하세요.\n"
-                "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
-                "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
-                "5. 반드시 한국어로 작성하고 모든 문장은 마침표(.)로 끝맺으세요."
-            )
 
-        synth = provider.summarize(
-            subject=subject,
-            body=(
-                f"[System Role: {system_role}]\n"
-                "아래 초안들을 바탕으로 최종 리포트를 작성하세요.\n\n"
-                f"작성 지침:\n{guidelines}{custom_tailor}\n\n"
-                "요약 초안 목록:\n" + synth_body
-            ),
-        )
+            # Preserve original formatting (headers/bold) if it looks structured
+            raw_synth = _ensure_core_detail_sections(synth.summary.strip())
+            if _is_structured(raw_synth):
+                final_summary_text = raw_synth
+            else:
+                merged_bullets = _extract_bullets(raw_synth)
+                final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
 
-        # Preserve original formatting (headers/bold) if it looks structured
-        raw_synth = _ensure_core_detail_sections(synth.summary.strip())
-        if _is_structured(raw_synth):
-            final_summary_text = raw_synth
-        else:
-            merged_bullets = _extract_bullets(raw_synth)
-            final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
-
-        tags.extend(list(synth.tags or []))
-        backlinks.extend(list(synth.backlinks or []))
-        personal = personal or bool(synth.personal)
-    except Exception:
-        final_summary_text = ""
+            tags.extend(list(synth.tags or []))
+            backlinks.extend(list(synth.backlinks or []))
+            personal = personal or bool(synth.personal)
+        except Exception:
+            final_summary_text = ""
 
     if on_progress:
         try:
