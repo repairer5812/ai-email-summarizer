@@ -25,8 +25,8 @@ class LlamaCppServerConfig:
     ctx_size: int = 4096
     max_tokens: int = 192
     request_timeout_s: float = 40.0
-    max_attempts: int = 2
-    total_request_budget_s: float = 60.0
+    max_attempts: int = 1
+    total_request_budget_s: float = 45.0
     temperature: float = 0.2
     alias: str = "local"
 
@@ -351,19 +351,12 @@ class LlamaCppServerProvider(LlmProvider):
                 continue
 
             if isinstance(data, dict) and data.get("__retry") == "timeout":
-                try:
-                    stop_server(force=True)
-                    ensure_server(self._cfg)
-                except Exception:
-                    pass
-                if _attempt + 1 >= max_attempts:
-                    return LlmResult(
-                        summary="(LLM timeout)",
-                        tags=[],
-                        backlinks=[],
-                        personal=False,
-                    )
-                continue
+                return LlmResult(
+                    summary="(LLM timeout)",
+                    tags=[],
+                    backlinks=[],
+                    personal=False,
+                )
 
             break
 

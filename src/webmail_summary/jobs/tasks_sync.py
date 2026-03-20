@@ -39,6 +39,7 @@ from webmail_summary.index.mail_repo import (
 )
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
+from webmail_summary.llm.base import LlmResult
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
 from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
@@ -421,14 +422,74 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
 
                     hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
                     hb_t.start()
-                    llm_res = summarize_email_long_aware(
-                        provider,
-                        subject=sanitize_text_for_llm(str(subject)),
-                        body=sanitize_text_for_llm(body_text),
-                        on_progress=update_sub_progress,
-                        user_profile=user_profile,
+                    llm_result_box: dict[str, LlmResult] = {}
+                    llm_err_box: dict[str, Exception] = {}
+
+                    def _run_llm_call() -> None:
+                        try:
+                            llm_result_box["res"] = summarize_email_long_aware(
+                                provider,
+                                subject=sanitize_text_for_llm(str(subject)),
+                                body=sanitize_text_for_llm(body_text),
+                                on_progress=update_sub_progress,
+                                user_profile=user_profile,
+                            )
+                        except Exception as ex:
+                            llm_err_box["err"] = ex
+                        finally:
+                            llm_done.set()
+
+                    llm_t = threading.Thread(target=_run_llm_call, daemon=True)
+                    llm_t.start()
+
+                    llm_timeout_s = (
+                        120.0
+                        if getattr(provider, "tier", "standard") == "cloud"
+                        else 75.0
                     )
-                    llm_done.set()
+                    if not llm_done.wait(llm_timeout_s):
+                        conn_to = get_conn(db_path)
+                        try:
+                            repo.add_event(
+                                conn_to,
+                                job_id=job_id,
+                                level="warn",
+                                text=f"LLM timeout: {llm_timeout_s:.0f}s (item {i}/{len(msgs)})",
+                            )
+                        finally:
+                            conn_to.close()
+                        try:
+                            from webmail_summary.llm.llamacpp_server import stop_server
+
+                            stop_server(force=True)
+                        except Exception:
+                            pass
+                        llm_res = LlmResult(
+                            summary="(LLM timeout)",
+                            tags=[],
+                            backlinks=[],
+                            personal=False,
+                        )
+                    else:
+                        llm_res = llm_result_box.get("res")
+                        if llm_res is None:
+                            if "err" in llm_err_box:
+                                conn_er = get_conn(db_path)
+                                try:
+                                    repo.add_event(
+                                        conn_er,
+                                        job_id=job_id,
+                                        level="warn",
+                                        text=f"LLM exception: {str(llm_err_box['err'])[:180]}",
+                                    )
+                                finally:
+                                    conn_er.close()
+                            llm_res = LlmResult(
+                                summary="(LLM unavailable)",
+                                tags=[],
+                                backlinks=[],
+                                personal=False,
+                            )
 
                     topics = llm_res.backlinks
 
