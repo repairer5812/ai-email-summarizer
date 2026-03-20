@@ -887,10 +887,10 @@ function Stop-ImageIfRunning([string]$ImageName) {
   } catch {}
 }
 
-Write-UpdateStatus 'script_started' '업데이트 핸드오프 시작'
+Write-UpdateStatus 'script_started' 'update handoff started'
 
 if (!(Test-Path $InstallerPath)) {
-  Write-UpdateStatus 'error' '설치 파일이 존재하지 않습니다.' 1001
+  Write-UpdateStatus 'error' 'installer file not found' 1001
   exit 1001
 }
 
@@ -910,18 +910,18 @@ try {
   Stop-ImageIfRunning 'llama-server'
   Start-Sleep -Milliseconds 500
 
-  Write-UpdateStatus 'installer_launching' '설치 프로그램 실행 중'
+  Write-UpdateStatus 'installer_launching' 'installer launching'
   $args = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', '/FORCECLOSEAPPLICATIONS', '/LOGCLOSEAPPLICATIONS', ('/LOG=' + $InstallLogPath))
   $p = Start-Process -FilePath $InstallerPath -ArgumentList $args -Wait -PassThru -ErrorAction Stop
   $code = 0
   if ($null -ne $p) { $code = [int]$p.ExitCode }
 
   if ($code -ne 0) {
-    Write-UpdateStatus 'error' ('설치 프로그램 종료 코드: ' + $code) $code
+    Write-UpdateStatus 'error' ('installer exit code: ' + $code) $code
     exit $code
   }
 
-  Write-UpdateStatus 'installer_succeeded' '설치 프로그램 완료' $code
+  Write-UpdateStatus 'installer_succeeded' 'installer completed' $code
   if (Test-Path $RelaunchExe) {
     $argsList = @()
     if (![string]::IsNullOrWhiteSpace($RelaunchArgsJson)) {
@@ -939,16 +939,16 @@ try {
       Start-Process -FilePath $RelaunchExe -ArgumentList $argsList -ErrorAction SilentlyContinue | Out-Null
     }
   }
-  Write-UpdateStatus 'done' '업데이트 설치 완료' $code
+  Write-UpdateStatus 'done' 'update install completed' $code
   exit $code
 } catch {
   $msg = ''
-  try { $msg = $_.Exception.Message } catch { $msg = '알 수 없는 오류' }
-  Write-UpdateStatus 'error' ('업데이트 실행 실패: ' + $msg) 1999
+  try { $msg = $_.Exception.Message } catch { $msg = 'unknown error' }
+  Write-UpdateStatus 'error' ('update execution failed: ' + $msg) 1999
   exit 1999
 }
 """.strip()
-    path.write_text(script + "\n", encoding="utf-8")
+    path.write_text(script + "\n", encoding="utf-8-sig")
 
 
 def _resolve_powershell_exe() -> str:
@@ -1140,14 +1140,17 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
             "-StatusPath",
             str(status_path),
         ]
-        creationflags = (
-            int(getattr(subprocess, "DETACHED_PROCESS", 0))
-            | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-            | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        )
-        updater_proc = subprocess.Popen(
-            cmd, close_fds=True, creationflags=creationflags
-        )
+        creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        popen_kwargs: dict = {
+            "close_fds": True,
+            "creationflags": creationflags,
+        }
+        if os.name == "nt":
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            popen_kwargs["startupinfo"] = si
+        updater_proc = subprocess.Popen(cmd, **popen_kwargs)
         time.sleep(0.25)
         if updater_proc.poll() is not None:
             raise RuntimeError(

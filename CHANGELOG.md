@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.29] - 2026-03-20
+
+### Fixed
+
+- 자동 업데이트에서 "핸드오프 프로세스가 즉시 종료" 오류가 발생하던 문제를 수정했습니다.
+  - Windows PowerShell 런처의 생성 플래그를 조정해(`CREATE_NO_WINDOW` 중심) 프로세스가 즉시 종료되는 케이스를 제거.
+  - updater 스크립트를 `utf-8-sig`로 저장하고 상태 메시지를 ASCII로 통일해 인코딩 파싱 오류로 조기 종료되는 문제를 방지.
+
 ## [0.5.28] - 2026-03-20
 
 ### Fixed
