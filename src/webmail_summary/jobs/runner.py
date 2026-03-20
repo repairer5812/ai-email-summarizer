@@ -19,6 +19,21 @@ from webmail_summary.util.app_data import get_app_data_dir
 JobFunc = Callable[[str, threading.Event], None]
 
 
+def _run_quiet_command(cmd: list[str]) -> None:
+    run_kwargs: dict = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "check": False,
+    }
+    if sys.platform == "win32":
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = subprocess.SW_HIDE
+        run_kwargs["startupinfo"] = si
+        run_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    subprocess.run(cmd, **run_kwargs)
+
+
 def _sync_worker_command(job_id: str) -> list[str]:
     """Build sync worker command for source and frozen builds.
 
@@ -86,17 +101,8 @@ class JobRunner:
                 # Best-effort: on Windows, also kill the whole process tree.
                 if sys.platform == "win32":
                     try:
-                        subprocess.run(
-                            [
-                                "taskkill",
-                                "/PID",
-                                str(int(proc.pid)),
-                                "/T",
-                                "/F",
-                            ],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            check=False,
+                        _run_quiet_command(
+                            ["taskkill", "/PID", str(int(proc.pid)), "/T", "/F"]
                         )
                     except Exception:
                         pass
@@ -277,11 +283,8 @@ class JobRunner:
             for pid in pids:
                 try:
                     if sys.platform == "win32":
-                        subprocess.run(
-                            ["taskkill", "/PID", str(int(pid)), "/T", "/F"],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            check=False,
+                        _run_quiet_command(
+                            ["taskkill", "/PID", str(int(pid)), "/T", "/F"]
                         )
                     else:
                         os.kill(int(pid), signal.SIGTERM)
