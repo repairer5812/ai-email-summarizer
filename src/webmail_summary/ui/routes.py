@@ -516,6 +516,10 @@ def _pick_best_release_asset_url(assets: list[object]) -> str | None:
                 s += 45
             if "setup" in n or "installer" in n:
                 s += 30
+            if "webmail-summary.exe" in n:
+                s -= 40
+            if n.endswith(".exe") and ("setup" not in n and "installer" not in n):
+                s -= 20
         elif os_name == "darwin":
             if n.endswith(".dmg"):
                 s += 50
@@ -678,6 +682,25 @@ def _updates_dir() -> Path:
     return p
 
 
+def _updater_status_path() -> Path:
+    return _updates_dir() / "apply_update_status.json"
+
+
+def _read_updater_status(path: Path) -> dict[str, object] | None:
+    try:
+        if not path.is_file():
+            return None
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+        if not raw:
+            return None
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return None
+    return None
+
+
 def _download_to_path(url: str, dst: Path) -> None:
     def _noop(_cur: int, _total: int) -> None:
         return
@@ -821,15 +844,28 @@ param(
   [string]$InstallerPath,
   [string]$RelaunchExe,
   [string]$RelaunchArgsJson,
-  [string]$InstallLogPath
+  [string]$InstallLogPath,
+  [string]$StatusPath
 )
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 Start-Sleep -Seconds 2
+
+function Write-UpdateStatus([string]$Stage, [string]$Message, [int]$Code = 0) {
+  try {
+    $obj = [ordered]@{
+      stage = $Stage
+      message = $Message
+      code = $Code
+      updated_at = (Get-Date).ToString('o')
+    }
+    ($obj | ConvertTo-Json -Compress) | Set-Content -Path $StatusPath -Encoding UTF8 -Force
+  } catch {}
+}
 
 function Stop-PidIfRunning([int]$Pid) {
   if ($Pid -le 0) { return }
   try {
-    Wait-Process -Id $Pid -Timeout 30 -ErrorAction SilentlyContinue | Out-Null
+    Wait-Process -Id $Pid -Timeout 10 -ErrorAction SilentlyContinue | Out-Null
   } catch {}
   try {
     if (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
@@ -839,40 +875,62 @@ function Stop-PidIfRunning([int]$Pid) {
   } catch {}
 }
 
-Stop-PidIfRunning $UiPid
+Write-UpdateStatus 'script_started' '업데이트 핸드오프 시작'
+
+if (!(Test-Path $InstallerPath)) {
+  Write-UpdateStatus 'error' '설치 파일이 존재하지 않습니다.' 1001
+  exit 1001
+}
+
 try {
-  Wait-Process -Id $ParentPid -Timeout 180 -ErrorAction SilentlyContinue | Out-Null
-} catch {}
-try {
-  if (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {
-    Stop-Process -Id $ParentPid -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
+  Stop-PidIfRunning $UiPid
+  try {
+    Wait-Process -Id $ParentPid -Timeout 90 -ErrorAction SilentlyContinue | Out-Null
+  } catch {}
+  try {
+    if (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {
+      Stop-Process -Id $ParentPid -Force -ErrorAction SilentlyContinue
+      Start-Sleep -Seconds 1
+    }
+  } catch {}
+
+  Write-UpdateStatus 'installer_launching' '설치 프로그램 실행 중'
+  $args = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', ('/LOG=' + $InstallLogPath))
+  $p = Start-Process -FilePath $InstallerPath -ArgumentList $args -Wait -PassThru -ErrorAction Stop
+  $code = 0
+  if ($null -ne $p) { $code = [int]$p.ExitCode }
+
+  if ($code -ne 0) {
+    Write-UpdateStatus 'error' ('설치 프로그램 종료 코드: ' + $code) $code
+    exit $code
   }
-} catch {}
 
-$args = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/LOG=' + $InstallLogPath))
-$p = Start-Process -FilePath $InstallerPath -ArgumentList $args -Wait -PassThru
-$code = 0
-if ($null -ne $p) { $code = [int]$p.ExitCode }
-
-if ($code -eq 0 -and (Test-Path $RelaunchExe)) {
-  $argsList = @()
-  if (![string]::IsNullOrWhiteSpace($RelaunchArgsJson)) {
-    try {
-      $tmp = ConvertFrom-Json $RelaunchArgsJson
-      if ($tmp -is [System.Array]) { $argsList = $tmp }
-      elseif ($null -ne $tmp) { $argsList = @($tmp) }
-    } catch {
-      $argsList = @($RelaunchArgsJson)
+  Write-UpdateStatus 'installer_succeeded' '설치 프로그램 완료' $code
+  if (Test-Path $RelaunchExe) {
+    $argsList = @()
+    if (![string]::IsNullOrWhiteSpace($RelaunchArgsJson)) {
+      try {
+        $tmp = ConvertFrom-Json $RelaunchArgsJson
+        if ($tmp -is [System.Array]) { $argsList = $tmp }
+        elseif ($null -ne $tmp) { $argsList = @($tmp) }
+      } catch {
+        $argsList = @($RelaunchArgsJson)
+      }
+    }
+    if ($argsList.Count -eq 0) {
+      Start-Process -FilePath $RelaunchExe -ErrorAction SilentlyContinue | Out-Null
+    } else {
+      Start-Process -FilePath $RelaunchExe -ArgumentList $argsList -ErrorAction SilentlyContinue | Out-Null
     }
   }
-  if ($argsList.Count -eq 0) {
-    Start-Process -FilePath $RelaunchExe | Out-Null
-  } else {
-    Start-Process -FilePath $RelaunchExe -ArgumentList $argsList | Out-Null
-  }
+  Write-UpdateStatus 'done' '업데이트 설치 완료' $code
+  exit $code
+} catch {
+  $msg = ''
+  try { $msg = $_.Exception.Message } catch { $msg = '알 수 없는 오류' }
+  Write-UpdateStatus 'error' ('업데이트 실행 실패: ' + $msg) 1999
+  exit 1999
 }
-exit $code
 """.strip()
     path.write_text(script + "\n", encoding="utf-8")
 
@@ -1034,6 +1092,11 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
         script_path = updates_dir / "apply_update.ps1"
         _write_updater_script(script_path)
         install_log_path = updates_dir / "installer.log"
+        status_path = _updater_status_path()
+        try:
+            status_path.unlink(missing_ok=True)
+        except Exception:
+            pass
         relaunch_exe, relaunch_args_json = _relaunch_command()
         ui_pid = int(read_ui_pid() or 0)
 
@@ -1058,6 +1121,8 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
             str(relaunch_args_json),
             "-InstallLogPath",
             str(install_log_path),
+            "-StatusPath",
+            str(status_path),
         ]
         creationflags = (
             int(getattr(subprocess, "DETACHED_PROCESS", 0))
@@ -1073,6 +1138,27 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
                 "업데이트 핸드오프 프로세스가 즉시 종료되었습니다. "
                 "다시 시도하거나 수동 업데이트를 사용하세요."
             )
+
+        status_deadline = time.monotonic() + 8.0
+        while time.monotonic() < status_deadline:
+            st_data = _read_updater_status(status_path)
+            stage_name = str((st_data or {}).get("stage") or "")
+            if stage_name == "error":
+                msg = str((st_data or {}).get("message") or "업데이트 실행 실패")
+                raise RuntimeError(msg)
+            if stage_name in {
+                "script_started",
+                "installer_launching",
+                "installer_succeeded",
+                "done",
+            }:
+                break
+            if updater_proc.poll() is not None:
+                raise RuntimeError("업데이트 핸드오프가 중간에 종료되었습니다.")
+            time.sleep(0.2)
+
+        if not _read_updater_status(status_path):
+            raise RuntimeError("업데이트 핸드오프 상태를 확인하지 못했습니다.")
 
         _set_update_apply_state(
             conn,
