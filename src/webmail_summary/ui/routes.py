@@ -877,6 +877,26 @@ exit $code
     path.write_text(script + "\n", encoding="utf-8")
 
 
+def _resolve_powershell_exe() -> str:
+    windir = str(os.environ.get("WINDIR") or "").strip()
+    candidates: list[Path] = []
+    if windir:
+        w = Path(windir)
+        candidates.append(
+            w / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+        candidates.append(
+            w / "Sysnative" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        )
+    for c in candidates:
+        try:
+            if c.is_file():
+                return str(c)
+        except Exception:
+            continue
+    return "powershell.exe"
+
+
 def _schedule_app_shutdown(delay_s: float = 1.2) -> None:
     def _worker() -> None:
         time.sleep(float(delay_s))
@@ -935,6 +955,7 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
     from webmail_summary.index.db import get_conn
 
     conn = get_conn(db_path)
+    should_shutdown = False
     try:
         settings = load_settings(conn)
         _check_github_release(conn, settings, force=True)
@@ -1017,7 +1038,7 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
         ui_pid = int(read_ui_pid() or 0)
 
         cmd = [
-            "powershell",
+            _resolve_powershell_exe(),
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
@@ -1043,7 +1064,15 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
             | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
             | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
         )
-        subprocess.Popen(cmd, close_fds=True, creationflags=creationflags)
+        updater_proc = subprocess.Popen(
+            cmd, close_fds=True, creationflags=creationflags
+        )
+        time.sleep(0.25)
+        if updater_proc.poll() is not None:
+            raise RuntimeError(
+                "업데이트 핸드오프 프로세스가 즉시 종료되었습니다. "
+                "다시 시도하거나 수동 업데이트를 사용하세요."
+            )
 
         _set_update_apply_state(
             conn,
@@ -1051,6 +1080,7 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
             percent=100,
             message="설치 프로그램을 실행했습니다. 잠시 후 앱이 종료되고 자동으로 다시 실행됩니다.",
         )
+        should_shutdown = True
     except Exception as e:
         try:
             _set_update_apply_state(
@@ -1064,7 +1094,8 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
     finally:
         conn.close()
 
-    _schedule_app_shutdown()
+    if should_shutdown:
+        _schedule_app_shutdown()
 
 
 @router.get("/updates/apply-status")
