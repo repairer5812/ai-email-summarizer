@@ -1,5 +1,52 @@
 from __future__ import annotations
 
+import re
+
+
+_REPLY_SPLIT_PATTERNS = [
+    re.compile(r"^\s*[-_]{2,}\s*Original Message\s*[-_]{2,}\s*$", re.IGNORECASE),
+    re.compile(r"^\s*On\s+.+\s+wrote:\s*$", re.IGNORECASE),
+    re.compile(r"^\s*(From|Sent|To|Subject):\s*.+$", re.IGNORECASE),
+    re.compile(r"^\s*(보낸사람|보낸 사람|보낸날짜|수신|참조|제목)\s*:\s*.+$"),
+]
+
+
+def html_to_visible_text(html: str) -> str:
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(str(html or ""), "html.parser")
+    for tag in soup(["script", "style", "noscript", "head", "title", "meta"]):
+        tag.decompose()
+    for node in soup.select(
+        "blockquote, .gmail_quote, .protonmail_quote, .yahoo_quoted, "
+        "[style*='display:none'], [style*='display: none'], "
+        "[style*='visibility:hidden'], [style*='visibility: hidden']"
+    ):
+        node.decompose()
+    return soup.get_text("\n")
+
+
+def prepare_body_for_llm(body: str, *, max_chars: int = 7000) -> str:
+    s = str(body or "")
+    if not s:
+        return s
+
+    lines = s.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    clipped: list[str] = []
+    for line in lines:
+        if any(p.match(line) for p in _REPLY_SPLIT_PATTERNS):
+            break
+        clipped.append(line)
+
+    s = "\n".join(clipped).strip()
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    s = re.sub(r"[ \t]{2,}", " ", s)
+
+    lim = max(500, int(max_chars))
+    if len(s) > lim:
+        s = s[:lim]
+    return s
+
 
 def sanitize_text_for_llm(text: str) -> str:
     """Make text safe for LLM backends (llama.cpp/OpenRouter).

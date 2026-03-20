@@ -22,7 +22,11 @@ from webmail_summary.jobs import repo
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
 from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
-from webmail_summary.util.text_sanitize import sanitize_text_for_llm
+from webmail_summary.util.text_sanitize import (
+    html_to_visible_text,
+    prepare_body_for_llm,
+    sanitize_text_for_llm,
+)
 
 
 def _parse_date_key(date_key: str) -> dt.date:
@@ -234,10 +238,10 @@ def resummarize_day_task(
             if p_txt and p_txt.exists():
                 body_text = p_txt.read_text(encoding="utf-8", errors="replace")
             elif p_html and p_html.exists():
-                from bs4 import BeautifulSoup
-
                 raw_html = p_html.read_text(encoding="utf-8", errors="replace")
-                body_text = BeautifulSoup(raw_html, "html.parser").get_text("\n")
+                body_text = html_to_visible_text(raw_html)
+
+            body_text = prepare_body_for_llm(body_text)
 
             connw = get_conn(db_path)
             try:

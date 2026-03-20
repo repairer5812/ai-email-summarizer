@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.24] - 2026-03-20
+
+### Fixed
+
+- 짧은 결재/알림 메일이 요약 단계에서 장시간 머무르는 문제를 완화했습니다.
+  - HTML fallback 요약 입력에서 숨김 영역/인용 블록(`blockquote`, `gmail_quote` 등)을 제거해 본문 길이 과대 추출을 줄임.
+  - 회신 체인 헤더(영문/국문) 이후 내용을 잘라내고 공백 정규화 + 길이 상한을 적용해 불필요한 LLM 호출을 줄임.
+- 앱 종료 시 간헐적으로 검은 CMD 창이 잠깐 뜨는 문제를 줄였습니다.
+  - Windows에서 `taskkill`/`schtasks` 호출을 `CREATE_NO_WINDOW` + 숨김 startup info로 실행하도록 통일.
+
 ## [0.5.23] - 2026-03-20
 
 ### Fixed
