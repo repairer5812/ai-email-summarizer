@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.26] - 2026-03-20
+
+### Fixed
+
+- 자동 업데이트 설치 중 "모든 응용 프로그램을 자동으로 닫지 못했습니다" 팝업이 뜨며 멈추는 문제를 완화했습니다.
+  - 업데이터 스크립트에서 `webmail-summary`/`llama-server` 프로세스를 설치 직전 선제 종료.
+  - Inno 실행 인자에 `/FORCECLOSEAPPLICATIONS`, `/LOGCLOSEAPPLICATIONS`를 추가해 잠금 파일 종료를 강화.
+  - 설치기 기본 설정(`.iss`)에 `CloseApplications=yes`, `ForceCloseApplications=yes`, `RestartApplications=no`를 반영.
+- 단일 메일 요약이 장시간(수분) 머무르는 문제를 완화했습니다.
+  - local llama-server 표준/빠름 tier의 `max_tokens` 및 요청 timeout을 축소해 장기 대기를 제한.
+  - llama-server provider에 전체 요청 예산(`total_request_budget_s`)과 재시도 횟수 상한을 추가.
+  - fast tier 장문 요약에서 합성(synthesis) 단계를 생략하고, standard/fast chunk 임계값을 지연시간 우선으로 재조정.
+
 ## [0.5.25] - 2026-03-20
 
 ### Fixed

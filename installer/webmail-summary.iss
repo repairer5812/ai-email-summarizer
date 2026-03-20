@@ -24,6 +24,9 @@ Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
 WizardStyle=modern
+CloseApplications=yes
+ForceCloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"

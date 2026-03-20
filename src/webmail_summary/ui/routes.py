@@ -875,6 +875,18 @@ function Stop-PidIfRunning([int]$Pid) {
   } catch {}
 }
 
+function Stop-ImageIfRunning([string]$ImageName) {
+  if ([string]::IsNullOrWhiteSpace($ImageName)) { return }
+  try {
+    $procs = Get-Process -Name $ImageName -ErrorAction SilentlyContinue
+    foreach ($pp in $procs) {
+      try {
+        Stop-Process -Id $pp.Id -Force -ErrorAction SilentlyContinue
+      } catch {}
+    }
+  } catch {}
+}
+
 Write-UpdateStatus 'script_started' '업데이트 핸드오프 시작'
 
 if (!(Test-Path $InstallerPath)) {
@@ -894,8 +906,12 @@ try {
     }
   } catch {}
 
+  Stop-ImageIfRunning 'webmail-summary'
+  Stop-ImageIfRunning 'llama-server'
+  Start-Sleep -Milliseconds 500
+
   Write-UpdateStatus 'installer_launching' '설치 프로그램 실행 중'
-  $args = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', ('/LOG=' + $InstallLogPath))
+  $args = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', '/FORCECLOSEAPPLICATIONS', '/LOGCLOSEAPPLICATIONS', ('/LOG=' + $InstallLogPath))
   $p = Start-Process -FilePath $InstallerPath -ArgumentList $args -Wait -PassThru -ErrorAction Stop
   $code = 0
   if ($null -ne $p) { $code = [int]$p.ExitCode }
