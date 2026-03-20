@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.25] - 2026-03-20
+
+### Fixed
+
+- 자동 업데이트에서 설치가 실제로 시작되지 않았는데도 앱이 종료되어, 재실행 후 다시 업데이트를 요구하던 문제를 보강했습니다.
+  - 업데이트 핸드오프 스크립트에 상태 파일(`apply_update_status.json`) 기록을 추가하고, 서버가 해당 상태를 확인한 뒤에만 종료하도록 변경.
+  - 설치 파일 존재 확인/실행 예외를 명시적으로 실패 처리해, 조기 종료를 성공으로 오인하지 않도록 수정.
+  - Windows 릴리즈 자산 선택에서 `webmail-summary.exe`(포터블) 우선 선택 위험을 낮추고 설치형(`setup`/`installer`) 자산 가중치를 강화.
+  - Inno 설치 실행 인자에 `/CLOSEAPPLICATIONS`를 추가해 실행 중 프로세스로 인한 무효 설치 가능성을 완화.
+
 ## [0.5.24] - 2026-03-20
 
 ### Fixed
