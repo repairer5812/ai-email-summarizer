@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.27] - 2026-03-20
+
+### Fixed
+
+- `v0.5.26` 릴리즈 워크플로의 `Build installer` 단계 실패를 수정했습니다.
+  - Inno `[Setup]` 지시어를 `CloseApplications=force`로 교정하고, 유효하지 않은 지시어(`ForceCloseApplications`)를 제거.
+  - 자동 업데이트 런타임 인자의 `/FORCECLOSEAPPLICATIONS`는 유지하여 설치 중 프로세스 잠금 완화 동작은 계속 적용.
+
 ## [0.5.26] - 2026-03-20
 
 ### Fixed

@@ -24,8 +24,7 @@ Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
 WizardStyle=modern
-CloseApplications=yes
-ForceCloseApplications=yes
+CloseApplications=force
 RestartApplications=no
 
 [Languages]
