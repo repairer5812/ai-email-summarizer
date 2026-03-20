@@ -45,15 +45,21 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
             try:
                 max_tokens = 192
                 request_timeout_s = 40.0
+                max_attempts = 1
+                total_budget_s = 45.0
                 if tier == "fast":
                     max_tokens = 96
-                    request_timeout_s = 25.0
+                    request_timeout_s = 20.0
+                    max_attempts = 1
+                    total_budget_s = 25.0
                 return LlamaCppServerProvider(
                     LlamaCppServerConfig(
                         server_exe=server_exe,
                         model_path=model_path,
                         max_tokens=int(max_tokens),
                         request_timeout_s=float(request_timeout_s),
+                        max_attempts=int(max_attempts),
+                        total_request_budget_s=float(total_budget_s),
                     ),
                     tier=tier,
                 )

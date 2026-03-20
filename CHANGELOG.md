@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.30] - 2026-03-20
+
+### Fixed
+
+- 요약 단계 단건 지연/정체에 대해 워커 레벨 안전장치를 추가했습니다.
+  - `sync`/`resummarize` 작업에서 LLM 호출을 별도 스레드로 실행하고 hard deadline(기본 75s, cloud 120s)을 초과하면 timeout 요약으로 즉시 다음 메일로 진행.
+  - timeout/예외 발생 시 이벤트 로그를 남기고 local llama-server를 강제 정리해 같은 잡에서 반복 정체가 누적되지 않도록 보강.
+- local llama-server 지연 상한을 추가로 단축했습니다.
+  - fast/standard tier 요청 timeout/토큰 상한을 재조정하고 재시도 횟수 및 총 예산을 축소해 장시간 대기를 줄임.
+
 ## [0.5.29] - 2026-03-20
 
 ### Fixed
