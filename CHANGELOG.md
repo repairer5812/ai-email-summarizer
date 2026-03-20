@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.28] - 2026-03-20
+
+### Fixed
+
+- 단일 메일 요약이 장시간 멈춘 것처럼 보이는 현상을 추가 완화했습니다.
+  - local llama-server 경로의 생성 토큰 상한과 요청 timeout을 더 낮춰 장시간 대기 구간을 단축.
+  - llama HTTP 호출에 하드 대기 상한을 추가하고, timeout 발생 시 서버 재기동 후 제한 횟수 내에서만 재시도하도록 보강.
+  - 전체 요청 예산(`total_request_budget_s`)을 축소해 1건 요약이 수분 단위로 붙잡히는 상황을 줄임.
+
 ## [0.5.27] - 2026-03-20
 
 ### Fixed

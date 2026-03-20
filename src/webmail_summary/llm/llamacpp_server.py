@@ -23,10 +23,10 @@ class LlamaCppServerConfig:
     host: str = "127.0.0.1"
     port: int = 4891
     ctx_size: int = 4096
-    max_tokens: int = 320
-    request_timeout_s: float = 70.0
+    max_tokens: int = 192
+    request_timeout_s: float = 40.0
     max_attempts: int = 2
-    total_request_budget_s: float = 90.0
+    total_request_budget_s: float = 60.0
     temperature: float = 0.2
     alias: str = "local"
 
@@ -245,7 +245,7 @@ class LlamaCppServerProvider(LlmProvider):
             body_len = len(str(body or ""))
             dynamic_max_tokens = int(self._cfg.max_tokens)
             if body_len <= 2500:
-                dynamic_max_tokens = min(dynamic_max_tokens, 192)
+                dynamic_max_tokens = min(dynamic_max_tokens, 96)
             payload = {
                 "model": self._cfg.alias,
                 "messages": [
@@ -267,11 +267,31 @@ class LlamaCppServerProvider(LlmProvider):
                     pass
 
             try:
-                r = requests.post(
-                    _base_url(self._cfg) + "/v1/chat/completions",
-                    json=payload,
-                    timeout=(3.05, float(self._cfg.request_timeout_s)),
-                )
+                done = threading.Event()
+                req_box: dict[str, requests.Response] = {}
+                err_box: dict[str, Exception] = {}
+
+                def _do_request() -> None:
+                    try:
+                        req_box["resp"] = requests.post(
+                            _base_url(self._cfg) + "/v1/chat/completions",
+                            json=payload,
+                            timeout=(3.05, float(self._cfg.request_timeout_s)),
+                        )
+                    except Exception as ex:
+                        err_box["err"] = ex
+                    finally:
+                        done.set()
+
+                threading.Thread(target=_do_request, daemon=True).start()
+                hard_wait_s = float(self._cfg.request_timeout_s) + 2.0
+                if not done.wait(max(5.0, hard_wait_s)):
+                    return {"__retry": "timeout"}
+                if "err" in err_box:
+                    raise err_box["err"]
+                r = req_box.get("resp")
+                if r is None:
+                    return None
             finally:
                 with _lock:
                     _in_flight = max(0, int(_in_flight) - 1)
@@ -328,6 +348,21 @@ class LlamaCppServerProvider(LlmProvider):
                         personal=False,
                     )
                 body_limit = int(body_limit * 0.65)
+                continue
+
+            if isinstance(data, dict) and data.get("__retry") == "timeout":
+                try:
+                    stop_server(force=True)
+                    ensure_server(self._cfg)
+                except Exception:
+                    pass
+                if _attempt + 1 >= max_attempts:
+                    return LlmResult(
+                        summary="(LLM timeout)",
+                        tags=[],
+                        backlinks=[],
+                        personal=False,
+                    )
                 continue
 
             break
