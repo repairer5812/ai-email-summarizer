@@ -230,6 +230,16 @@ def cancel_job(job_id: str):
 def start_local_install(payload: dict):
     model_id = str((payload or {}).get("model_id") or "low").strip().lower()
     model_id = get_local_model(model_id).id
+
+    # If already installed, do not enqueue a job.
+    try:
+        from webmail_summary.llm.local_status import check_local_ready
+
+        ready = check_local_ready(model_id=model_id)
+        if bool(ready.engine_ok) and bool(ready.model_ok):
+            return {"ok": True, "already_installed": True, "model_id": model_id}
+    except Exception:
+        pass
     try:
         conn0 = get_conn(_db_path())
         try:
