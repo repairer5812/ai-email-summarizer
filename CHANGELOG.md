@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.33] - 2026-03-21
+
+### Fixed
+
+- 자동 업데이트 후 앱이 이전 버전으로 다시 실행되는 경로를 보강했습니다.
+  - 재실행 대상 실행파일을 설치 경로(`%LOCALAPPDATA%\\Programs\\webmail-summary\\webmail-summary.exe`) 우선으로 선택하도록 수정.
+  - 자동 적용 시 설치형 `setup` 자산이 아닌 포터블 `webmail-summary.exe`는 차단해 잘못된 업데이트 실행을 방지.
+  - 설치 완료 후 대상 실행파일의 버전을 확인해 기대 버전과 불일치하면 오류로 처리하도록 검증을 추가.
+
+### Changed
+
+- 로컬 모델 기본 옵션을 재배치했습니다.
+  - `빠름(fast)`을 EXAONE 3.5 2.4B로 변경.
+  - `표준(standard)`을 Gemma 3 4B로 변경.
+  - 기본 추천 모델은 `fast`를 유지하므로 신규 사용자 기본은 EXAONE 빠름 모드입니다.
+
 ## [0.5.32] - 2026-03-21
 
 ### Fixed
