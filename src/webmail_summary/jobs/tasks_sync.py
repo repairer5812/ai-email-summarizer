@@ -458,12 +458,43 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                             )
                         finally:
                             conn_to.close()
-                        try:
-                            from webmail_summary.llm.llamacpp_server import stop_server
 
-                            stop_server(force=True)
+                        # Stop per-item heartbeat immediately so stale 1/N updates
+                        # do not overwrite later progress.
+                        llm_done.set()
+                        try:
+                            hb_t.join(timeout=1.0)
                         except Exception:
                             pass
+
+                        try:
+                            stop_done = threading.Event()
+
+                            def _stop_local_server() -> None:
+                                try:
+                                    from webmail_summary.llm.llamacpp_server import (
+                                        stop_server,
+                                    )
+
+                                    stop_server(force=True)
+                                finally:
+                                    stop_done.set()
+
+                            threading.Thread(
+                                target=_stop_local_server,
+                                daemon=True,
+                            ).start()
+                            stop_done.wait(2.5)
+                        except Exception:
+                            pass
+
+                        # Best-effort only; do not block the sync loop on a hung
+                        # provider request thread after timeout.
+                        try:
+                            llm_t.join(timeout=0.2)
+                        except Exception:
+                            pass
+
                         llm_res = LlmResult(
                             summary="(LLM timeout)",
                             tags=[],
@@ -490,6 +521,12 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                                 backlinks=[],
                                 personal=False,
                             )
+
+                        llm_done.set()
+                        try:
+                            hb_t.join(timeout=1.0)
+                        except Exception:
+                            pass
 
                     topics = llm_res.backlinks
 

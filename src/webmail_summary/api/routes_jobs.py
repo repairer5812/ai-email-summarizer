@@ -34,6 +34,35 @@ def _db_path():
     return get_app_data_dir() / "db.sqlite3"
 
 
+def _job_age_seconds(updated_at: str) -> float:
+    try:
+        ts = datetime.fromisoformat(str(updated_at))
+        now = datetime.now(timezone.utc)
+        return max(0.0, (now - ts).total_seconds())
+    except Exception:
+        return 0.0
+
+
+def _is_stale_active_sync_job(job: repo.JobRow) -> tuple[bool, str]:
+    age_s = _job_age_seconds(job.updated_at)
+    status = str(job.status or "").strip().lower()
+    worker_alive = False
+    try:
+        worker_alive = is_sync_worker_running(job_id=job.id)
+    except Exception:
+        worker_alive = False
+
+    if status == "queued" and age_s > 120:
+        return True, "stale queued job (no transition for 120s)"
+    if status == "cancel_requested" and not worker_alive and age_s > 20:
+        return True, "stale cancel_requested job (worker not running)"
+    if status == "running" and not worker_alive and age_s > 45:
+        return True, "stale running job (worker not running)"
+    if age_s > 60 * 30:
+        return True, "stale job (no updates for 30m)"
+    return False, ""
+
+
 @router.get("/local/status")
 def local_status(model_id: str = ""):
     if not model_id:
@@ -58,21 +87,18 @@ def start_sync():
     try:
         active = repo.find_active_job(conn0, kind="sync")
         if active is not None:
-            # If a job has been "active" but not updated for a long time,
-            # treat it as stale so users can recover.
-            try:
-                ts = datetime.fromisoformat(active.updated_at)
-                now = datetime.now(timezone.utc)
-                age_s = (now - ts).total_seconds()
-            except Exception:
-                age_s = 0
-            if age_s <= 60 * 30:
+            stale, stale_reason = _is_stale_active_sync_job(active)
+            if not stale:
                 return {"job_id": active.id, "already_running": True}
+            try:
+                kill_sync_worker(job_id=str(active.id))
+            except Exception:
+                pass
             repo.set_job_status(
                 conn0,
                 job_id=active.id,
                 status="failed",
-                message="stale job (no updates for 30m)",
+                message=stale_reason,
             )
     finally:
         conn0.close()
@@ -292,6 +318,34 @@ def get_job(job_id: str):
     conn = get_conn(_db_path())
     try:
         job = repo.get_job(conn, job_id)
+        if (
+            job is not None
+            and job.kind == "sync"
+            and job.status
+            in {
+                "queued",
+                "running",
+                "cancel_requested",
+            }
+        ):
+            stale, stale_reason = _is_stale_active_sync_job(job)
+            if stale:
+                final_status = (
+                    "cancelled" if job.status == "cancel_requested" else "failed"
+                )
+                repo.add_event(
+                    conn,
+                    job_id=job.id,
+                    level="warn",
+                    text=stale_reason,
+                )
+                repo.set_job_status(
+                    conn,
+                    job_id=job.id,
+                    status=final_status,
+                    message=stale_reason,
+                )
+                job = repo.get_job(conn, job_id)
     finally:
         conn.close()
     if job is None:

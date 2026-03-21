@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Callable
@@ -176,7 +177,73 @@ class JobRunner:
                     )
                     with self._lock:
                         self._active_procs[job.id] = proc
-                    rc = proc.wait()
+                    started_at = time.monotonic()
+                    status_after: str = ""
+                    while True:
+                        try:
+                            rc = proc.wait(timeout=1.0)
+                            break
+                        except subprocess.TimeoutExpired:
+                            # If DB already reached a terminal state but worker process
+                            # is still alive, terminate it so queue processing can continue.
+                            conn_status = get_conn(db_path)
+                            try:
+                                cur_status = repo.get_job(conn_status, job.id)
+                                status_after = (
+                                    str(cur_status.status or "") if cur_status else ""
+                                )
+                            finally:
+                                conn_status.close()
+
+                            terminal = status_after in {
+                                "succeeded",
+                                "failed",
+                                "cancelled",
+                            }
+                            if terminal and (time.monotonic() - started_at) > 20.0:
+                                conn_warn = get_conn(db_path)
+                                try:
+                                    repo.add_event(
+                                        conn_warn,
+                                        job_id=job.id,
+                                        level="warn",
+                                        text=(
+                                            "sync worker still alive after terminal "
+                                            f"status={status_after}; forcing stop"
+                                        ),
+                                    )
+                                finally:
+                                    conn_warn.close()
+
+                                try:
+                                    proc.terminate()
+                                except Exception:
+                                    pass
+                                if sys.platform == "win32":
+                                    try:
+                                        _run_quiet_command(
+                                            [
+                                                "taskkill",
+                                                "/PID",
+                                                str(int(proc.pid)),
+                                                "/T",
+                                                "/F",
+                                            ]
+                                        )
+                                    except Exception:
+                                        pass
+                                try:
+                                    rc = proc.wait(timeout=4.0)
+                                except subprocess.TimeoutExpired:
+                                    try:
+                                        proc.kill()
+                                    except Exception:
+                                        pass
+                                    try:
+                                        rc = proc.wait(timeout=2.0)
+                                    except Exception:
+                                        rc = -9
+                                break
                     with self._lock:
                         cancelled = job.id in self._cancelled_procs
                     if cancelled:
@@ -196,7 +263,25 @@ class JobRunner:
                                 )
                         finally:
                             connc.close()
-                    if rc != 0 and not cancelled:
+                    conn_status2 = get_conn(db_path)
+                    try:
+                        cur2 = repo.get_job(conn_status2, job.id)
+                        latest_status = str(cur2.status or "") if cur2 else ""
+                    finally:
+                        conn_status2.close()
+                    if latest_status:
+                        status_after = latest_status
+
+                    if (
+                        rc != 0
+                        and not cancelled
+                        and status_after
+                        not in {
+                            "succeeded",
+                            "failed",
+                            "cancelled",
+                        }
+                    ):
                         raise RuntimeError(f"sync worker failed: exit {rc}")
                     if rc == 0 and not cancelled:
                         connr = get_conn(db_path)

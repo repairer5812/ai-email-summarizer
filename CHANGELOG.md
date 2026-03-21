@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.32] - 2026-03-21
+
+### Fixed
+
+- 동기화가 `running` 상태에서 `1/N`에 장시간 머무르던 정체 케이스를 보강했습니다.
+  - LLM timeout 이후 heartbeat/worker 정리 경로를 강화해 다음 단계 진행이 멈추지 않도록 수정.
+  - timeout 이후 서버 정지 호출을 bounded wait로 감싸 장시간 블로킹 가능성을 낮춤.
+- stale sync 잡 회복 로직을 개선했습니다.
+  - `queued/running/cancel_requested` 상태의 장기 정체 잡을 자동 감지해 재시도 가능한 상태로 회복.
+  - sync worker 종료 직후 최신 DB 상태를 재조회해 `exit 15`가 최종 상태를 덮어쓰는 race를 완화.
+
 ## [0.5.31] - 2026-03-21
 
 ### Fixed
