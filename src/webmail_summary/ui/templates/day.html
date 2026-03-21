@@ -12,9 +12,9 @@
       {% elif active_resum %}
         {# Progress is already visible #}
       {% else %}
-        <button id="btn-resummarize" class="btn">{% if ui_lang(request) == 'ko' %}오류/누락만 다시 요약{% else %}Resummarize (failed only){% endif %}</button>
-        <button id="btn-resummarize-all" class="btn">{% if ui_lang(request) == 'ko' %}전체 다시 요약{% else %}Resummarize (all){% endif %}</button>
-        <button id="btn-resummarize-selected" class="btn btn--secondary" disabled>{% if ui_lang(request) == 'ko' %}선택 다시 요약 (0){% else %}Resummarize selected (0){% endif %}</button>
+        <button id="btn-resummarize" class="btn">{{ t(request, 'day.btn.retry_failed') }}</button>
+        <button id="btn-resummarize-all" class="btn">{{ t(request, 'day.btn.retry_all') }}</button>
+        <button id="btn-resummarize-selected" class="btn btn--secondary" disabled>{{ t(request, 'day.btn.retry_selected') }} (0)</button>
       {% endif %}
       <a class="btn btn--secondary" href="/">{{ t(request, 'day.back') }}</a>
     </div>
@@ -24,8 +24,8 @@
 {% if active and (active.sync or active.refresh_overviews) %}
 <div class="card span-4" id="global-job-wrap" style="margin-bottom: 24px; border-color: var(--accent);">
   <div class="card__title" style="font-size: 1rem; display: flex; justify-content: space-between;">
-    <span>{% if active.sync %}Global Sync{% else %}Refreshing Overviews{% endif %}</span>
-    <span class="muted" style="font-size: 0.75rem;">Running in background...</span>
+    <span>{% if active.sync %}{{ t(request, 'day.global.sync') }}{% else %}{{ t(request, 'day.global.refresh_overviews') }}{% endif %}</span>
+    <span class="muted" style="font-size: 0.75rem;">{{ t(request, 'day.global.running_bg') }}</span>
   </div>
   <div class="card__body">
     <div class="bar"><div class="bar__fill" id="global-bar" style="width:0%"></div></div>
@@ -36,7 +36,7 @@
 
 
 <div id="resum-wrap" class="card span-4" style="display:none; margin-bottom: 24px; border-color: var(--accent);">
-  <div class="card__title">{% if ui_lang(request) == 'ko' %}재요약 진행 중{% else %}Resummarizing{% endif %}</div>
+  <div class="card__title">{{ t(request, 'day.resum.title') }}</div>
   <div class="card__body">
     <div class="bar"><div class="bar__fill" id="resum-bar"></div></div>
     <div class="muted" id="resum-text" style="margin-top: 8px;">...</div>
@@ -45,25 +45,25 @@
       <div class="stepper__track" id="resum-track" style="width:0%"></div>
       <div class="step" data-step="read">
         <div class="step__dot">R</div>
-        <div class="step__label">{% if ui_lang(request) == 'ko' %}읽기{% else %}Read{% endif %}</div>
+        <div class="step__label">{{ t(request, 'day.step.read') }}</div>
       </div>
       <div class="step" data-step="llm">
         <div class="step__dot">AI</div>
-        <div class="step__label">{% if ui_lang(request) == 'ko' %}요약{% else %}Summarize{% endif %}</div>
+        <div class="step__label">{{ t(request, 'day.step.llm') }}</div>
       </div>
       <div class="step" data-step="save">
         <div class="step__dot">S</div>
-        <div class="step__label">{% if ui_lang(request) == 'ko' %}저장{% else %}Save{% endif %}</div>
+        <div class="step__label">{{ t(request, 'day.step.save') }}</div>
       </div>
       <div class="step" data-step="export">
         <div class="step__dot">E</div>
-        <div class="step__label">{% if ui_lang(request) == 'ko' %}내보내기{% else %}Export{% endif %}</div>
+        <div class="step__label">{{ t(request, 'day.step.export') }}</div>
       </div>
     </div>
 
     <div id="resum-sub-wrap" style="display:none; margin-top:24px;">
       <div class="muted" style="font-size:11px; margin-bottom:8px; display:flex; justify-content:space-between;">
-        <span id="resum-sub-label">{% if ui_lang(request) == 'ko' %}AI 분석 단계{% else %}AI Analysis Stage{% endif %}</span>
+        <span id="resum-sub-label">{{ t(request, 'day.sub.ai_stage') }}</span>
         <span id="resum-sub-pct" class="mono">0.00%</span>
       </div>
       <div class="bar" style="height:6px;"><div class="bar__fill" id="resum-sub-bar" style="width:0%;"></div></div>
@@ -82,12 +82,12 @@
           <input type="checkbox" class="msg-select" value="{{ it.id }}" style="width: 20px; height: 20px; flex: 0 0 auto; margin-top: 4px;">
           <div style="flex: 1; min-width: 0;">
             <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ it.subject }}">{{ it.subject }}</div>
-            <div class="muted" style="font-size: 0.8rem;">{{ it.time_full }}{% if it.summarize_ms %} · 요약 {{ it.summarize_ms }}{% endif %}</div>
+            <div class="muted" style="font-size: 0.8rem;">{{ it.time_full }}{% if it.summarize_ms %} · {{ t(request, 'day.meta.summarize') }} {{ it.summarize_ms }}{% endif %}</div>
           </div>
         </div>
         <div class="day-item-actions" style="flex: 0 0 auto; margin-left: 20px;">
           {% if it.has_rendered %}
-            <a class="btn btn--secondary" href="/m/{{ it.id }}/rendered.html" style="padding: 6px 12px; font-size: 0.8rem;">원문</a>
+            <a class="btn btn--secondary" href="/m/{{ it.id }}/rendered.html" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'detail.original') }}</a>
           {% endif %}
           <a class="btn" href="/message/{{ it.id }}?return_to={{ day }}" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'day.open_detail') }}</a>
         </div>
@@ -117,9 +117,19 @@
   const checkboxes = Array.from(document.querySelectorAll('input.msg-select'));
   const globalWrap = document.getElementById('global-job-wrap'), globalBar = document.getElementById('global-bar'), globalText = document.getElementById('global-text');
 
-  const LABEL_FAILED = {{ ("오류/누락만 다시 요약" if ui_lang(request) == 'ko' else "Resummarize (failed only)")|tojson }};
-  const LABEL_ALL = {{ ("전체 다시 요약" if ui_lang(request) == 'ko' else "Resummarize (all)")|tojson }};
-  const LABEL_STOP = {{ ("중단" if ui_lang(request) == 'ko' else "Stop")|tojson }};
+  const LABEL_FAILED = {{ t(request, 'day.btn.retry_failed')|tojson }};
+  const LABEL_ALL = {{ t(request, 'day.btn.retry_all')|tojson }};
+  const LABEL_SELECTED = {{ t(request, 'day.btn.retry_selected')|tojson }};
+  const LABEL_STOP = {{ t(request, 'day.btn.stop')|tojson }};
+  const MSG_CANCELLING = {{ t(request, 'day.msg.cancelling')|tojson }};
+  const MSG_ERROR_PREFIX = {{ t(request, 'day.msg.error_prefix')|tojson }};
+  const STAGE_LABELS = {
+    read: {{ t(request, 'day.stage.reading')|tojson }},
+    llm: {{ t(request, 'day.stage.summarizing')|tojson }},
+    synthesis: {{ t(request, 'day.stage.synthesizing')|tojson }},
+    save: {{ t(request, 'day.stage.saving')|tojson }},
+    export: {{ t(request, 'day.stage.exporting')|tojson }},
+  };
 
   let activeJobId = null, es = null, globalEs = null;
 
@@ -131,7 +141,7 @@
     checkboxes.forEach(cb => cb.disabled = false);
     if(btnSel) { 
       btnSel.disabled = ids.length === 0; 
-      btnSel.textContent = LABEL_ALL.replace("전체", "선택").replace("(all)", "selected") + " (" + ids.length + ")"; 
+      btnSel.textContent = LABEL_SELECTED + " (" + ids.length + ")"; 
     }
   }
 
@@ -146,8 +156,7 @@
     stageEl.style.display = 'block'; stepperEl.style.display = 'flex';
     const st = String(stage || ''), ex = String(extra || '');
     if (subWrap) subWrap.style.display = (st === 'llm' || st === 'synthesis') ? 'block' : 'none';
-    const labels = { read: "읽는 중", llm: "요약 중", synthesis: "합성 중", save: "저장 중", export: "내보내는 중" };
-    stageEl.textContent = (labels[st] || st) + (ex ? ' (' + ex + ')' : '');
+    stageEl.textContent = (STAGE_LABELS[st] || st) + (ex ? ' (' + ex + ')' : '');
     const stages = ['read', 'llm', 'save', 'export'];
     const activeIdx = stages.indexOf(st === 'synthesis' ? 'llm' : st);
     stepperEl.querySelectorAll('.step').forEach((n, idx) => {
@@ -175,7 +184,7 @@
   async function requestCancel() {
     if (!activeJobId) return;
     [btn, btnAll, btnSel].forEach(b => { if(b) b.disabled = true; });
-    setProgress(100, "중단 중...");
+    setProgress(100, MSG_CANCELLING);
     try { await fetch('/api/jobs/' + activeJobId + '/cancel', { method: 'POST' }); } catch(e) { /* ignore */ }
   }
 
@@ -205,7 +214,7 @@
         body: JSON.stringify({ date_key: '{{ day }}', only_failed: !!onlyFailed, message_ids: messageIds }) 
       });
       const j = await res.json();
-      if (!res.ok) { setProgress(0, "오류: " + (j.error || 'failed')); setButtonsIdle(); return; }
+      if (!res.ok) { setProgress(0, MSG_ERROR_PREFIX + (j.error || 'failed')); setButtonsIdle(); return; }
       activeJobId = j.job_id;
     }
     if (es) es.close();
@@ -233,7 +242,7 @@
       const pct = (Number(p.current || 0) / Number(p.total || 1)) * 100;
 
       if (p.status === 'cancel_requested') {
-        setProgress(100, "중단 중...");
+        setProgress(100, MSG_CANCELLING);
         return;
       }
 
@@ -247,7 +256,7 @@
 
       if (p.status === 'failed') {
         setButtonsIdle();
-        setProgress(0, "오류: " + (p.message || 'failed'));
+        setProgress(0, MSG_ERROR_PREFIX + (p.message || 'failed'));
         return;
       }
 
