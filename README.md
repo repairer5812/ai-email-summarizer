@@ -4,7 +4,7 @@
 
 - 다운로드: https://github.com/repairer5812/ai-email-summarizer/releases/latest
 - 프로젝트: https://github.com/repairer5812/ai-email-summarizer
-- 현재 버전: `0.5.30`
+- 현재 버전: `0.5.31`
 
 ## 일반 사용자용 안내 (먼저 읽어주세요)
 

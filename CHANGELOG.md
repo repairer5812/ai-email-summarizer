@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.31] - 2026-03-21
+
+### Fixed
+
+- 자동 업데이트 핸드오프 안정성을 보강했습니다.
+  - 상태 파일 파싱을 `utf-8-sig`로 통일해 BOM 포함 JSON에서도 중간 종료로 오판하지 않도록 수정.
+  - PowerShell 스크립트의 `$Pid` 자동 변수 충돌을 피하도록 파라미터명을 `$TargetPid`로 변경.
+- 앱 종료 경로를 강제 종료 우선에서 graceful 종료 우선으로 조정했습니다.
+  - 네이티브 윈도우/서버 종료에서 유예 대기 후 bounded fallback 강제 종료로 전환해 잔류 프로세스 및 `_MEI` 정리 경고 가능성을 완화.
+- 설정 화면에서 IMAP 비밀번호 저장 상태 표시 로직의 중복 블록을 제거해 상태 판정이 일관되게 동작하도록 정리했습니다.
+
+### Changed
+
+- UI 테마를 `Bento Grid`와 `Soft 3D (Clay)`로 전환했습니다.
+  - 기존 `trust/creative` 값은 `bento/clay`로 자동 정규화되어 기존 사용자 설정이 유지됩니다.
+  - 설정 화면 테마 선택/라벨/저장 경로를 새 테마 키에 맞게 정리했습니다.
+
 ## [0.5.30] - 2026-03-20
 
 ### Fixed
