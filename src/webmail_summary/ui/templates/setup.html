@@ -177,6 +177,15 @@
                       </select>
                       <div class="help" id="model-notes"></div>
                     </div>
+
+                    <div class="form-group">
+                      <label>{{ t(request, 'setup.local.status') }}</label>
+                      <div class="help">
+                        {% if local_ready.engine_ok %}{{ t(request, 'setup.local.engine_ok') }}{% else %}{{ t(request, 'setup.local.engine_missing') }}{% endif %}
+                        ·
+                        {% if local_ready.model_ok %}{{ t(request, 'setup.local.model_ok') }}{% else %}{{ t(request, 'setup.local.model_missing') }}{% endif %}
+                      </div>
+                    </div>
                     <div class="form-group">
                       <label>{{ t(request, 'setup.install_local') }}</label>
                       <div><button type="button" id="btn-local-install" class="btn btn--secondary">{{ t(request, 'setup.install_btn') }}</button></div>
@@ -226,17 +235,20 @@
                       </div>
                     </div>
 
-                    <div class="form-group" id="cloud-model-search-wrap" style="display:none">
+                    <div class="form-group" id="cloud-model-search-wrap" style="display:{% if defaults.cloud_provider == 'openrouter' %}block{% else %}none{% endif %}">
                       <label>모델 검색</label>
                       <div style="display:flex; gap:10px; align-items:center;">
                         <input id="cloud-model-search" type="text" placeholder="예: gemma, llama, :free" style="flex: 1;" />
-                        <button type="button" class="btn btn--secondary" id="btn-refresh-openrouter" style="white-space: nowrap;">목록 새로고침</button>
+                        <button type="button" class="btn btn--secondary" id="btn-refresh-openrouter" style="white-space: nowrap;">{{ t(request, 'setup.openrouter.refresh') }}</button>
                       </div>
                       <div class="help muted" id="cloud-model-hint"></div>
                     </div>
 
                     <div class="form-group">
-                      <label>LLM 모델 선택</label>
+                      <div style="display:flex; justify-content: space-between; align-items: center; gap: 10px;">
+                        <label style="margin:0;">LLM 모델 선택</label>
+                        <button type="button" class="btn btn--secondary" id="btn-refresh-openrouter-inline" style="white-space: nowrap;">{{ t(request, 'setup.openrouter.refresh') }}</button>
+                      </div>
                       <select name="openrouter_model" id="cloud-model-select">
                         <!-- Options populated by JS -->
                       </select>
@@ -393,6 +405,7 @@
   const cloudModelSearch = document.getElementById('cloud-model-search');
   const cloudModelHint = document.getElementById('cloud-model-hint');
   const btnRefreshOpenrouter = document.getElementById('btn-refresh-openrouter');
+  const btnRefreshOpenrouterInline = document.getElementById('btn-refresh-openrouter-inline');
   const btnTestCloudKey = document.getElementById('btn-test-cloud-key');
   const cloudTestStatus = document.getElementById('cloud-test-status');
   
@@ -565,12 +578,20 @@
       _setCloudModelSearchVisible(true);
       if (cloudModelSearch) cloudModelSearch.disabled = false;
       if (btnRefreshOpenrouter) btnRefreshOpenrouter.disabled = false;
+      if (btnRefreshOpenrouterInline) {
+        btnRefreshOpenrouterInline.disabled = false;
+        btnRefreshOpenrouterInline.style.display = '';
+      }
       _renderOpenRouterModels();
       _ensureOpenRouterModelsLoaded(false);
       return;
     }
 
     _setCloudModelSearchVisible(false);
+    if (btnRefreshOpenrouterInline) {
+      btnRefreshOpenrouterInline.disabled = true;
+      btnRefreshOpenrouterInline.style.display = 'none';
+    }
     const models = CLOUD_MODELS[p] || [];
     _populateCloudSelect(models, "{{ defaults.openrouter_model }}");
   }
@@ -622,6 +643,9 @@
   if (btnRefreshOpenrouter) btnRefreshOpenrouter.addEventListener('click', () => {
     if (cloudProvider && cloudProvider.value === 'openrouter') _ensureOpenRouterModelsLoaded(true);
   });
+  if (btnRefreshOpenrouterInline) btnRefreshOpenrouterInline.addEventListener('click', () => {
+    if (cloudProvider && cloudProvider.value === 'openrouter') _ensureOpenRouterModelsLoaded(true);
+  });
   if (modelSelect) modelSelect.addEventListener('change', syncModelNotes);
   roleCheckboxes.forEach((cb) => cb.addEventListener('change', syncRoleButtons));
 
@@ -635,7 +659,17 @@
         body: JSON.stringify({ model_id: modelId })
       });
       const j = await res.json();
-      if (res.ok) watchInstall(j.job_id); else btnInstall.disabled = false;
+      if (!res.ok) {
+        btnInstall.disabled = false;
+        return;
+      }
+      if (j && j.already_installed) {
+        if (localBar) localBar.style.width = '100%';
+        if (localText) localText.textContent = 'installed';
+        btnInstall.disabled = false;
+        return;
+      }
+      watchInstall(j.job_id);
     });
   }
 

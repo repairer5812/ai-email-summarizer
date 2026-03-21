@@ -600,19 +600,7 @@ def resummarize_day_task(
                 connc.close()
             return
 
-        connf = get_conn(db_path)
-        try:
-            repo.update_progress(
-                connf,
-                job_id=job_id,
-                current=len(targets),
-                total=max(len(targets), 1),
-                message=f"[{day.isoformat()}] 다시 요약 완료",
-            )
-        finally:
-            connf.close()
-
-        # Rebuild daily note for the date (best-effort).
+        # Rebuild daily note and daily overview for the date (best-effort).
         try:
             if processed_notes:
                 daily_summary = "\n".join([f"- {p.stem}" for p in processed_notes])
@@ -630,27 +618,73 @@ def resummarize_day_task(
             )
             from webmail_summary.llm.long_summarize import synthesize_daily_overview
 
-            connd = get_conn(db_path)
+            connr = get_conn(db_path)
             try:
-                msg_rows = list_messages_by_date(connd, date_prefix=day.isoformat())
+                msg_rows = list_messages_by_date(connr, date_prefix=day.isoformat())
                 all_sums = [str(r["summary"] or "") for r in msg_rows if r["summary"]]
-                if all_sums:
-                    user_profile = {
-                        "roles": s.user_roles,
-                        "interests": s.user_interests,
-                    }
-                    ov = synthesize_daily_overview(
-                        provider,
-                        day=day.isoformat(),
-                        summaries=all_sums,
-                        user_profile=user_profile,
-                    )
-                    if ov:
-                        set_daily_overview(connd, day=day.isoformat(), overview=ov)
-                        connd.commit()
             finally:
-                connd.close()
+                connr.close()
+
+            if all_sums and not cancel.is_set():
+                user_profile = {
+                    "roles": s.user_roles,
+                    "interests": s.user_interests,
+                }
+
+                # Prevent a stuck LLM call from blocking the entire job queue.
+                ov_done = threading.Event()
+                ov_box: dict[str, str] = {}
+
+                def _run_ov() -> None:
+                    try:
+                        ov_box["ov"] = (
+                            synthesize_daily_overview(
+                                provider,
+                                day=day.isoformat(),
+                                summaries=all_sums,
+                                user_profile=user_profile,
+                            )
+                            or ""
+                        )
+                    finally:
+                        ov_done.set()
+
+                threading.Thread(target=_run_ov, daemon=True).start()
+                tier = getattr(provider, "tier", "standard")
+                ov_timeout_s = 180.0 if tier == "cloud" else 120.0
+                if ov_done.wait(float(ov_timeout_s)) and ov_box.get("ov"):
+                    connd2 = get_conn(db_path)
+                    try:
+                        set_daily_overview(
+                            connd2, day=day.isoformat(), overview=ov_box["ov"]
+                        )
+                        connd2.commit()
+                    finally:
+                        connd2.close()
+                else:
+                    connw5 = get_conn(db_path)
+                    try:
+                        repo.add_event(
+                            connw5,
+                            job_id=job_id,
+                            level="warn",
+                            text=f"daily overview synthesis skipped (timeout {ov_timeout_s:.0f}s)",
+                        )
+                    finally:
+                        connw5.close()
         except Exception:
             pass
+
+        connf = get_conn(db_path)
+        try:
+            repo.update_progress(
+                connf,
+                job_id=job_id,
+                current=len(targets),
+                total=max(len(targets), 1),
+                message=f"[{day.isoformat()}] 다시 요약 완료",
+            )
+        finally:
+            connf.close()
 
     return run

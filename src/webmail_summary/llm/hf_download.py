@@ -13,6 +13,10 @@ class DownloadProgress:
     total: int | None
 
 
+class DownloadCancelled(RuntimeError):
+    pass
+
+
 def hf_resolve_url(repo_id: str, filename: str) -> str:
     # Public download URL (redirects to CDN)
     return f"https://huggingface.co/{repo_id}/resolve/main/{filename}"
@@ -25,6 +29,7 @@ def download_with_resume(
     chunk_size: int = 1024 * 1024,
     timeout_s: int = 300,
     on_progress=None,
+    should_cancel=None,
 ) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     existing = out_path.stat().st_size if out_path.exists() else 0
@@ -76,6 +81,14 @@ def download_with_resume(
             for chunk in r.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     continue
+                if should_cancel is not None:
+                    cancelled = False
+                    try:
+                        cancelled = bool(should_cancel())
+                    except Exception:
+                        cancelled = False
+                    if cancelled:
+                        raise DownloadCancelled("cancelled")
                 f.write(chunk)
                 downloaded += len(chunk)
                 if on_progress:

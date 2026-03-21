@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 from webmail_summary.index.db import get_conn
 from webmail_summary.jobs import repo
-from webmail_summary.llm.hf_download import download_with_resume, hf_resolve_url
+from webmail_summary.llm.hf_download import (
+    DownloadCancelled,
+    download_with_resume,
+    hf_resolve_url,
+)
 from webmail_summary.llm.local_engine import (
     EngineInstallError,
     ensure_llama_cpp_installed,
@@ -13,6 +18,7 @@ from webmail_summary.llm.local_engine import (
 from webmail_summary.llm.local_models import LOCAL_MODELS, get_local_model
 from webmail_summary.llm.local_status import get_local_model_path
 from webmail_summary.llm.local_status import get_local_model_complete_marker
+from webmail_summary.llm.local_status import check_local_ready
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.app_data import get_models_dir
 from webmail_summary.util.atomic_io import atomic_write_text
@@ -24,6 +30,31 @@ def local_install_task(*, model_id: str):
 
         # Normalize model id.
         model_id_norm = get_local_model(model_id).id
+
+        # Fast path: already installed.
+        try:
+            ready = check_local_ready(model_id=model_id_norm)
+            if bool(ready.engine_ok) and bool(ready.model_ok):
+                conn0 = get_conn(db_path)
+                try:
+                    repo.update_progress(
+                        conn0,
+                        job_id=job_id,
+                        current=100,
+                        total=100,
+                        message="installed",
+                    )
+                    repo.add_event(
+                        conn0,
+                        job_id=job_id,
+                        level="info",
+                        text="already installed",
+                    )
+                finally:
+                    conn0.close()
+                return
+        except Exception:
+            pass
 
         # 1) Ensure engine
         conn = get_conn(db_path)
@@ -52,10 +83,18 @@ def local_install_task(*, model_id: str):
         def on_prog(p):
             if cancel.is_set():
                 return
+
+            # Throttle DB writes to avoid slowing downloads.
+            nonlocal last_pct, last_emit_ts
+            now = time.monotonic()
             connp = get_conn(db_path)
             try:
                 if p.total and p.total > 0:
                     pct = int(p.downloaded * 100 / p.total)
+                    if pct == last_pct and (now - last_emit_ts) < 1.0:
+                        return
+                    last_pct = pct
+                    last_emit_ts = now
                     repo.update_progress(
                         connp,
                         job_id=job_id,
@@ -64,6 +103,9 @@ def local_install_task(*, model_id: str):
                         message=f"download {m.hf_filename}",
                     )
                 else:
+                    if (now - last_emit_ts) < 2.0:
+                        return
+                    last_emit_ts = now
                     repo.update_progress(
                         connp,
                         job_id=job_id,
@@ -74,7 +116,18 @@ def local_install_task(*, model_id: str):
             finally:
                 connp.close()
 
-        download_with_resume(url=url, out_path=out_path, on_progress=on_prog)
+        last_pct = -1
+        last_emit_ts = 0.0
+        try:
+            download_with_resume(
+                url=url,
+                out_path=out_path,
+                on_progress=on_prog,
+                should_cancel=lambda: cancel.is_set(),
+            )
+        except DownloadCancelled:
+            # Allow runner to mark this job cancelled.
+            return
 
         # Mark complete only after a successful full download.
         marker = get_local_model_complete_marker(model_id=model_id_norm)

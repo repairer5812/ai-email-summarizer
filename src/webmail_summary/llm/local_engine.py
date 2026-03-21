@@ -58,7 +58,7 @@ def _pick_windows_assets(assets: list[dict]) -> list[dict]:
     return [a for a in ranked if score(a) > -10_000]
 
 
-def ensure_llama_cpp_installed(*, timeout_s: int = 60) -> LlamaCppInstall:
+def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
     # Install under %LOCALAPPDATA%\WebmailSummary\engines\llama.cpp\<tag>\
     engines = get_engines_dir() / "llama.cpp"
     engines.mkdir(parents=True, exist_ok=True)
@@ -70,7 +70,7 @@ def ensure_llama_cpp_installed(*, timeout_s: int = 60) -> LlamaCppInstall:
     # Download latest release info
     api = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
     try:
-        r = requests.get(api, timeout=timeout_s)
+        r = requests.get(api, timeout=(3.05, float(timeout_s)))
         r.raise_for_status()
         data = r.json()
     except Exception as e:
@@ -101,7 +101,7 @@ def ensure_llama_cpp_installed(*, timeout_s: int = 60) -> LlamaCppInstall:
 
         # Download zip into memory (avoid partial extract) with a cap (CPU zips are ~tens of MB)
         try:
-            rr = requests.get(url, stream=True, timeout=timeout_s)
+            rr = requests.get(url, stream=True, timeout=(3.05, float(timeout_s)))
             rr.raise_for_status()
             buf = io.BytesIO()
             total = 0
