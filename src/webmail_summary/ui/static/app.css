@@ -141,6 +141,7 @@ button.nav__link {
   margin: 0 auto;
   padding: 24px;
   box-sizing: border-box;
+  font-size: 1.12em;
 }
 
 .hero h1 {
@@ -155,6 +156,32 @@ button.nav__link {
   align-items: flex-end;
   margin-bottom: 24px;
   gap: 12px;
+}
+
+/* Day view: keep actions usable and readable.
+   Allow the action group to wrap to a new line (so the buttons can stay horizontal)
+   when the window is not wide enough for a 4-button row. */
+.hero__row--day {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.hero__row--day > :first-child {
+  flex: 1 1 420px;
+  min-width: 260px;
+}
+
+.hero__row--day .day-actions {
+  margin-left: auto;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+.hero__row--day .day-actions .btn,
+.hero__row--day .day-actions button {
+  padding: 9px 14px;
+  font-size: 0.88rem;
+  white-space: nowrap;
 }
 
 .hero__actions {
@@ -750,6 +777,10 @@ label {
   .hero__row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .main {
+    font-size: 1.06em;
   }
 
   .hero__actions {

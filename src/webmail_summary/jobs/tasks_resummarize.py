@@ -271,6 +271,26 @@ def resummarize_day_task(
             finally:
                 connw.close()
 
+            # Heartbeat: if the provider does not call on_progress for a while,
+            # keep updating the job message with elapsed time so the UI doesn't
+            # look stuck.
+            frac_lock = threading.Lock()
+            last_fraction = 0.0
+
+            def _set_fraction(v: float) -> None:
+                nonlocal last_fraction
+                with frac_lock:
+                    try:
+                        vv = float(v)
+                    except Exception:
+                        return
+                    if vv < 0.0:
+                        vv = 0.0
+                    if vv > 1.0:
+                        vv = 1.0
+                    if vv > last_fraction:
+                        last_fraction = vv
+
             def emit_detail(d: dict) -> None:
                 if cancel.is_set():
                     raise _ResummarizeCancelled()
@@ -288,6 +308,7 @@ def resummarize_day_task(
             def update_sub_progress(fraction: float) -> None:
                 if cancel.is_set():
                     raise _ResummarizeCancelled()
+                _set_fraction(fraction)
                 # fraction is 0.0 to 1.0 within the current email.
                 # Total progress = (i - 1 + fraction) / total
                 conn_p = get_conn(db_path)
@@ -338,10 +359,52 @@ def resummarize_day_task(
             llm_t = threading.Thread(target=_run_llm_call, daemon=True)
             llm_t.start()
 
+            hb_stop = threading.Event()
+
+            def _llm_heartbeat() -> None:
+                started = time.monotonic()
+                # Update at a low frequency to avoid DB spam.
+                while (
+                    not hb_stop.is_set()
+                    and not llm_done.is_set()
+                    and not cancel.is_set()
+                ):
+                    time.sleep(2.0)
+                    if hb_stop.is_set() or llm_done.is_set() or cancel.is_set():
+                        break
+                    dt_s = max(0.0, time.monotonic() - started)
+                    mm = int(dt_s // 60)
+                    ss = int(dt_s % 60)
+                    with frac_lock:
+                        frac = float(last_fraction)
+                    cur = max(i - 0.95, (i - 1) + frac)
+                    conn_hb = get_conn(db_path)
+                    try:
+                        repo.update_progress(
+                            conn_hb,
+                            job_id=job_id,
+                            current=cur,
+                            total=max(len(targets), 1),
+                            message=(
+                                f"[{display_date}] LLM 호출 중: {display_sub} ({i}/{len(targets)}) "
+                                f"(경과 {mm:02d}:{ss:02d})"
+                            ),
+                        )
+                    finally:
+                        conn_hb.close()
+
+            hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
+            hb_t.start()
+
             llm_timeout_s = (
                 240.0 if getattr(provider, "tier", "standard") == "cloud" else 120.0
             )
             if not llm_done.wait(llm_timeout_s):
+                hb_stop.set()
+                try:
+                    hb_t.join(timeout=1.0)
+                except Exception:
+                    pass
                 conn_to = get_conn(db_path)
                 try:
                     repo.add_event(
@@ -367,6 +430,11 @@ def resummarize_day_task(
                     summary="(LLM timeout)", tags=[], backlinks=[], personal=False
                 )
             else:
+                hb_stop.set()
+                try:
+                    hb_t.join(timeout=1.0)
+                except Exception:
+                    pass
                 llm_res = llm_result_box.get("res")
                 if llm_res is None:
                     if "err" in llm_err_box:
