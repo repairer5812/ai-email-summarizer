@@ -189,20 +189,28 @@
                     <div class="form-group">
                       <label>{{ t(request, 'setup.install_local') }}</label>
                       <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                        <button type="button" id="btn-local-install" class="btn btn--secondary">{{ t(request, 'setup.install_btn') }}</button>
+                        <button
+                          type="button"
+                          id="btn-local-install"
+                          class="btn btn--secondary"
+                          data-msg-checking="{{ t(request, 'setup.install.checking')|e }}"
+                          data-msg-already="{{ t(request, 'setup.install.already')|e }}"
+                          data-msg-starting="{{ t(request, 'setup.install.starting')|e }}"
+                          data-msg-error-prefix="{{ t(request, 'setup.install.error')|e }}"
+                        >{{ t(request, 'setup.install_btn') }}</button>
                         <span class="muted" style="font-size: 0.9rem;">{{ t(request, 'setup.install_help') }}</span>
                       </div>
 
-                      <div class="card" style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.02);">
+                      <div
+                        class="card"
+                        id="local-install-status"
+                        data-engine-ok="{% if local_ready.engine_ok %}1{% else %}0{% endif %}"
+                        data-model-ok="{% if local_ready.model_ok %}1{% else %}0{% endif %}"
+                        data-default-model-id="{{ defaults.local_model_id }}"
+                        style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.02);"
+                      >
                         <div class="bar" style="margin-top: 0;"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
                         <div class="muted" id="local-text" style="margin-top: 8px; font-size: 12px;">...</div>
-                      </div>
-                    </div>
-                    <div class="form-group">
-                      <label>{{ t(request, 'setup.install_progress') }}</label>
-                      <div>
-                        <div class="bar"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
-                        <div class="muted" id="local-text">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
                       </div>
                     </div>
                   </div>
@@ -622,6 +630,7 @@
   const btnInstall = document.getElementById('btn-local-install');
   const localBar = document.getElementById('local-bar');
   const localText = document.getElementById('local-text');
+  const localStatusBox = document.getElementById('local-install-status');
   let installEs = null;
 
   function watchInstall(jobId) {
@@ -659,10 +668,38 @@
 
   if (btnInstall) {
     btnInstall.addEventListener('click', async () => {
+      const msgChecking = btnInstall.getAttribute('data-msg-checking') || 'Checking local install...';
+      const msgAlready = btnInstall.getAttribute('data-msg-already') || 'Already installed.';
+      const msgStarting = btnInstall.getAttribute('data-msg-starting') || 'Starting install...';
+      const msgErrPrefix = btnInstall.getAttribute('data-msg-error-prefix') || 'Install error: ';
+
       btnInstall.disabled = true;
       if (localBar) localBar.style.width = '0%';
-      if (localText) localText.textContent = {{ t(request, 'setup.install.checking')|tojson }};
-      const modelId = modelSelect.value;
+      if (localText) localText.textContent = msgChecking;
+      const modelId = modelSelect ? modelSelect.value : '';
+      if (!modelId) {
+        if (localText) localText.textContent = msgErrPrefix + 'model_id missing.';
+        btnInstall.disabled = false;
+        return;
+      }
+
+      // Fast-path only when the selected model matches the page's computed status.
+      try {
+        if (localStatusBox) {
+          const defaultModelId = String(localStatusBox.getAttribute('data-default-model-id') || '');
+          const eok = String(localStatusBox.getAttribute('data-engine-ok') || '0') === '1';
+          const mok = String(localStatusBox.getAttribute('data-model-ok') || '0') === '1';
+          if (defaultModelId && String(modelId) === defaultModelId && eok && mok) {
+            if (localBar) localBar.style.width = '100%';
+            if (localText) localText.textContent = msgAlready;
+            btnInstall.disabled = false;
+            return;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+
       try {
         const res = await fetch('/api/jobs/local-install', {
           method: 'POST',
@@ -674,7 +711,7 @@
         if (!res.ok) {
           if (localText) {
             const msg = (j && (j.message || j.error)) ? String(j.message || j.error) : ('HTTP ' + res.status);
-            localText.textContent = {{ t(request, 'setup.install.error')|tojson }} + msg;
+            localText.textContent = msgErrPrefix + msg;
           }
           btnInstall.disabled = false;
           return;
@@ -682,15 +719,21 @@
 
         if (j && j.already_installed) {
           if (localBar) localBar.style.width = '100%';
-          if (localText) localText.textContent = {{ t(request, 'setup.install.already')|tojson }};
+          if (localText) localText.textContent = msgAlready;
           btnInstall.disabled = false;
           return;
         }
 
-        if (localText) localText.textContent = {{ t(request, 'setup.install.starting')|tojson }};
-        watchInstall(j.job_id);
+        if (localText) localText.textContent = msgStarting;
+        if (j && j.job_id) {
+          watchInstall(j.job_id);
+          return;
+        }
+
+        if (localText) localText.textContent = msgErrPrefix + 'job_id missing.';
+        btnInstall.disabled = false;
       } catch (e) {
-        if (localText) localText.textContent = {{ t(request, 'setup.install.error')|tojson }} + String(e && e.message ? e.message : e);
+        if (localText) localText.textContent = msgErrPrefix + String(e && e.message ? e.message : e);
         btnInstall.disabled = false;
       }
     });
