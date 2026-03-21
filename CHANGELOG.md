@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.40] - 2026-03-21
+
+### Fixed
+
+- 로컬 llama-server 요약이 자주 timeout으로 끝나던 문제를 완화했습니다.
+  - 요청 timeout/총 예산을 상향하고, timeout 시 로컬 서버를 재시작한 뒤 1회 재시도합니다.
+- 동기화/날짜별 재요약의 LLM hard timeout을 상향해, 느린 PC에서도 요약이 중간에 끊기지 않도록 했습니다.
+
 ## [0.5.39] - 2026-03-21
 
 ### Fixed

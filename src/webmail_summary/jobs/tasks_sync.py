@@ -442,11 +442,13 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     llm_t = threading.Thread(target=_run_llm_call, daemon=True)
                     llm_t.start()
 
-                    llm_timeout_s = (
-                        240.0
-                        if getattr(provider, "tier", "standard") == "cloud"
-                        else 120.0
-                    )
+                    tier = getattr(provider, "tier", "standard")
+                    if tier == "cloud":
+                        llm_timeout_s = 420.0
+                    elif tier == "fast":
+                        llm_timeout_s = 240.0
+                    else:
+                        llm_timeout_s = 360.0
                     if not llm_done.wait(llm_timeout_s):
                         conn_to = get_conn(db_path)
                         try:

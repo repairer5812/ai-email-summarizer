@@ -396,9 +396,13 @@ def resummarize_day_task(
             hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
             hb_t.start()
 
-            llm_timeout_s = (
-                240.0 if getattr(provider, "tier", "standard") == "cloud" else 120.0
-            )
+            tier = getattr(provider, "tier", "standard")
+            if tier == "cloud":
+                llm_timeout_s = 420.0
+            elif tier == "fast":
+                llm_timeout_s = 240.0
+            else:
+                llm_timeout_s = 360.0
             if not llm_done.wait(llm_timeout_s):
                 hb_stop.set()
                 try:
@@ -417,9 +421,18 @@ def resummarize_day_task(
                     conn_to.close()
                 llm_done.set()
                 try:
-                    from webmail_summary.llm.llamacpp_server import stop_server
+                    stop_done = threading.Event()
 
-                    stop_server(force=True)
+                    def _stop_local_server() -> None:
+                        try:
+                            from webmail_summary.llm.llamacpp_server import stop_server
+
+                            stop_server(force=True)
+                        finally:
+                            stop_done.set()
+
+                    threading.Thread(target=_stop_local_server, daemon=True).start()
+                    stop_done.wait(2.5)
                 except Exception:
                     pass
                 try:
