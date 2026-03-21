@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.36] - 2026-03-21
+
+### Fixed
+
+- 날짜 화면 우측 액션 버튼이 세로로 쌓이던 레이아웃을 가로 배치로 고정했습니다.
+- 메일 상세/날짜별 요약에서 요약 텍스트가 JS 포맷팅 실패 시에도 안전하게 표시되도록 fallback을 추가했습니다.
+- `(LLM timeout)` 발생 빈도를 줄이기 위해 로컬/클라우드 요약 hard timeout을 상향하고, "오류/누락만 다시 요약" 대상에 timeout 결과도 포함했습니다.
+
+### Changed
+
+- 랜딩 페이지 스크린샷 섹션을 1열(세로 스택)로 변경해 이미지가 눌리지 않도록 조정했습니다.
+- GitHub Actions(Pages/landing CI)를 Node 24 런타임 전환에 맞춰 업데이트했습니다.
+
 ## [0.5.35] - 2026-03-21
 
 ### Added
