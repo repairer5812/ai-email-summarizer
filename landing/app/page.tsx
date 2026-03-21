@@ -193,8 +193,8 @@ export default function Home() {
 
           <p className="text-sm text-slate-600">미리보기는 축소되어 보일 수 있어요. 이미지를 클릭하면 원본 크기로 열립니다.</p>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card className="gap-4 border-0 bg-transparent py-5 shadow-none md:col-span-2">
+          <div className="grid gap-4">
+            <Card className="gap-4 border-0 bg-transparent py-5 shadow-none">
               <CardHeader className="pb-0">
                 <CardTitle className="text-base font-semibold text-slate-900">대시보드</CardTitle>
               </CardHeader>
