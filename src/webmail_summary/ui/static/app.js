@@ -22,6 +22,16 @@ function formatSummary(raw) {
   let s = String(raw).trim();
   if (!s) return '';
 
+  // If raw is a JSON string literal (e.g. "line1\nline2"), decode it first.
+  if (s.startsWith('"') && s.endsWith('"')) {
+    try {
+      const decoded = JSON.parse(s);
+      if (typeof decoded === 'string') s = decoded;
+    } catch (e) {
+      /* ignore JSON string parse failures */
+    }
+  }
+
   // Completely strip all '**' markers
   s = s.replace(/\*\*/g, '');
 
@@ -38,7 +48,9 @@ function formatSummary(raw) {
         s = Array.isArray(parsed.summary) ? parsed.summary.join('\n') : String(parsed.summary);
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    /* ignore JSON summary parse failures */
+  }
 
   const textLines = s.replace(/\r\n?/g, "\n").split("\n");
   const html = [];

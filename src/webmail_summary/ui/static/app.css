@@ -173,6 +173,7 @@ button.nav__link {
 }
 
 .day-actions {
+  flex-direction: row;
   justify-content: flex-end;
   align-items: center;
 }

@@ -28,21 +28,23 @@
   </div>
 </section>
 
-<div class="bento-grid" style="margin-top: 24px;">
-  <div class="card span-2">
-    <div class="card__title">{{ t(request, 'detail.summary') }}</div>
-    <div class="card__body">
-      <div class="summary-content" style="font-size: 1rem; line-height: 1.7;" data-raw="{{ msg.summary }}"></div>
+  <div class="bento-grid" style="margin-top: 24px;">
+    <div class="card span-2">
+      <div class="card__title">{{ t(request, 'detail.summary') }}</div>
+      <div class="card__body">
+      <div class="summary-content" style="font-size: 1rem; line-height: 1.7;" data-raw='{{ msg.summary|tojson }}'>
+        <pre class="mono" style="margin:0; white-space: pre-wrap;">{{ msg.summary }}</pre>
+      </div>
+      </div>
     </div>
-  </div>
 
   <div class="card span-2">
-    <div class="card__title" style="display: flex; justify-content: space-between; align-items: center;">
-      <span>{{ t(request, 'detail.original') }}</span>
-      {% if msg.has_rendered %}
-        <a class="btn btn--secondary" href="/m/{{ msg.id }}/rendered.html" target="_blank" style="padding: 6px 12px; font-size: 0.8rem;">새 창에서 열기</a>
-      {% endif %}
-    </div>
+      <div class="card__title" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>{{ t(request, 'detail.original') }}</span>
+        {% if msg.has_rendered %}
+        <a class="btn btn--secondary" href="/m/{{ msg.id }}/rendered.html" style="padding: 6px 12px; font-size: 0.8rem;">새 창에서 열기</a>
+        {% endif %}
+      </div>
     <div class="card__body" style="padding: 0; overflow: hidden; border-radius: 0 0 var(--card-radius) var(--card-radius);">
       {% if msg.has_rendered %}
         <iframe src="/m/{{ msg.id }}/rendered.html" style="width: 100%; height: 600px; border: none; background: white;" title="rendered" referrerpolicy="no-referrer"></iframe>

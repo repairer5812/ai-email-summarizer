@@ -87,13 +87,15 @@
         </div>
         <div class="day-item-actions" style="flex: 0 0 auto; margin-left: 20px;">
           {% if it.has_rendered %}
-            <a class="btn btn--secondary" href="/m/{{ it.id }}/rendered.html" target="_blank" style="padding: 6px 12px; font-size: 0.8rem;">원문</a>
+            <a class="btn btn--secondary" href="/m/{{ it.id }}/rendered.html" style="padding: 6px 12px; font-size: 0.8rem;">원문</a>
           {% endif %}
           <a class="btn" href="/message/{{ it.id }}?return_to={{ day }}" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'day.open_detail') }}</a>
         </div>
       </div>
       <div class="card__body" style="padding: 20px;">
-        <div class="summary-content" data-message-id="{{ it.id }}" style="font-size: 0.95rem; line-height: 1.6;" data-raw="{{ it.summary }}"></div>
+        <div class="summary-content" data-message-id="{{ it.id }}" style="font-size: 0.95rem; line-height: 1.6;" data-raw='{{ it.summary|tojson }}'>
+          <pre class="mono" style="margin:0; white-space: pre-wrap;">{{ it.summary }}</pre>
+        </div>
       </div>
     </div>
   {% endfor %}
@@ -174,12 +176,12 @@
     if (!activeJobId) return;
     [btn, btnAll, btnSel].forEach(b => { if(b) b.disabled = true; });
     setProgress(100, "중단 중...");
-    try { await fetch('/api/jobs/' + activeJobId + '/cancel', { method: 'POST' }); } catch(e) {}
+    try { await fetch('/api/jobs/' + activeJobId + '/cancel', { method: 'POST' }); } catch(e) { /* ignore */ }
   }
 
   function watchGlobal(jobId) {
     if (!jobId || !globalWrap) return;
-    if (globalEs) { try { globalEs.close(); } catch(e) {} }
+    if (globalEs) { try { globalEs.close(); } catch(e) { /* ignore */ } }
     globalEs = new EventSource('/api/jobs/' + jobId + '/events');
     globalEs.addEventListener('progress', (ev) => {
       const p = JSON.parse(ev.data);
@@ -187,7 +189,7 @@
       if (globalBar) globalBar.style.width = pct + '%';
       if (globalText) globalText.textContent = (p.message || '...') + ' (' + pct.toFixed(2) + '%)';
       if (p.status === 'succeeded' || p.status === 'failed' || p.status === 'cancelled') {
-        try { globalEs.close(); } catch(e) {} globalEs = null;
+        try { globalEs.close(); } catch(e) { /* ignore */ } globalEs = null;
         setTimeout(() => { if (globalWrap) globalWrap.style.display = 'none'; }, 3000);
       }
     });
@@ -227,21 +229,30 @@
       if (d.type === 'chunk') { setStage('llm', 'part '+d.index+'/'+d.total); subPctTarget=(d.index/(d.total+1))*100; if(!subTimer) animate(); }
     });
     es.addEventListener('progress', (ev) => {
-      const p = JSON.parse(ev.data); const pct = (Number(p.current||0)/Number(p.total||1))*100;
-      if (p.status === 'cancel_requested') { setProgress(100, "중단 중..."); return; }
-      setProgress(pct.toFixed(2), p.message);
-      if (p.status === 'failed') { 
-        if (subTimer) cancelAnimationFrame(subTimer);
-        es.close(); setButtonsIdle(); setProgress(0, "오류: " + p.message); 
-      }
-      if (p.status === 'succeeded' || p.status === 'cancelled') { 
-        if (subTimer) cancelAnimationFrame(subTimer);
-        es.close(); setButtonsIdle(); setTimeout(() => location.reload(), 1200); 
+      const p = JSON.parse(ev.data);
+      const pct = (Number(p.current || 0) / Number(p.total || 1)) * 100;
+
+      if (p.status === 'cancel_requested') {
+        setProgress(100, "중단 중...");
+        return;
       }
 
       setProgress(pct.toFixed(2), p.message);
-      if (p.status === 'failed') { es.close(); setButtonsIdle(); setProgress(0, "오류: " + p.message); }
-      if (p.status === 'succeeded' || p.status === 'cancelled') { es.close(); setButtonsIdle(); setTimeout(() => location.reload(), 1200); }
+
+      const terminal = (p.status === 'failed' || p.status === 'succeeded' || p.status === 'cancelled');
+      if (!terminal) return;
+
+      if (subTimer) cancelAnimationFrame(subTimer);
+      try { es.close(); } catch (e) { /* ignore */ }
+
+      if (p.status === 'failed') {
+        setButtonsIdle();
+        setProgress(0, "오류: " + (p.message || 'failed'));
+        return;
+      }
+
+      setButtonsIdle();
+      setTimeout(() => location.reload(), 800);
     });
   }
 

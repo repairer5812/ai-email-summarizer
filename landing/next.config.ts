@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import path from "path";
 
 function normalizeBasePath(raw: string | undefined): string {
   const v = String(raw || "").trim();
@@ -14,12 +13,9 @@ const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
   basePath: basePath || undefined,
-  assetPrefix: basePath ? `${basePath}/` : undefined,
+  assetPrefix: basePath || undefined,
   images: {
     unoptimized: true,
-  },
-  turbopack: {
-    root: path.resolve(__dirname),
   },
 };
 

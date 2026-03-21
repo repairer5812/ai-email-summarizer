@@ -74,6 +74,9 @@ def resummarize_day_task(
     message_ids: list[int] | None = None,
 ):
     def run(job_id: str, cancel: threading.Event) -> None:
+        class _ResummarizeCancelled(Exception):
+            pass
+
         data_dir = get_app_data_dir()
         db_path = data_dir / "db.sqlite3"
 
@@ -157,6 +160,8 @@ def resummarize_day_task(
             connp.close()
 
         processed_notes: list[Path] = []
+
+        processed_count = 0
 
         if not targets:
             connz = get_conn(db_path)
@@ -265,6 +270,8 @@ def resummarize_day_task(
                 connw.close()
 
             def emit_detail(d: dict) -> None:
+                if cancel.is_set():
+                    raise _ResummarizeCancelled()
                 conn_d = get_conn(db_path)
                 try:
                     repo.add_event(
@@ -277,6 +284,8 @@ def resummarize_day_task(
                     conn_d.close()
 
             def update_sub_progress(fraction: float) -> None:
+                if cancel.is_set():
+                    raise _ResummarizeCancelled()
                 # fraction is 0.0 to 1.0 within the current email.
                 # Total progress = (i - 1 + fraction) / total
                 conn_p = get_conn(db_path)
@@ -317,6 +326,8 @@ def resummarize_day_task(
                         on_progress=update_sub_progress,
                         user_profile=user_profile,
                     )
+                except _ResummarizeCancelled as ex:
+                    llm_err_box["err"] = ex
                 except Exception as ex:
                     llm_err_box["err"] = ex
                 finally:
@@ -357,6 +368,9 @@ def resummarize_day_task(
                 llm_res = llm_result_box.get("res")
                 if llm_res is None:
                     if "err" in llm_err_box:
+                        if isinstance(llm_err_box["err"], _ResummarizeCancelled):
+                            cancel.set()
+                            break
                         conn_er = get_conn(db_path)
                         try:
                             repo.add_event(
@@ -377,6 +391,12 @@ def resummarize_day_task(
                     llm_t.join(timeout=0.2)
                 except Exception:
                     pass
+
+            if cancel.is_set() or isinstance(
+                llm_err_box.get("err"), _ResummarizeCancelled
+            ):
+                cancel.set()
+                break
 
             dt_s = time.monotonic() - t0
             topics = llm_res.backlinks
@@ -427,6 +447,8 @@ def resummarize_day_task(
                 connu.commit()
             finally:
                 connu.close()
+
+            processed_count = i
 
             conne = get_conn(db_path)
             try:
@@ -479,6 +501,21 @@ def resummarize_day_task(
             except Exception:
                 # Export failures should not stop resummarize.
                 continue
+
+        if cancel.is_set():
+            connc = get_conn(db_path)
+            try:
+                repo.update_progress(
+                    connc,
+                    job_id=job_id,
+                    current=float(processed_count),
+                    total=max(len(targets), 1),
+                    message=f"[{day.isoformat()}] 다시 요약 취소됨",
+                )
+                repo.add_event(connc, job_id=job_id, level="info", text="cancelled")
+            finally:
+                connc.close()
+            return
 
         connf = get_conn(db_path)
         try:
