@@ -100,12 +100,19 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
     except Exception:
         pass
 
+    # Fast path: already running and healthy.
+    # IMPORTANT: Don't call _arm_idle_shutdown() while holding _lock,
+    # because _arm_idle_shutdown() also acquires _lock (deadlock risk).
+    proc_ok = None
     with _lock:
         if _proc is not None and _running_cfg == cfg and _proc.poll() is None:
-            if _is_healthy(cfg):
-                _arm_idle_shutdown()
-                return
+            proc_ok = _proc
 
+    if proc_ok is not None and _is_healthy(cfg):
+        _arm_idle_shutdown()
+        return
+
+    with _lock:
         # If a different config is requested, stop the old server.
         if _proc is not None and _proc.poll() is None and _running_cfg != cfg:
             try:

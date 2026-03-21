@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.45] - 2026-03-21
+
+### Fixed
+
+- 로컬 llama-server 경로에서 요약 호출이 멈추는 치명적 데드락을 수정했습니다.
+  - `ensure_server()`가 내부 락을 잡은 상태로 idle shutdown arm을 호출하던 문제로, 서버가 healthy인 경우 요약이 진행되지 않을 수 있었습니다.
+
 ## [0.5.44] - 2026-03-21
 
 ### Fixed
