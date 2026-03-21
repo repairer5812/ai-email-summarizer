@@ -240,12 +240,14 @@ class LlamaCppServerProvider(LlmProvider):
             )
             return "".join(parts)
 
-        def _post(prompt: str) -> dict | None:
+        def _post(prompt: str, *, attempt: int = 0) -> dict | None:
             global _in_flight
             body_len = len(str(body or ""))
             dynamic_max_tokens = int(self._cfg.max_tokens)
             if body_len <= 2500:
                 dynamic_max_tokens = min(dynamic_max_tokens, 96)
+            if int(attempt) > 0:
+                dynamic_max_tokens = min(dynamic_max_tokens, 128)
             payload = {
                 "model": self._cfg.alias,
                 "messages": [
@@ -332,7 +334,7 @@ class LlamaCppServerProvider(LlmProvider):
                 )
             prompt = _build_prompt(body_limit)
             try:
-                data = _post(prompt)
+                data = _post(prompt, attempt=attempt)
             except Exception:
                 # Best-effort retry: restart server once if possible.
                 if attempt < (max_attempts - 1):
@@ -372,7 +374,7 @@ class LlamaCppServerProvider(LlmProvider):
                         ensure_server(self._cfg)
                     except Exception:
                         pass
-                    body_limit = max(800, int(body_limit * 0.8))
+                    body_limit = max(800, int(body_limit * 0.55))
                     continue
                 return LlmResult(
                     summary="(LLM timeout)",

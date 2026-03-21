@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.41] - 2026-03-21
+
+### Fixed
+
+- 날짜 화면 상단 액션 버튼이 화면 폭에 따라 세로로 흩어지지 않도록, 버튼 영역을 한 줄 툴바 형태로 고정했습니다.
+- 로컬 llama-server 요약이 오래 걸리는 환경에서 timeout 가능성을 낮추도록 요청 timeout/예산을 추가 상향하고, timeout 시 1회 재시도 시 입력을 더 줄여 빠르게 복구하도록 개선했습니다.
+
 ## [0.5.40] - 2026-03-21
 
 ### Fixed
