@@ -171,10 +171,14 @@ button.nav__link {
   min-width: 260px;
 }
 
+.hero__row--day .day-actions-wrap {
+  flex: 1 1 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .hero__row--day .day-actions {
-  margin-left: auto;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
+  max-width: 100%;
 }
 
 .hero__row--day .day-actions .btn,
@@ -805,6 +809,10 @@ label {
   }
 
   .day-actions {
+    justify-content: flex-start;
+  }
+
+  .hero__row--day .day-actions-wrap {
     justify-content: flex-start;
   }
 }
