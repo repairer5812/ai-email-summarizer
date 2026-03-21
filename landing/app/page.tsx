@@ -374,16 +374,18 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          <Card className="border-0 bg-transparent shadow-none">
-            <CardHeader>
-              <CardTitle className="text-xl text-slate-900">자주 묻는 질문</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 rounded-3xl p-6 text-base leading-7 text-slate-700 clay-card">
-              <p><span className="font-semibold">Q.</span> 어떤 파일을 받으면 되나요?<br /><span className="text-slate-600">A.</span> 대부분은 <span className="font-semibold">webmail-summary.exe</span> 하나면 충분합니다.</p>
-              <p><span className="font-semibold">Q.</span> 메일 원문은 어디에 저장되나요?<br /><span className="text-slate-600">A.</span> 내 PC 로컬 저장소에 보관됩니다.</p>
-              <p><span className="font-semibold">Q.</span> API 키는 안전한가요?<br /><span className="text-slate-600">A.</span> Windows Credential Manager를 사용해 저장합니다.</p>
-            </CardContent>
-          </Card>
+            <Card className="border-0 bg-transparent shadow-none">
+              <CardHeader>
+                <CardTitle className="text-xl text-slate-900">자주 묻는 질문</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 rounded-3xl p-6 text-base leading-7 text-slate-700 clay-card">
+                <p><span className="font-semibold">Q.</span> 어떤 파일을 받으면 되나요?<br /><span className="text-slate-600">A.</span> 대부분은 <span className="font-semibold">webmail-summary.exe</span> 하나면 충분합니다.</p>
+                <p><span className="font-semibold">Q.</span> 메일 원문은 어디에 저장되나요?<br /><span className="text-slate-600">A.</span> 내 PC 로컬 저장소에 보관됩니다.</p>
+                <p><span className="font-semibold">Q.</span> API 키는 안전한가요?<br /><span className="text-slate-600">A.</span> Windows Credential Manager를 사용해 저장합니다.</p>
+                <p><span className="font-semibold">Q.</span> Daouoffice만 되나요?<br /><span className="text-slate-600">A.</span> 아니요. IMAP 기반이라 IMAP을 제공하는 메일 서비스면 대부분 사용 가능합니다. (예: Gmail/Google Workspace, Outlook/Exchange(조직 정책상 IMAP 허용 시), 네이버/다음, 개인 도메인 메일)</p>
+                <p><span className="font-semibold">Q.</span> 특정 폴더만 가져올 수 있나요?<br /><span className="text-slate-600">A.</span> 네. 설정에서 가져올 메일 폴더를 선택할 수 있고, 선택한 폴더만 동기화합니다.</p>
+              </CardContent>
+            </Card>
         </section>
 
         <section className="rounded-3xl p-6 text-base text-slate-700 clay-card">

@@ -1,10 +1,13 @@
 # webmail-summary
 
-메일을 자동으로 모으고, 읽기 쉽게 요약해주는 Windows용 로컬 앱입니다.
+IMAP 메일함을 자동으로 모으고, 읽기 쉽게 요약해주는 Windows용 로컬 앱입니다.
+
+Daouoffice 전용이 아니라, IMAP을 제공하는 메일 서비스라면 대부분 사용할 수 있습니다.
+(예: Gmail/Google Workspace, Outlook/Exchange(조직 정책상 IMAP 허용 시), 네이버/다음, 개인 도메인 메일 등)
 
 - 다운로드: https://github.com/repairer5812/ai-email-summarizer/releases/latest
 - 프로젝트: https://github.com/repairer5812/ai-email-summarizer
-- 현재 버전: `0.5.36`
+- 현재 버전: `0.5.37`
 
 ## 일반 사용자용 안내 (먼저 읽어주세요)
 
@@ -42,7 +45,7 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
 1) 메일 서버(IMAP) 정보 입력
 2) `연결 테스트` 버튼 클릭
-3) 가져올 메일 폴더 선택
+3) 가져올 메일 폴더 선택 (원하는 폴더만 선택해서 동기화 가능)
 4) AI 설정(로컬 또는 클라우드)
    - 로컬 기본값은 `빠름 — EXAONE 3.5 2.4B`이며, 필요 시 `표준(Gemma 3 4B)/성능`으로 변경할 수 있습니다.
 5) 저장 후 대시보드로 이동
@@ -70,6 +73,11 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
 요약이 실패해요.
 - 인터넷 연결을 확인하고 잠시 후 다시 시도해 보세요.
+
+Daouoffice가 아닌 메일도 되나요?
+- 네. 이 앱은 IMAP 기반이라 IMAP이 열려 있는 메일 서비스면 대부분 동작합니다.
+- 다만 조직/학교 메일은 정책상 IMAP이 꺼져 있을 수 있습니다.
+- Gmail/Google Workspace는 2단계 인증 사용 시 앱 비밀번호가 필요할 수 있습니다.
 
 비밀번호/API 키가 걱정돼요.
 - 키는 DB가 아니라 Windows Credential Manager에 저장됩니다.

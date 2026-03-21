@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.37] - 2026-03-21
+
+### Changed
+
+- 문서/랜딩 페이지에 IMAP 기반으로 다양한 메일 서비스에서 사용할 수 있음을 명시했습니다.
+  - Daouoffice 전용이 아니라, IMAP을 제공하는 메일 서비스(Gmail/Google Workspace 등)에도 적용 가능합니다.
+- 폴더 선택(가져올 메일 폴더를 고르는 기능)이 가능함을 안내 문구로 보강했습니다.
+
 ## [0.5.36] - 2026-03-21
 
 ### Fixed
