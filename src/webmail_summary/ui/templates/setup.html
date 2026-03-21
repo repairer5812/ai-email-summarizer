@@ -226,6 +226,15 @@
                       </div>
                     </div>
 
+                    <div class="form-group" id="cloud-model-search-wrap" style="display:none">
+                      <label>모델 검색</label>
+                      <div style="display:flex; gap:10px; align-items:center;">
+                        <input id="cloud-model-search" type="text" placeholder="예: gemma, llama, :free" style="flex: 1;" />
+                        <button type="button" class="btn btn--secondary" id="btn-refresh-openrouter" style="white-space: nowrap;">목록 새로고침</button>
+                      </div>
+                      <div class="help muted" id="cloud-model-hint"></div>
+                    </div>
+
                     <div class="form-group">
                       <label>LLM 모델 선택</label>
                       <select name="openrouter_model" id="cloud-model-select">
@@ -380,6 +389,10 @@
   const cloudSection = document.getElementById('cloud-section');
   const cloudProvider = document.getElementById('cloud-provider');
   const cloudModelSelect = document.getElementById('cloud-model-select');
+  const cloudModelSearchWrap = document.getElementById('cloud-model-search-wrap');
+  const cloudModelSearch = document.getElementById('cloud-model-search');
+  const cloudModelHint = document.getElementById('cloud-model-hint');
+  const btnRefreshOpenrouter = document.getElementById('btn-refresh-openrouter');
   const btnTestCloudKey = document.getElementById('btn-test-cloud-key');
   const cloudTestStatus = document.getElementById('cloud-test-status');
   
@@ -403,15 +416,18 @@
     anthropic: [
       { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
       { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' }
-    ],
-    openrouter: [
-      { id: 'google/gemma-3-4b-it', label: 'Gemma 3 4B (속도)' },
-      { id: 'google/gemma-3-12b-it', label: 'Gemma 3 12B (균형)' },
-      { id: 'google/gemma-3-27b-it', label: 'Gemma 3 27B (품질)' },
-      { id: 'meta-llama/llama-3.1-8b-instruct', label: 'Llama 3.1 8B' },
-      { id: 'mistralai/mistral-7b-instruct', label: 'Mistral 7B' }
     ]
   };
+
+  const OPENROUTER_FALLBACK = [
+    { id: 'google/gemma-3-4b-it', label: 'google/gemma-3-4b-it' },
+    { id: 'meta-llama/llama-3.1-8b-instruct', label: 'meta-llama/llama-3.1-8b-instruct' },
+    { id: 'mistralai/mistral-7b-instruct', label: 'mistralai/mistral-7b-instruct' }
+  ];
+
+  let openrouterModels = null;
+  let openrouterLoading = false;
+  let openrouterLastError = '';
 
   // --- Logic: Tabs ---
   window.switchTab = (tabName) => {
@@ -449,6 +465,92 @@
     if (v === 'cloud') syncCloudModelList();
   }
 
+  function _setCloudModelSearchVisible(visible) {
+    if (!cloudModelSearchWrap) return;
+    cloudModelSearchWrap.style.display = visible ? 'block' : 'none';
+  }
+
+  function _setCloudModelHint(text) {
+    if (!cloudModelHint) return;
+    cloudModelHint.textContent = text || '';
+  }
+
+  function _populateCloudSelect(models, selectedId) {
+    if (!cloudModelSelect) return;
+    const prev = String(selectedId || cloudModelSelect.value || '');
+    cloudModelSelect.innerHTML = '';
+    const list = Array.isArray(models) ? models : [];
+    list.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label || m.id;
+      cloudModelSelect.appendChild(opt);
+    });
+
+    const want = prev || "{{ defaults.openrouter_model }}";
+    if (want) cloudModelSelect.value = want;
+    if (cloudModelSelect.value !== want && want) {
+      const opt = document.createElement('option');
+      opt.value = want;
+      opt.textContent = want + ' (saved)';
+      cloudModelSelect.insertBefore(opt, cloudModelSelect.firstChild);
+      cloudModelSelect.value = want;
+    }
+  }
+
+  function _filterModels(models, query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return models;
+    return models.filter(m => {
+      const id = String(m.id || '').toLowerCase();
+      const label = String(m.label || '').toLowerCase();
+      return id.includes(q) || label.includes(q);
+    });
+  }
+
+  function _renderOpenRouterModels() {
+    const base = Array.isArray(openrouterModels) && openrouterModels.length ? openrouterModels : OPENROUTER_FALLBACK;
+    const q = cloudModelSearch ? cloudModelSearch.value : '';
+    const filtered = _filterModels(base, q).slice(0, 600);
+    _populateCloudSelect(filtered, "{{ defaults.openrouter_model }}");
+    if (openrouterLoading) {
+      _setCloudModelHint('모델 목록 불러오는 중...');
+    } else if (openrouterLastError) {
+      _setCloudModelHint('모델 목록을 불러오지 못했습니다. (fallback 사용) ' + openrouterLastError);
+    } else {
+      _setCloudModelHint('총 ' + base.length + '개 중 ' + filtered.length + '개 표시');
+    }
+  }
+
+  async function _ensureOpenRouterModelsLoaded(forceRefresh) {
+    if (openrouterLoading) return;
+    if (!forceRefresh && Array.isArray(openrouterModels) && openrouterModels.length) return;
+    openrouterLoading = true;
+    openrouterLastError = '';
+    _renderOpenRouterModels();
+    try {
+      const url = '/api/openrouter/models?limit=2000' + (forceRefresh ? '&refresh=1' : '');
+      const res = await fetch(url, { method: 'GET' });
+      const j = await res.json();
+      if (!res.ok) {
+        openrouterLastError = (j && j.message) ? String(j.message) : ('HTTP ' + res.status);
+        openrouterModels = null;
+      } else {
+        const models = Array.isArray(j.models) ? j.models : [];
+        openrouterModels = models.map(m => ({
+          id: m.id,
+          label: m.label || m.id,
+        }));
+      }
+    } catch (e) {
+      openrouterLastError = String(e && e.message ? e.message : e);
+      openrouterModels = null;
+    } finally {
+      openrouterLoading = false;
+      _renderOpenRouterModels();
+    }
+  }
+
   function syncCloudModelList() {
     const p = cloudProvider.value;
     document.querySelectorAll('.cloud-key-field').forEach(f => {
@@ -459,15 +561,18 @@
       cloudTestStatus.style.color = '';
     }
 
+    if (p === 'openrouter') {
+      _setCloudModelSearchVisible(true);
+      if (cloudModelSearch) cloudModelSearch.disabled = false;
+      if (btnRefreshOpenrouter) btnRefreshOpenrouter.disabled = false;
+      _renderOpenRouterModels();
+      _ensureOpenRouterModelsLoaded(false);
+      return;
+    }
+
+    _setCloudModelSearchVisible(false);
     const models = CLOUD_MODELS[p] || [];
-    cloudModelSelect.innerHTML = '';
-    models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = m.label;
-      if (m.id === "{{ defaults.openrouter_model }}") opt.selected = true;
-      cloudModelSelect.appendChild(opt);
-    });
+    _populateCloudSelect(models, "{{ defaults.openrouter_model }}");
   }
 
   function syncModelNotes() {
@@ -511,6 +616,12 @@
   // --- Event Listeners ---
   if (backendSelect) backendSelect.addEventListener('change', syncAiMenus);
   if (cloudProvider) cloudProvider.addEventListener('change', syncCloudModelList);
+  if (cloudModelSearch) cloudModelSearch.addEventListener('input', () => {
+    if (cloudProvider && cloudProvider.value === 'openrouter') _renderOpenRouterModels();
+  });
+  if (btnRefreshOpenrouter) btnRefreshOpenrouter.addEventListener('click', () => {
+    if (cloudProvider && cloudProvider.value === 'openrouter') _ensureOpenRouterModelsLoaded(true);
+  });
   if (modelSelect) modelSelect.addEventListener('change', syncModelNotes);
   roleCheckboxes.forEach((cb) => cb.addEventListener('change', syncRoleButtons));
 
