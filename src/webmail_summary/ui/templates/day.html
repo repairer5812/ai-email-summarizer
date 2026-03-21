@@ -6,7 +6,7 @@
       <p class="muted" style="margin-bottom: 4px;">{{ t(request, 'day.subtitle') }}</p>
       <h1>{{ day }}</h1>
     </div>
-    <div class="hero__actions day-actions">
+    <div class="day-actions">
       {% if not setup_complete %}
         <a class="btn" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
       {% elif active_resum %}
