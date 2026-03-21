@@ -192,11 +192,18 @@ button.nav__link {
 }
 
 .hero__btnrow,
-.day-actions,
 .day-item-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.day-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .day-actions {

@@ -408,6 +408,13 @@ def _get_app_version() -> str:
     return "0.0.0"
 
 
+# Expose version to templates for cache busting.
+try:
+    templates.env.globals["app_version"] = _get_app_version
+except Exception:
+    pass
+
+
 def _parse_iso_datetime(value: str) -> datetime | None:
     s = str(value or "").strip()
     if not s:

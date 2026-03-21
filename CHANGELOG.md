@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.39] - 2026-03-21
+
+### Fixed
+
+- 업데이트 후에도 버튼 레이아웃이 구버전 CSS 캐시 때문에 계속 깨져 보일 수 있어, 정적 리소스(app.css/app.js)에 버전 기반 캐시 무효화(query string)를 적용했습니다.
+- 날짜 화면 우측 액션 버튼이 매우 좁은 폭에서 1개씩 줄바꿈되며 세로로 쌓이던 현상을 완화했습니다.
+  - 버튼 그룹을 기본적으로 nowrap + 가로 스크롤 가능하게 처리해, 최소한 "가로 정렬"을 유지합니다.
+
 ## [0.5.38] - 2026-03-21
 
 ### Fixed
