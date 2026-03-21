@@ -188,7 +188,15 @@
                     </div>
                     <div class="form-group">
                       <label>{{ t(request, 'setup.install_local') }}</label>
-                      <div><button type="button" id="btn-local-install" class="btn btn--secondary">{{ t(request, 'setup.install_btn') }}</button></div>
+                      <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" id="btn-local-install" class="btn btn--secondary">{{ t(request, 'setup.install_btn') }}</button>
+                        <span class="muted" style="font-size: 0.9rem;">{{ t(request, 'setup.install_help') }}</span>
+                      </div>
+
+                      <div class="card" style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.02);">
+                        <div class="bar" style="margin-top: 0;"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
+                        <div class="muted" id="local-text" style="margin-top: 8px; font-size: 12px;">...</div>
+                      </div>
                     </div>
                     <div class="form-group">
                       <label>{{ t(request, 'setup.install_progress') }}</label>
@@ -652,24 +660,39 @@
   if (btnInstall) {
     btnInstall.addEventListener('click', async () => {
       btnInstall.disabled = true;
+      if (localBar) localBar.style.width = '0%';
+      if (localText) localText.textContent = {{ t(request, 'setup.install.checking')|tojson }};
       const modelId = modelSelect.value;
-      const res = await fetch('/api/jobs/local-install', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model_id: modelId })
-      });
-      const j = await res.json();
-      if (!res.ok) {
+      try {
+        const res = await fetch('/api/jobs/local-install', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model_id: modelId })
+        });
+        const j = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          if (localText) {
+            const msg = (j && (j.message || j.error)) ? String(j.message || j.error) : ('HTTP ' + res.status);
+            localText.textContent = {{ t(request, 'setup.install.error')|tojson }} + msg;
+          }
+          btnInstall.disabled = false;
+          return;
+        }
+
+        if (j && j.already_installed) {
+          if (localBar) localBar.style.width = '100%';
+          if (localText) localText.textContent = {{ t(request, 'setup.install.already')|tojson }};
+          btnInstall.disabled = false;
+          return;
+        }
+
+        if (localText) localText.textContent = {{ t(request, 'setup.install.starting')|tojson }};
+        watchInstall(j.job_id);
+      } catch (e) {
+        if (localText) localText.textContent = {{ t(request, 'setup.install.error')|tojson }} + String(e && e.message ? e.message : e);
         btnInstall.disabled = false;
-        return;
       }
-      if (j && j.already_installed) {
-        if (localBar) localBar.style.width = '100%';
-        if (localText) localText.textContent = 'installed';
-        btnInstall.disabled = false;
-        return;
-      }
-      watchInstall(j.job_id);
     });
   }
 

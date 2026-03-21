@@ -195,6 +195,18 @@ button.nav__link {
   gap: 10px;
 }
 
+/* Day view: if actions are still rendered with hero__actions,
+   force a horizontal toolbar instead of a vertical stack. */
+.hero__row--day .hero__actions {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+  gap: 8px;
+}
+
 /* Backward/defensive: older day template used both classes.
    Ensure day action buttons stay horizontal even if hero__actions is present. */
 .hero__actions.day-actions {
