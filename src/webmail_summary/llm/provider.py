@@ -43,15 +43,17 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
         server_exe = inst.llama_cli_path.with_name("llama-server.exe")
         if server_exe.exists():
             try:
-                max_tokens = 192
-                request_timeout_s = 40.0
-                max_attempts = 1
-                total_budget_s = 45.0
+                # Local llama-server can be slow on some machines. Be generous with
+                # timeouts and allow a retry (we restart the server on timeout).
+                max_tokens = 256
+                request_timeout_s = 120.0
+                max_attempts = 2
+                total_budget_s = 180.0
                 if tier == "fast":
-                    max_tokens = 96
-                    request_timeout_s = 20.0
-                    max_attempts = 1
-                    total_budget_s = 25.0
+                    max_tokens = 128
+                    request_timeout_s = 60.0
+                    max_attempts = 2
+                    total_budget_s = 90.0
                 return LlamaCppServerProvider(
                     LlamaCppServerConfig(
                         server_exe=server_exe,

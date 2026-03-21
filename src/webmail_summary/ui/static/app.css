@@ -191,6 +191,15 @@ button.nav__link {
   gap: 10px;
 }
 
+/* Backward/defensive: older day template used both classes.
+   Ensure day action buttons stay horizontal even if hero__actions is present. */
+.hero__actions.day-actions {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
 .hero__btnrow,
 .day-item-actions {
   display: flex;

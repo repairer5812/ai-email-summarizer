@@ -325,7 +325,7 @@ class LlamaCppServerProvider(LlmProvider):
         body_limit = 6000
         max_attempts = max(1, int(self._cfg.max_attempts))
         budget_s = max(10.0, float(self._cfg.total_request_budget_s))
-        for _attempt in range(max_attempts):
+        for attempt in range(max_attempts):
             if (time.monotonic() - started_at) >= budget_s:
                 return LlmResult(
                     summary="(LLM timeout)", tags=[], backlinks=[], personal=False
@@ -334,6 +334,17 @@ class LlamaCppServerProvider(LlmProvider):
             try:
                 data = _post(prompt)
             except Exception:
+                # Best-effort retry: restart server once if possible.
+                if attempt < (max_attempts - 1):
+                    try:
+                        stop_server(force=True)
+                    except Exception:
+                        pass
+                    try:
+                        ensure_server(self._cfg)
+                    except Exception:
+                        pass
+                    continue
                 return LlmResult(
                     summary="(LLM unavailable)", tags=[], backlinks=[], personal=False
                 )
@@ -351,6 +362,18 @@ class LlamaCppServerProvider(LlmProvider):
                 continue
 
             if isinstance(data, dict) and data.get("__retry") == "timeout":
+                if attempt < (max_attempts - 1):
+                    # Restart the local server on request timeout and retry.
+                    try:
+                        stop_server(force=True)
+                    except Exception:
+                        pass
+                    try:
+                        ensure_server(self._cfg)
+                    except Exception:
+                        pass
+                    body_limit = max(800, int(body_limit * 0.8))
+                    continue
                 return LlmResult(
                     summary="(LLM timeout)",
                     tags=[],
