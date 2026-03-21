@@ -283,11 +283,11 @@ def summarize_email_long_aware(
             max_tags=cfg.max_tags,
             max_backlinks=cfg.max_backlinks,
         )
-    elif tier == "standard" and cfg.chunk_chars <= 2400:
+    elif tier in {"standard", "performance"} and cfg.chunk_chars <= 2400:
         # Local standard models usually handle medium context windows.
         active_cfg = LongSummarizeConfig(
             chunk_if_body_chars_over=8000,
-            chunk_chars=4200,
+            chunk_chars=3600,
             max_chunks=2,
             max_bullets=cfg.max_bullets,
             part_bullets=cfg.part_bullets,
@@ -335,7 +335,9 @@ def summarize_email_long_aware(
     backlinks: list[str] = []
     personal = False
 
-    skip_synthesis = tier == "fast"
+    # Local models can be slow; synthesis adds an extra LLM call.
+    # For cloud, keep synthesis for higher quality.
+    skip_synthesis = tier != "cloud"
     # Total units: chunks + (optional) synthesis
     total_units = len(chunks) + (0 if skip_synthesis else 1)
 

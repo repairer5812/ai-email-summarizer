@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.43] - 2026-03-21
+
+### Fixed
+
+- 로컬 모델(Qwen/EXAONE 등) 사용 시 장문 메일 chunking 단계에서 LLM 호출 횟수가 과도해 전체 처리 시간이 길어지며 timeout이 발생하던 문제를 완화했습니다.
+  - `performance` 티어를 `standard`와 동일한 chunking 가드레일로 처리합니다.
+  - 로컬(비 cloud) 환경에서 chunking이 발생한 경우, 추가 합성(synthesis) LLM 호출을 생략해 LLM 호출 수를 줄입니다.
+
 ## [0.5.42] - 2026-03-21
 
 ### Fixed
