@@ -18,19 +18,19 @@ class LocalModelChoice:
 LOCAL_MODELS: list[LocalModelChoice] = [
     LocalModelChoice(
         id="fast",
-        label="빠름 — Gemma 3 4B (Q4_K_M)",
+        label="빠름 — EXAONE 3.5 2.4B (Q4_K_M)",
         tier="fast",
-        hf_repo_id="bartowski/google_gemma-3-4b-it-GGUF",
-        hf_filename="google_gemma-3-4b-it-Q4_K_M.gguf",
-        notes="Gemma 3 최신 계열(4B) 모델입니다. 빠른 반응과 준수한 추론을 목표로 합니다.",
+        hf_repo_id="LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF",
+        hf_filename="EXAONE-3.5-2.4B-Instruct-Q4_K_M.gguf",
+        notes="EXAONE 3.5 2.4B 모델입니다. 가장 빠른 응답을 목표로 합니다.",
     ),
     LocalModelChoice(
         id="standard",
-        label="표준 — EXAONE 3.5 2.4B (Q4_K_M)",
+        label="표준 — Gemma 3 4B (Q4_K_M)",
         tier="standard",
-        hf_repo_id="LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF",
-        hf_filename="EXAONE-3.5-2.4B-Instruct-Q4_K_M.gguf",
-        notes="한국어 요약 품질을 우선하는 기본 모델입니다.",
+        hf_repo_id="bartowski/google_gemma-3-4b-it-GGUF",
+        hf_filename="google_gemma-3-4b-it-Q4_K_M.gguf",
+        notes="Gemma 3 4B 모델입니다. 빠름 대비 더 안정적인 균형 품질을 목표로 합니다.",
     ),
     LocalModelChoice(
         id="performance",
