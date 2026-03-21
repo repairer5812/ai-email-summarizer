@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from webmail_summary.index.db import init_db
 from webmail_summary.index.db import get_conn
 from webmail_summary.api.routes_jobs import router as api_router
+from webmail_summary.api.routes_openrouter import router as openrouter_router
 from webmail_summary.ui.routes import router as ui_router
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.single_instance import SingleInstanceLock
@@ -112,6 +113,7 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.include_router(api_router)
+    app.include_router(openrouter_router)
     app.include_router(ui_router)
 
     @app.on_event("shutdown")

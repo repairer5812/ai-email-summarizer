@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.35] - 2026-03-21
+
+### Added
+
+- OpenRouter 모델 목록을 실시간으로 불러와 선택할 수 있게 했습니다.
+  - `/api/openrouter/models`로 모델 목록을 가져오며, OpenRouter API Key가 설정되어 있으면 주기적으로 갱신합니다.
+  - 키가 없거나 네트워크가 불안정한 경우에는 캐시/기본 목록으로 동작합니다.
+- 모델 선택 UI에 검색 입력을 추가했습니다.
+  - OpenRouter 선택 시 "모델 검색"에 몇 글자 입력하면 목록이 자동 필터링됩니다.
+
 ## [0.5.34] - 2026-03-21
 
 ### Fixed
