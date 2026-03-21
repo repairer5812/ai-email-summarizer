@@ -339,10 +339,15 @@ def resummarize_day_task(
                     )
                 finally:
                     conn_to.close()
+                llm_done.set()
                 try:
                     from webmail_summary.llm.llamacpp_server import stop_server
 
                     stop_server(force=True)
+                except Exception:
+                    pass
+                try:
+                    llm_t.join(timeout=0.2)
                 except Exception:
                     pass
                 llm_res = LlmResult(
@@ -368,6 +373,10 @@ def resummarize_day_task(
                         backlinks=[],
                         personal=False,
                     )
+                try:
+                    llm_t.join(timeout=0.2)
+                except Exception:
+                    pass
 
             dt_s = time.monotonic() - t0
             topics = llm_res.backlinks
