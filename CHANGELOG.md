@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.34] - 2026-03-21
+
+### Fixed
+
+- 업데이트 후 실제 설치는 `0.5.33`으로 완료되었는데 UI가 `0.5.32`로 표시되던 버전 인식 오류를 수정했습니다.
+  - Windows 설치형(frozen) 실행에서 패키지 fallback 대신 현재 실행 중 EXE의 파일 버전(ProductVersion/FileVersion)을 우선 읽도록 보강.
+  - 버전 조회 시 경로 문자열 삽입 대신 환경변수를 통해 안전하게 전달해 경로 파싱 실패 가능성을 낮춤.
+
 ## [0.5.33] - 2026-03-21
 
 ### Fixed
