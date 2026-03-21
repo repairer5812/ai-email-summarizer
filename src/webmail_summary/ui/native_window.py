@@ -356,14 +356,9 @@ def run_ui(*, port: int | None = None) -> None:
                 requests.post(req_url, timeout=(0.5, 1.5))
             except Exception:
                 pass
-            try:
-                if server_proc is not None and server_proc.poll() is None:
-                    server_proc.terminate()
-            except Exception:
-                pass
 
-            # Best-effort wait to avoid installer conflicts.
-            deadline = time.time() + 3.0
+            # Prefer graceful shutdown first.
+            deadline = time.time() + 8.0
             while time.time() < deadline:
                 try:
                     if server_proc is None or server_proc.poll() is not None:
@@ -371,6 +366,23 @@ def run_ui(*, port: int | None = None) -> None:
                 except Exception:
                     break
                 time.sleep(0.05)
+
+            try:
+                if server_proc is not None and server_proc.poll() is None:
+                    server_proc.terminate()
+            except Exception:
+                pass
+
+            # Force kill only as bounded fallback.
+            deadline = time.time() + 4.0
+            while time.time() < deadline:
+                try:
+                    if server_proc is None or server_proc.poll() is not None:
+                        break
+                except Exception:
+                    break
+                time.sleep(0.05)
+
             try:
                 if server_proc is not None and server_proc.poll() is None:
                     server_proc.kill()

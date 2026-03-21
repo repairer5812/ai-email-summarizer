@@ -46,6 +46,18 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
     )
 
 
+def _normalize_ui_theme(value: str | None) -> str:
+    v = str(value or "").strip().lower()
+    legacy = {
+        "trust": "bento",
+        "creative": "clay",
+    }
+    v = legacy.get(v, v)
+    if v not in {"bento", "clay"}:
+        return "bento"
+    return v
+
+
 def load_settings(conn: sqlite3.Connection) -> Settings:
     imap_host = get_setting(conn, "imap_host") or ""
     imap_port = int(get_setting(conn, "imap_port") or "993")
@@ -115,7 +127,7 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         revert_seen_after_sync=revert_seen_after_sync,
         user_roles=user_roles,
         user_interests=user_interests,
-        ui_theme=get_setting(conn, "ui_theme") or "trust",
+        ui_theme=_normalize_ui_theme(get_setting(conn, "ui_theme")),
         close_behavior=close_behavior,
         update_channel=update_channel,
         update_latest_version=update_latest_version,
