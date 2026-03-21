@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RetroGrid } from "@/components/ui/retro-grid";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
 
+const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/+$/, "");
+const withBasePath = (p: string) => `${basePath}${p}`;
+
 export default function Home() {
   return (
     <div className="relative min-h-screen bg-background text-slate-800">
@@ -17,7 +20,7 @@ export default function Home() {
 
       <main className="relative mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-14 md:px-10">
         <header className="flex items-center justify-between">
-          <a href="#" className="text-sm font-semibold tracking-tight text-slate-900">
+          <a href={withBasePath("/") || "/"} className="text-sm font-semibold tracking-tight text-slate-900">
             webmail-summary
           </a>
           <div className="flex items-center gap-3">
@@ -136,7 +139,7 @@ export default function Home() {
         </section>
 
         <section className="relative rounded-3xl border border-border bg-background/50 p-6 shadow-sm backdrop-blur md:p-8">
-          <div className="mx-auto w-full max-w-4xl animate-[float_6s_ease-in-out_infinite] rounded-2xl border border-blue-100 bg-white/90 p-4 shadow-md">
+                  <div className="mx-auto w-full max-w-4xl animate-[float_6s_ease-in-out_infinite] rounded-2xl border border-blue-100 bg-white/90 p-4 shadow-md">
             <div className="mb-3 flex items-center gap-2">
               <span className="size-2 rounded-full bg-red-300" />
               <span className="size-2 rounded-full bg-amber-300" />
@@ -180,12 +183,12 @@ export default function Home() {
                 <CardTitle className="text-base font-semibold text-slate-900">대시보드</CardTitle>
               </CardHeader>
               <CardContent>
-                <a
-                  href="/screenshots/dashboard.png"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group block"
-                >
+                  <a
+                    href={withBasePath("/screenshots/dashboard.png")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block"
+                  >
                   <div className="relative aspect-[16/9] overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <Image
                       src="/screenshots/dashboard.png"
@@ -210,12 +213,12 @@ export default function Home() {
                 <CardTitle className="text-base font-semibold text-slate-900">날짜별 요약</CardTitle>
               </CardHeader>
               <CardContent>
-                <a
-                  href="/screenshots/daily.png"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group block"
-                >
+                  <a
+                    href={withBasePath("/screenshots/daily.png")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block"
+                  >
                   <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <Image
                       src="/screenshots/daily.png"
@@ -239,12 +242,12 @@ export default function Home() {
                 <CardTitle className="text-base font-semibold text-slate-900">메일 상세</CardTitle>
               </CardHeader>
               <CardContent>
-                <a
-                  href="/screenshots/message.png"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group block"
-                >
+                  <a
+                    href={withBasePath("/screenshots/message.png")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block"
+                  >
                   <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-white">
                     <Image
                       src="/screenshots/message.png"

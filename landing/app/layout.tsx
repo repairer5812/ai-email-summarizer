@@ -5,6 +5,11 @@ export const metadata: Metadata = {
   title: "webmail-summary | 메일 요약을 더 쉽게",
   description:
     "Windows에서 메일을 자동 수집하고 AI로 요약해주는 webmail-summary 공식 랜딩 페이지입니다.",
+  metadataBase: new URL(
+    (process.env.NEXT_PUBLIC_SITE_URL ||
+      "https://repairer5812.github.io/ai-email-summarizer"
+    ).replace(/\/+$/, "") + "/"
+  ),
 };
 
 export default function RootLayout({
