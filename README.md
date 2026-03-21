@@ -14,8 +14,9 @@
 
 1) 위 `다운로드` 링크를 클릭합니다.
 2) 최신 버전 파일을 내려받습니다.
-   - 설치 파일(추천): `webmail-summary-setup-windows-x64.exe`
+   - 설치 파일(추천): `webmail-summary-setup-windows-x64-vX.Y.Z.exe`
    - 포터블(설치 없이 실행): `webmail-summary.exe`
+   - 포터블 ZIP: `webmail-summary-windows-x64.zip`
 3) 파일을 실행합니다.
 4) 앱이 켜지면 창이 자동으로 열립니다.
 
@@ -43,7 +44,7 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 2) `연결 테스트` 버튼 클릭
 3) 가져올 메일 폴더 선택
 4) AI 설정(로컬 또는 클라우드)
-   - 로컬 기본값은 `빠름 — Gemma 3 4B`이며, 필요 시 `표준/성능`으로 변경할 수 있습니다.
+   - 로컬 기본값은 `빠름 — EXAONE 3.5 2.4B`이며, 필요 시 `표준(Gemma 3 4B)/성능`으로 변경할 수 있습니다.
 5) 저장 후 대시보드로 이동
 
 ### 3. 실제 사용하기
@@ -55,14 +56,17 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation
 
 ### 4. 업데이트하기
 
-- 대시보드 우측 상단 버전 영역에서 `확인` 버튼을 누르면 최신 버전을 확인합니다.
-- 새 버전이 있으면 `업데이트` 버튼으로 설치 파일(또는 릴리즈 페이지)로 이동합니다.
-- 당장 업데이트가 어렵다면 `1주일 안 보기` 또는 `이 버전 건너뛰기`를 사용할 수 있습니다.
+- 대시보드 우측 상단 버전 영역에서 `확인` 버튼으로 최신 버전을 확인합니다.
+- 자동 업데이트 적용은 Windows 설치형(`setup`) 파일 기준으로 동작합니다.
+  - 포터블 `webmail-summary.exe`는 자동 설치 대상으로 사용되지 않습니다.
+- 업데이트 채널/자동 확인/다운로드 URL/잠시 숨김/건너뛰기 설정은 `설정 > Advanced`에서 관리할 수 있습니다.
 
 ### 5. 자주 겪는 문제
 
 앱이 실행되지 않아요.
 - 앱을 완전히 종료한 뒤 다시 실행해 보세요.
+- 로그 확인: `%LOCALAPPDATA%\webmail-summary\logs\server.log`
+- 런타임 폴더: `%LOCALAPPDATA%\webmail-summary\runtime`
 
 요약이 실패해요.
 - 인터넷 연결을 확인하고 잠시 후 다시 시도해 보세요.
