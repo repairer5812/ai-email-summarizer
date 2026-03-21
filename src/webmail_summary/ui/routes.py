@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from functools import lru_cache
 from importlib import metadata as importlib_metadata
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -325,10 +326,61 @@ def _get_repo_declared_version() -> str | None:
         return None
 
 
+@lru_cache(maxsize=1)
+def _get_windows_frozen_exe_version() -> str | None:
+    if os.name != "nt" or not bool(getattr(sys, "frozen", False)):
+        return None
+    exe = str(sys.executable or "").strip()
+    if not exe:
+        return None
+
+    try:
+        ps = (
+            "$p=$env:WEBMAIL_SUMMARY_EXE_PATH;"
+            "if([string]::IsNullOrWhiteSpace($p)){ exit 1 };"
+            "$p=[System.IO.Path]::GetFullPath($p);"
+            "$p=[System.Diagnostics.FileVersionInfo]::GetVersionInfo($p);"
+            "$v=$p.ProductVersion;"
+            "if([string]::IsNullOrWhiteSpace($v)){$v=$p.FileVersion};"
+            "Write-Output $v"
+        )
+        env = dict(os.environ)
+        env["WEBMAIL_SUMMARY_EXE_PATH"] = exe
+        popen_kwargs: dict = {
+            "text": True,
+            "errors": "replace",
+            "timeout": 3,
+            "env": env,
+        }
+        if os.name == "nt":
+            creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            popen_kwargs["creationflags"] = creationflags
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
+            popen_kwargs["startupinfo"] = si
+
+        out = subprocess.check_output(
+            [_resolve_powershell_exe(), "-NoProfile", "-Command", ps],
+            **popen_kwargs,
+        )
+        raw = _normalize_version(str(out or "").strip())
+        m = re.search(r"(\d+)\.(\d+)\.(\d+)", raw)
+        if not m:
+            return None
+        return f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+    except Exception:
+        return None
+
+
 def _get_app_version() -> str:
     env_v = _normalize_version(os.environ.get("WEBMAIL_SUMMARY_VERSION", ""))
     if env_v:
         return env_v
+
+    frozen_win_v = _get_windows_frozen_exe_version()
+    if frozen_win_v:
+        return frozen_win_v
 
     # In local src runs, prefer repo-declared version.
     if not bool(getattr(sys, "frozen", False)):
