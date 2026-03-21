@@ -47,19 +47,19 @@
               <div class="card__title">{{ t(request, 'setup.ui_theme') }}</div>
               <div class="card__body">
                 <div class="theme-selector">
-                  <label class="theme-option {% if defaults.ui_theme == 'trust' %}selected{% endif %}" id="label-theme-trust">
-                    <input type="radio" name="ui_theme" value="trust" {% if defaults.ui_theme == 'trust' %}checked{% endif %} onchange="updateThemeSelection('trust')">
-                    <div class="theme-preview preview-trust">
+                  <label class="theme-option {% if defaults.ui_theme == 'bento' %}selected{% endif %}" id="label-theme-bento">
+                    <input type="radio" name="ui_theme" value="bento" {% if defaults.ui_theme == 'bento' %}checked{% endif %} onchange="updateThemeSelection('bento')">
+                    <div class="theme-preview preview-bento">
                       <div class="preview-artwork"></div>
                     </div>
-                    <div class="theme-label">{{ t(request, 'setup.ui_theme.trust') }}</div>
+                    <div class="theme-label">{{ t(request, 'setup.ui_theme.bento') }}</div>
                   </label>
-                  <label class="theme-option {% if defaults.ui_theme == 'creative' %}selected{% endif %}" id="label-theme-creative">
-                    <input type="radio" name="ui_theme" value="creative" {% if defaults.ui_theme == 'creative' %}checked{% endif %} onchange="updateThemeSelection('creative')">
-                    <div class="theme-preview preview-creative">
+                  <label class="theme-option {% if defaults.ui_theme == 'clay' %}selected{% endif %}" id="label-theme-clay">
+                    <input type="radio" name="ui_theme" value="clay" {% if defaults.ui_theme == 'clay' %}checked{% endif %} onchange="updateThemeSelection('clay')">
+                    <div class="theme-preview preview-clay">
                       <div class="preview-artwork"></div>
                     </div>
-                    <div class="theme-label">{{ t(request, 'setup.ui_theme.creative') }}</div>
+                    <div class="theme-label">{{ t(request, 'setup.ui_theme.clay') }}</div>
                   </label>
                 </div>
               </div>
@@ -360,7 +360,7 @@
 .role-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
 .role-btn { cursor: pointer; border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-align: center; display: block; transition: var(--transition); background: var(--card-bg); }
 .role-btn:hover { border-color: var(--accent); }
-.role-btn:has(input:checked) { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow); }
+.role-btn.is-checked { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow); }
 .role-btn input { display: none; }
 .wizard__footer { margin-top: 32px; display: flex; justify-content: flex-end; }
 </style>
@@ -385,6 +385,7 @@
   
   const modelSelect = document.getElementById('local-model');
   const notesEl = document.getElementById('model-notes');
+  const roleCheckboxes = document.querySelectorAll('.role-btn input[type="checkbox"]');
 
   const CLOUD_MODELS = {
     openai: [
@@ -475,6 +476,14 @@
     notesEl.textContent = opt ? opt.getAttribute('data-notes') : '';
   }
 
+  function syncRoleButtons() {
+    roleCheckboxes.forEach((cb) => {
+      const roleBtn = cb.closest('.role-btn');
+      if (!roleBtn) return;
+      roleBtn.classList.toggle('is-checked', cb.checked);
+    });
+  }
+
   // --- Logic: Workers & Actions ---
   const btnInstall = document.getElementById('btn-local-install');
   const localBar = document.getElementById('local-bar');
@@ -503,6 +512,7 @@
   if (backendSelect) backendSelect.addEventListener('change', syncAiMenus);
   if (cloudProvider) cloudProvider.addEventListener('change', syncCloudModelList);
   if (modelSelect) modelSelect.addEventListener('change', syncModelNotes);
+  roleCheckboxes.forEach((cb) => cb.addEventListener('change', syncRoleButtons));
 
   if (btnInstall) {
     btnInstall.addEventListener('click', async () => {
@@ -606,6 +616,7 @@
   // --- Init ---
   syncAiMenus();
   syncModelNotes();
+  syncRoleButtons();
   const ACTIVE_INSTALL = "{{ (active.local_install.id if active and active.local_install else '') }}";
   if (ACTIVE_INSTALL) watchInstall(ACTIVE_INSTALL);
 

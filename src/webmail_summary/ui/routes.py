@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import _thread
 from datetime import datetime, timedelta, timezone
 import os
 import platform
@@ -27,7 +28,7 @@ from webmail_summary.index.mail_repo import (
     get_message_detail,
     list_messages_by_date,
 )
-from webmail_summary.index.settings import Settings, load_settings
+from webmail_summary.index.settings import Settings, _normalize_ui_theme, load_settings
 from webmail_summary.llm.local_models import (
     LOCAL_MODELS,
     get_local_model,
@@ -690,7 +691,7 @@ def _read_updater_status(path: Path) -> dict[str, object] | None:
     try:
         if not path.is_file():
             return None
-        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+        raw = path.read_text(encoding="utf-8-sig", errors="replace").strip()
         if not raw:
             return None
         data = json.loads(raw)
@@ -862,14 +863,14 @@ function Write-UpdateStatus([string]$Stage, [string]$Message, [int]$Code = 0) {
   } catch {}
 }
 
-function Stop-PidIfRunning([int]$Pid) {
-  if ($Pid -le 0) { return }
+function Stop-PidIfRunning([int]$TargetPid) {
+  if ($TargetPid -le 0) { return }
   try {
-    Wait-Process -Id $Pid -Timeout 10 -ErrorAction SilentlyContinue | Out-Null
+    Wait-Process -Id $TargetPid -Timeout 10 -ErrorAction SilentlyContinue | Out-Null
   } catch {}
   try {
-    if (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
-      Stop-Process -Id $Pid -Force -ErrorAction SilentlyContinue
+    if (Get-Process -Id $TargetPid -ErrorAction SilentlyContinue) {
+      Stop-Process -Id $TargetPid -Force -ErrorAction SilentlyContinue
       Start-Sleep -Seconds 1
     }
   } catch {}
@@ -986,6 +987,14 @@ def _schedule_app_shutdown(delay_s: float = 1.2) -> None:
             stop_server(force=True)
         except Exception:
             pass
+        try:
+            _thread.interrupt_main()
+        except Exception:
+            pass
+
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            time.sleep(0.1)
         os._exit(0)
 
     threading.Thread(target=_worker, daemon=True).start()
@@ -1552,14 +1561,6 @@ def setup_get(request: Request):
         cloud_keys = _get_cloud_keys()
 
         local_ready = check_local_ready(model_id=settings.local_model_id)
-        if settings.imap_host and settings.imap_user:
-            try:
-                svc = f"webmail-summary::{settings.imap_host}"
-                val = keyring.get_password(svc, settings.imap_user)
-                imap_pass_set = bool(val and val.strip())
-            except Exception:
-                pass
-
         imap_pass_set = False
         if settings.imap_host and settings.imap_user:
             try:
@@ -1804,7 +1805,7 @@ def setup_save(
     update_skip_version: str = Form(""),
     update_last_checked_at: str = Form(""),
     update_download_url: str = Form(""),
-    ui_theme: str = Form("trust"),
+    ui_theme: str | None = Form(None),
     close_behavior: str = Form("background"),
     current_tab: str = Form("profile"),
 ):
@@ -1839,8 +1840,8 @@ def setup_save(
             _set_setting(conn, "openrouter_model", openrouter_model.strip())
         if external_max_bytes:
             _set_setting(conn, "external_max_bytes", external_max_bytes.strip())
-        if ui_theme:
-            _set_setting(conn, "ui_theme", ui_theme)
+        if ui_theme is not None and str(ui_theme).strip():
+            _set_setting(conn, "ui_theme", _normalize_ui_theme(ui_theme))
 
         cb = (close_behavior or "background").strip().lower()
         if cb not in {"background", "exit"}:
@@ -1937,7 +1938,7 @@ def setup_save_partial(
     conn = get_conn(_db_path())
     try:
         if ui_theme:
-            _set_setting(conn, "ui_theme", ui_theme)
+            _set_setting(conn, "ui_theme", _normalize_ui_theme(ui_theme))
         if llm_backend:
             _set_setting(conn, "llm_backend", llm_backend.strip().lower())
         conn.commit()

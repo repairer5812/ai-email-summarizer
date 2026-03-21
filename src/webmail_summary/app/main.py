@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 import os
+import time
+import _thread
 import threading
 
 import uvicorn
@@ -55,6 +57,15 @@ def _force_exit_process() -> None:
         stop_server(force=True)
     except Exception:
         pass
+    try:
+        _thread.interrupt_main()
+    except Exception:
+        pass
+
+    # Graceful shutdown first; hard-exit only as a bounded fallback.
+    deadline = time.time() + 8.0
+    while time.time() < deadline:
+        time.sleep(0.1)
     os._exit(0)
 
 
