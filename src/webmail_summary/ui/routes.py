@@ -819,11 +819,9 @@ def _guess_expected_sha256_from_release(
 
 def _relaunch_command() -> tuple[str, str]:
     exe = sys.executable
-    if bool(getattr(sys, "frozen", False)):
-        return exe, json.dumps(["ui"], ensure_ascii=True)
 
-    # In dev runs, the update installs the packaged app. Prefer relaunching the
-    # installed executable so the version reflects the installed build.
+    # Always prefer relaunching the installed executable when present.
+    # This prevents portable-run updates from reopening the old portable binary.
     try:
         local_appdata = os.environ.get("LOCALAPPDATA") or ""
         installed_exe = (
@@ -834,6 +832,11 @@ def _relaunch_command() -> tuple[str, str]:
     except Exception:
         pass
 
+    if bool(getattr(sys, "frozen", False)):
+        return exe, json.dumps(["ui"], ensure_ascii=True)
+
+    # In dev runs, the update installs the packaged app. Prefer relaunching the
+    # installed executable so the version reflects the installed build.
     return exe, json.dumps(["-m", "webmail_summary", "ui"], ensure_ascii=True)
 
 
@@ -846,7 +849,9 @@ param(
   [string]$RelaunchExe,
   [string]$RelaunchArgsJson,
   [string]$InstallLogPath,
-  [string]$StatusPath
+  [string]$StatusPath,
+  [string]$InstalledExePath,
+  [string]$ExpectedVersion
 )
 $ErrorActionPreference = 'Stop'
 Start-Sleep -Seconds 2
@@ -923,7 +928,58 @@ try {
   }
 
   Write-UpdateStatus 'installer_succeeded' 'installer completed' $code
-  if (Test-Path $RelaunchExe) {
+
+  $targetExe = $RelaunchExe
+  if (!( [string]::IsNullOrWhiteSpace($InstalledExePath) ) -and (Test-Path $InstalledExePath)) {
+    $targetExe = $InstalledExePath
+  }
+
+  if (!( [string]::IsNullOrWhiteSpace($ExpectedVersion) ) -and (Test-Path $targetExe)) {
+    try {
+      $expected = [string]$ExpectedVersion
+      $expected = $expected.Trim()
+      if ($expected.StartsWith('v')) {
+        $expected = $expected.Substring(1)
+      }
+      if ($expected -match '^([0-9]+(?:\.[0-9]+){1,3})') {
+        $expected = $matches[1]
+      }
+
+      $vi = (Get-Item $targetExe).VersionInfo
+      $pv = [string]$vi.ProductVersion
+      if ([string]::IsNullOrWhiteSpace($pv)) {
+        $pv = [string]$vi.FileVersion
+      }
+      $pv = $pv.Trim()
+      if ($pv.StartsWith('v')) {
+        $pv = $pv.Substring(1)
+      }
+      if ($pv -match '^([0-9]+(?:\.[0-9]+){1,3})') {
+        $pv = $matches[1]
+      }
+
+      $expParts = @($expected.Split('.') | ForEach-Object { [int]$_ })
+      $actParts = @($pv.Split('.') | ForEach-Object { [int]$_ })
+      $verOk = $true
+      for ($i = 0; $i -lt $expParts.Count; $i++) {
+        if ($i -ge $actParts.Count -or $actParts[$i] -ne $expParts[$i]) {
+          $verOk = $false
+          break
+        }
+      }
+      if (-not $verOk) {
+        Write-UpdateStatus 'error' ('installed version mismatch: expected ' + $expected + ', actual ' + $pv) 1003
+        exit 1003
+      }
+    } catch {
+      $msgv = ''
+      try { $msgv = $_.Exception.Message } catch { $msgv = 'unknown version check error' }
+      Write-UpdateStatus 'error' ('installed version check failed: ' + $msgv) 1004
+      exit 1004
+    }
+  }
+
+  if (Test-Path $targetExe) {
     $argsList = @()
     if (![string]::IsNullOrWhiteSpace($RelaunchArgsJson)) {
       try {
@@ -935,9 +991,9 @@ try {
       }
     }
     if ($argsList.Count -eq 0) {
-      Start-Process -FilePath $RelaunchExe -ErrorAction SilentlyContinue | Out-Null
+      Start-Process -FilePath $targetExe -ErrorAction SilentlyContinue | Out-Null
     } else {
-      Start-Process -FilePath $RelaunchExe -ArgumentList $argsList -ErrorAction SilentlyContinue | Out-Null
+      Start-Process -FilePath $targetExe -ArgumentList $argsList -ErrorAction SilentlyContinue | Out-Null
     }
   }
   Write-UpdateStatus 'done' 'update install completed' $code
@@ -1065,6 +1121,23 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
         if not filename.lower().endswith(".exe"):
             filename = "webmail-summary-setup-windows-x64.exe"
 
+        # Auto-apply must use the installer, not the portable executable.
+        # Portable exe update can relaunch the old binary without upgrading.
+        low_name = filename.strip().lower()
+        if ("setup" not in low_name and "installer" not in low_name) or (
+            low_name == "webmail-summary.exe"
+        ):
+            _set_update_apply_state(
+                conn,
+                stage="error",
+                percent=0,
+                message=(
+                    "설치형 업데이트 파일을 찾지 못했습니다. "
+                    "수동 다운로드로 setup 설치 파일을 실행하세요."
+                ),
+            )
+            return
+
         updates_dir = _updates_dir()
         installer_path = updates_dir / filename
 
@@ -1118,6 +1191,13 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
         _write_updater_script(script_path)
         install_log_path = updates_dir / "installer.log"
         status_path = _updater_status_path()
+        installed_exe_path = (
+            Path(str(os.environ.get("LOCALAPPDATA") or ""))
+            / "Programs"
+            / "webmail-summary"
+            / "webmail-summary.exe"
+        )
+        expected_version = _normalize_version(str(st.get("latest") or ""))
         try:
             status_path.unlink(missing_ok=True)
         except Exception:
@@ -1148,6 +1228,10 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
             str(install_log_path),
             "-StatusPath",
             str(status_path),
+            "-InstalledExePath",
+            str(installed_exe_path),
+            "-ExpectedVersion",
+            str(expected_version),
         ]
         creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
         popen_kwargs: dict = {
