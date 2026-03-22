@@ -124,13 +124,15 @@ function applyFormatting(selector = '.summary-content') {
     if (!actions) return;
 
     const wrap = (heroDay && heroDay.querySelector('.day-actions-wrap')) || actions.closest('.day-actions-wrap');
+    const compact = window.matchMedia && window.matchMedia('(max-width: 1024px)').matches;
 
     if (wrap) {
       wrap.style.display = 'flex';
-      wrap.style.justifyContent = 'flex-end';
+      wrap.style.justifyContent = compact ? 'flex-start' : 'flex-end';
       wrap.style.maxWidth = '100%';
-      // Give the toolbar enough room even when the hero row is tight.
-      wrap.style.flex = '1 1 100%';
+      wrap.style.flex = compact ? '1 1 100%' : '0 0 auto';
+      wrap.style.minWidth = compact ? '0' : 'max-content';
+      wrap.style.width = compact ? '100%' : 'auto';
     }
 
     actions.style.display = 'flex';
@@ -138,9 +140,11 @@ function applyFormatting(selector = '.summary-content') {
     actions.style.flexWrap = 'nowrap';
     actions.style.gap = '8px';
     actions.style.alignItems = 'center';
-    actions.style.justifyContent = 'flex-end';
+    actions.style.justifyContent = compact ? 'flex-start' : 'flex-end';
     actions.style.overflowX = 'auto';
     actions.style.maxWidth = '100%';
+    actions.style.width = compact ? '100%' : 'max-content';
+    actions.style.minWidth = compact ? '0' : 'max-content';
     // Also prevent inline wrapping when flex fails for any reason.
     actions.style.whiteSpace = 'nowrap';
 
