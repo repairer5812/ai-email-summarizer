@@ -110,3 +110,57 @@ function applyFormatting(selector = '.summary-content') {
     }
   });
 }
+
+/**
+ * Ensures the day view action buttons render as a single horizontal toolbar.
+ *
+ * Some WebView/CSS caching edge cases have shown the buttons stacking vertically.
+ * This runtime fix forces a row layout via inline styles when the day action block exists.
+ */
+(function ensureDayActionsToolbar() {
+  function apply() {
+    const heroDay = document.querySelector('.hero__row--day') || null;
+    const actions = (heroDay && heroDay.querySelector('.day-actions')) || document.querySelector('.day-actions');
+    if (!actions) return;
+
+    const wrap = (heroDay && heroDay.querySelector('.day-actions-wrap')) || actions.closest('.day-actions-wrap');
+
+    if (wrap) {
+      wrap.style.display = 'flex';
+      wrap.style.justifyContent = 'flex-end';
+      wrap.style.maxWidth = '100%';
+      // Give the toolbar enough room even when the hero row is tight.
+      wrap.style.flex = '1 1 100%';
+    }
+
+    actions.style.display = 'flex';
+    actions.style.flexDirection = 'row';
+    actions.style.flexWrap = 'nowrap';
+    actions.style.gap = '8px';
+    actions.style.alignItems = 'center';
+    actions.style.justifyContent = 'flex-end';
+    actions.style.overflowX = 'auto';
+    actions.style.maxWidth = '100%';
+    // Also prevent inline wrapping when flex fails for any reason.
+    actions.style.whiteSpace = 'nowrap';
+
+    actions.querySelectorAll('a,button').forEach(el => {
+      el.style.whiteSpace = 'nowrap';
+      el.style.flex = '0 0 auto';
+    });
+  }
+
+  function schedule() {
+    apply();
+    // One extra pass covers late layout adjustments after fonts/styles settle.
+    setTimeout(apply, 250);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', schedule);
+  } else {
+    schedule();
+  }
+
+  window.addEventListener('resize', apply);
+})();

@@ -153,6 +153,89 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+def _fallback_bullets_from_body(body: str, *, limit: int) -> list[str]:
+    """Heuristic fallback bullets when the model output is too thin.
+
+    This is used sparingly: only when the LLM returns very few bullets.
+    It extracts sentence/line candidates from the visible body while filtering common footer noise.
+    """
+
+    s = str(body or "").strip()
+    if not s:
+        return []
+
+    noise_needles = [
+        "unsubscribe",
+        "수신거부",
+        "수신 거부",
+        "개인정보",
+        "privacy",
+        "대표전화",
+        "고객센터",
+        "사업자등록",
+        "사업자 등록",
+        "무단전재",
+        "all rights reserved",
+        "copyright",
+        "서울특별시",
+        "주소:",
+        "address",
+        "tel",
+        "fax",
+    ]
+
+    def is_noise_line(line: str) -> bool:
+        low = line.lower()
+        if "http://" in low or "https://" in low or low.startswith("www."):
+            return True
+        if "@" in line and "." in line and len(line) < 80:
+            # likely an email address line
+            return True
+        for n in noise_needles:
+            if n in low:
+                return True
+        return False
+
+    # Start from lines; many emails are already line-broken reasonably after HTML->text.
+    raw_lines = [re.sub(r"\s+", " ", ln).strip() for ln in s.splitlines()]
+    cand: list[str] = []
+    for ln in raw_lines:
+        if not ln:
+            continue
+        if len(ln) < 12:
+            continue
+        if is_noise_line(ln):
+            continue
+        # Strip leading bullets/numbering.
+        t = re.sub(r"^([\-•·\*]+)\s*", "", ln).strip()
+        t = re.sub(r"^\(?\d+\)?[\.)]\s*", "", t).strip()
+        if not t or len(t) < 12:
+            continue
+        # Clip overly long lines.
+        if len(t) > 220:
+            t = t[:220].rstrip() + "..."
+        cand.append(t)
+        if len(cand) >= max(40, int(limit) * 6):
+            break
+
+    # Prefer lines with numbers/dates/colon.
+    def score(x: str) -> int:
+        sc = 0
+        if re.search(r"\d", x):
+            sc += 2
+        if ":" in x or "·" in x:
+            sc += 1
+        if re.search(r"\b(\d{1,2}/\d{1,2}|\d{4}-\d{2}-\d{2})\b", x):
+            sc += 2
+        return sc
+
+    # Stable sort: keep original order among same scores.
+    indexed = list(enumerate(cand))
+    indexed.sort(key=lambda it: (-score(it[1]), it[0]))
+    picked = [t for _i, t in indexed]
+    return _dedupe_keep_order(picked)[: max(0, int(limit))]
+
+
 def _is_structured(text: str) -> bool:
     """Check if the text already contains structured formatting like headers or bold topics."""
     s = text.strip()
@@ -247,10 +330,27 @@ def _ensure_core_detail_sections(text: str) -> str:
     if not cleaned:
         return "### 핵심 요약\n- (요약 없음)\n\n### 상세 요약\n- (요약 없음)"
 
-    core = cleaned[:3]
-    detail = cleaned[3:10]
+    n = len(cleaned)
+    # Avoid duplicating core bullets into the detail section.
+    # When there are few bullets, split them across the two sections.
+    if n <= 1:
+        core = cleaned[:1]
+        detail: list[str] = []
+    elif n == 2:
+        core = cleaned[:1]
+        detail = cleaned[1:]
+    elif n == 3:
+        core = cleaned[:2]
+        detail = cleaned[2:]
+    elif n in {4, 5}:
+        core = cleaned[:2]
+        detail = cleaned[2:]
+    else:
+        core = cleaned[:3]
+        detail = cleaned[3:10]
+
     if not detail:
-        detail = cleaned[: min(7, len(cleaned))]
+        detail = ["(상세 요약 항목이 부족합니다.)"]
 
     core_text = "\n".join([f"- {x}" for x in core])
     detail_text = "\n".join([f"- {x}" for x in detail])
@@ -306,10 +406,44 @@ def summarize_email_long_aware(
             max_backlinks=cfg.max_backlinks,
         )
 
+    skip_headers_norm = {
+        "핵심요약",
+        "상세요약",
+        "핵심결론",
+        "핵심전략결론",
+        "주요소식",
+        "주제별분석",
+        "심층구조화",
+        "구조화",
+    }
+
+    def _is_header_line(x: str) -> bool:
+        n = str(x or "").lower().replace(" ", "").strip("[]").strip()
+        return n in skip_headers_norm
+
     if len(body_s) <= active_cfg.chunk_if_body_chars_over:
         res = provider.summarize(subject=subject, body=body_s)
+        bullets = _dedupe_keep_order(
+            [
+                b
+                for b in _extract_bullets(res.summary)
+                if b and ("\ufffd" not in b) and not _is_header_line(b)
+            ]
+        )
+        # If the LLM returns too few bullets, fill from body heuristics to avoid
+        # 1-line summaries and core/detail duplication.
+        if len(bullets) < 6:
+            fb = _fallback_bullets_from_body(body_s, limit=12)
+            for x in fb:
+                if x.lower() not in {y.lower() for y in bullets}:
+                    bullets.append(x)
+                if len(bullets) >= 9:
+                    break
+        summary_text = (
+            "\n".join(["- " + b for b in bullets if b]).strip() or res.summary
+        )
         return LlmResult(
-            summary=_ensure_core_detail_sections(res.summary),
+            summary=_ensure_core_detail_sections(summary_text),
             tags=list(res.tags or []),
             backlinks=list(res.backlinks or []),
             personal=bool(res.personal),
@@ -335,9 +469,9 @@ def summarize_email_long_aware(
     backlinks: list[str] = []
     personal = False
 
-    # Local models can be slow; synthesis adds an extra LLM call.
-    # For cloud, keep synthesis for higher quality.
-    skip_synthesis = tier != "cloud"
+    # Synthesis adds one extra LLM call but significantly improves output quality
+    # for long newsletters (chunked body). Keep it enabled for all tiers.
+    skip_synthesis = False
     # Total units: chunks + (optional) synthesis
     total_units = len(chunks) + (0 if skip_synthesis else 1)
 
@@ -357,7 +491,11 @@ def summarize_email_long_aware(
 
         part_body = f"[Part {i}/{len(chunks)}]\n{ch}"
         res = provider.summarize(subject=subject, body=part_body)
-        part_bullets = _extract_bullets(res.summary)
+        part_bullets = [
+            b
+            for b in _extract_bullets(res.summary)
+            if b and ("\ufffd" not in b) and not _is_header_line(b)
+        ]
         all_bullets.extend(part_bullets)
         tags.extend(list(res.tags or []))
         backlinks.extend(list(res.backlinks or []))
@@ -454,7 +592,17 @@ def summarize_email_long_aware(
             pass
 
     if not final_summary_text:
-        merged_bullets = _dedupe_keep_order(all_bullets)[: active_cfg.max_bullets]
+        merged_bullets = _dedupe_keep_order(
+            [b for b in all_bullets if b and not _is_header_line(b)]
+        )[: active_cfg.max_bullets]
+        # If chunk summaries were too thin, supplement from the original body.
+        if len(merged_bullets) < 6:
+            fb = _fallback_bullets_from_body(body_s, limit=12)
+            for x in fb:
+                if x.lower() not in {y.lower() for y in merged_bullets}:
+                    merged_bullets.append(x)
+                if len(merged_bullets) >= 9:
+                    break
         final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
 
     final_summary_text = _ensure_core_detail_sections(final_summary_text)
