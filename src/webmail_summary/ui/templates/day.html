@@ -7,7 +7,7 @@
       <h1>{{ day }}</h1>
     </div>
     <div class="day-actions-wrap">
-      <div class="day-actions" style="display:flex; flex-direction: row; flex-wrap: nowrap; gap: 8px; align-items: center; justify-content: flex-end; overflow-x: auto; max-width: 100%;">
+      <div class="day-actions" style="display:flex; flex-direction: row; flex-wrap: nowrap; gap: 8px; align-items: center; justify-content: flex-end; overflow-x: auto; width: max-content; min-width: max-content; max-width: 100%;">
       {% if not setup_complete %}
         <a class="btn" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
       {% elif active_resum %}

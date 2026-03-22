@@ -162,22 +162,28 @@ button.nav__link {
    Allow the action group to wrap to a new line (so the buttons can stay horizontal)
    when the window is not wide enough for a 4-button row. */
 .hero__row--day {
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(520px, max-content);
+  align-items: start;
+  column-gap: 16px;
+  row-gap: 8px;
 }
 
 .hero__row--day > :first-child {
-  flex: 1 1 420px;
-  min-width: 260px;
+  min-width: 0;
 }
 
 .hero__row--day .day-actions-wrap {
-  flex: 1 1 100%;
   display: flex;
   justify-content: flex-end;
+  min-width: 520px;
+  max-width: 100%;
 }
 
 .hero__row--day .day-actions {
+  display: inline-flex;
+  width: max-content;
+  min-width: max-content;
   max-width: 100%;
 }
 
@@ -797,6 +803,24 @@ label {
 @media (max-width: 1024px) {
   .bento-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hero__row--day {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero__row--day .day-actions-wrap {
+    min-width: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .hero__row--day .day-actions {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
   }
 }
 

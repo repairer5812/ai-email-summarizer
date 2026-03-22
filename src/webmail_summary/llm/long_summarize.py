@@ -238,7 +238,142 @@ def _is_noise_bullet(text: str) -> bool:
     if len(t) <= 24 and re.fullmatch(r"[A-Za-z][A-Za-z .'-]{1,23}", t):
         return True
 
+    # Greeting / signature-like lines that are usually off-topic in summaries.
+    if re.search(r"\b(안녕하세요|감사합니다|좋은\s*하루|즐거운\s*하루)\b", t):
+        return True
+    if re.search(r"(올림|드림)$", t):
+        return True
+    if re.search(
+        r"\b(대표이사|팀장|부장|과장|실장|박사|교수|기자)\b", t
+    ) and t.endswith("입니다."):
+        return True
+
+    # Workflow/notification artifacts.
+    if any(k in t for k in ["결재 완료", "승인 요청", "승인 완료", "반려", "실패"]):
+        if any(k in t for k in ["바로가기", "클릭", "문서", "결재"]):
+            return True
+
     return False
+
+
+def _tokenize_for_relevance(text: str) -> set[str]:
+    s = str(text or "")
+    toks = re.findall(r"[A-Za-z]{2,}|[0-9]{2,}|[가-힣]{2,}", s)
+    return {t.lower() for t in toks}
+
+
+def _is_context_relevant_bullet(*, bullet: str, source_tokens: set[str]) -> bool:
+    b = str(bullet or "").strip()
+    if not b:
+        return False
+    if _is_noise_bullet(b):
+        return False
+
+    btoks = _tokenize_for_relevance(b)
+    if not btoks:
+        return False
+
+    overlap = sum(1 for t in btoks if t in source_tokens)
+    if overlap <= 0:
+        return False
+
+    ratio = overlap / max(1, len(btoks))
+    # Avoid keeping generic/off-context lines with very weak lexical anchoring.
+    if len(btoks) >= 5 and ratio < 0.2 and not re.search(r"\d", b):
+        return False
+
+    return True
+
+
+def _validate_summary_bullets(
+    *,
+    subject: str,
+    body: str,
+    bullets: list[str],
+    min_keep: int,
+    max_keep: int,
+) -> list[str]:
+    source_tokens = _tokenize_for_relevance(f"{subject}\n{body[:16000]}")
+    out: list[str] = []
+    for b in _dedupe_keep_order([str(x or "").strip() for x in bullets]):
+        if _is_context_relevant_bullet(bullet=b, source_tokens=source_tokens):
+            out.append(b)
+
+    if len(out) < max(1, int(min_keep)):
+        # Recover with conservative body-derived bullets.
+        fb = _fallback_bullets_from_body(body, limit=max(12, int(max_keep) + 4))
+        for x in fb:
+            if not _is_context_relevant_bullet(bullet=x, source_tokens=source_tokens):
+                continue
+            if x.lower() in {y.lower() for y in out}:
+                continue
+            out.append(x)
+            if len(out) >= max(1, int(min_keep)):
+                break
+
+    if len(out) < 2:
+        out.append("본문의 추가 정보가 제한적입니다.")
+
+    return _dedupe_keep_order(out)[: max(1, int(max_keep))]
+
+
+def _build_dynamic_cfg(
+    provider: LlmProvider,
+    *,
+    body_len: int,
+    tier: str,
+    cfg: LongSummarizeConfig,
+) -> LongSummarizeConfig:
+    # Derive chunk sizes from model context when available.
+    default_ctx_tokens = {
+        "fast": 3072,
+        "standard": 4096,
+        "performance": 4096,
+        "cloud": 8192,
+    }
+    ctx_tokens = int(default_ctx_tokens.get(tier, 4096))
+
+    p_cfg = getattr(provider, "_cfg", None)
+    try:
+        if p_cfg is not None and hasattr(p_cfg, "ctx_size"):
+            ctx_tokens = max(1024, int(getattr(p_cfg, "ctx_size")))
+    except Exception:
+        pass
+
+    # Reserve headroom for instructions + output tokens.
+    usable_tokens = max(800, int(ctx_tokens * 0.62))
+    # Conservative char estimate for mixed Korean/English.
+    input_chars_budget = max(1600, int(usable_tokens * 1.9))
+
+    def _clamp(v: int, lo: int, hi: int) -> int:
+        return max(lo, min(hi, int(v)))
+
+    chunk_chars = _clamp(int(input_chars_budget * 0.64), 1600, 10000)
+    chunk_if_over = _clamp(int(input_chars_budget * 0.9), 2200, 12000)
+
+    # Bound total map calls for latency; still scale with body size.
+    est_chunks = max(1, (max(1, int(body_len)) + chunk_chars - 1) // chunk_chars)
+    max_chunks = _clamp(est_chunks + 1, 2, 10)
+
+    if tier == "fast":
+        chunk_chars = min(chunk_chars, 3200)
+        max_chunks = min(max_chunks, 4)
+    elif tier in {"standard", "performance"}:
+        chunk_chars = min(chunk_chars, 4200)
+        max_chunks = min(max_chunks, 6)
+    else:  # cloud
+        chunk_chars = min(chunk_chars, 10000)
+        max_chunks = min(max_chunks, 8)
+
+    return LongSummarizeConfig(
+        chunk_if_body_chars_over=chunk_if_over,
+        chunk_chars=chunk_chars,
+        max_chunks=max_chunks,
+        max_bullets=cfg.max_bullets,
+        part_bullets=cfg.part_bullets,
+        max_tags=cfg.max_tags,
+        max_backlinks=cfg.max_backlinks,
+    )
 
 
 def _structure_newsletter_summary(
@@ -699,42 +834,9 @@ def summarize_email_long_aware(
 ) -> LlmResult:
     body_s = str(body or "")
 
-    # Tier-aware dynamic configuration for performance.
+    # Tier-aware, context-aware dynamic chunk configuration.
     tier = getattr(provider, "tier", "standard")
-    active_cfg = cfg
-    if tier == "cloud" and cfg.chunk_chars <= 2400:
-        # Cloud models can process larger contexts efficiently.
-        active_cfg = LongSummarizeConfig(
-            chunk_if_body_chars_over=12000,
-            chunk_chars=10000,
-            max_chunks=cfg.max_chunks,
-            max_bullets=cfg.max_bullets,
-            part_bullets=cfg.part_bullets,
-            max_tags=cfg.max_tags,
-            max_backlinks=cfg.max_backlinks,
-        )
-    elif tier in {"standard", "performance"} and cfg.chunk_chars <= 2400:
-        # Local standard models usually handle medium context windows.
-        active_cfg = LongSummarizeConfig(
-            chunk_if_body_chars_over=8000,
-            chunk_chars=3600,
-            max_chunks=2,
-            max_bullets=cfg.max_bullets,
-            part_bullets=cfg.part_bullets,
-            max_tags=cfg.max_tags,
-            max_backlinks=cfg.max_backlinks,
-        )
-    elif tier == "fast":
-        # Fast tier should prioritize latency over completeness.
-        active_cfg = LongSummarizeConfig(
-            chunk_if_body_chars_over=5200,
-            chunk_chars=2600,
-            max_chunks=2,
-            max_bullets=cfg.max_bullets,
-            part_bullets=4,
-            max_tags=cfg.max_tags,
-            max_backlinks=cfg.max_backlinks,
-        )
+    active_cfg = _build_dynamic_cfg(provider, body_len=len(body_s), tier=tier, cfg=cfg)
 
     skip_headers_norm = {
         "핵심요약",
@@ -753,7 +855,7 @@ def summarize_email_long_aware(
 
     if len(body_s) <= active_cfg.chunk_if_body_chars_over:
         res = provider.summarize(subject=subject, body=body_s)
-        bullets = _dedupe_keep_order(
+        raw_bullets = _dedupe_keep_order(
             [
                 b
                 for b in _extract_bullets(res.summary)
@@ -763,22 +865,18 @@ def summarize_email_long_aware(
                 and (not _is_noise_bullet(b))
             ]
         )
-        # If the LLM returns too few bullets, fill from body heuristics to avoid
-        # 1-line summaries and core/detail duplication.
-        if len(bullets) < 6:
-            fb = _fallback_bullets_from_body(body_s, limit=12)
-            for x in fb:
-                if (not _is_noise_bullet(x)) and x.lower() not in {
-                    y.lower() for y in bullets
-                }:
-                    bullets.append(x)
-                if len(bullets) >= 9:
-                    break
-
-        if len(bullets) < 2:
-            bullets.append(
-                "\ubcf8\ubb38\uc758 \ucd94\uac00 \uc815\ubcf4\uac00 \uc81c\ud55c\uc801\uc785\ub2c8\ub2e4."
-            )
+        min_keep = (
+            6
+            if _is_newsletter_like(subject=subject, body=body_s, bullets=raw_bullets)
+            else 4
+        )
+        bullets = _validate_summary_bullets(
+            subject=subject,
+            body=body_s,
+            bullets=raw_bullets,
+            min_keep=min_keep,
+            max_keep=active_cfg.max_bullets,
+        )
         summary_text = (
             "\n".join(["- " + b for b in bullets if b]).strip() or res.summary
         )
@@ -811,8 +909,33 @@ def summarize_email_long_aware(
     )
     if not chunks:
         res = provider.summarize(subject=subject, body=body_s[: active_cfg.chunk_chars])
+        raw_bullets = _dedupe_keep_order(
+            [
+                b
+                for b in _extract_bullets(res.summary)
+                if b
+                and ("\ufffd" not in b)
+                and (not _is_header_line(b))
+                and (not _is_noise_bullet(b))
+            ]
+        )
+        min_keep = (
+            6
+            if _is_newsletter_like(subject=subject, body=body_s, bullets=raw_bullets)
+            else 4
+        )
+        checked = _validate_summary_bullets(
+            subject=subject,
+            body=body_s,
+            bullets=raw_bullets,
+            min_keep=min_keep,
+            max_keep=active_cfg.max_bullets,
+        )
+        summary_text = (
+            "\n".join(["- " + b for b in checked if b]).strip() or res.summary
+        )
         return LlmResult(
-            summary=_ensure_core_detail_sections(res.summary),
+            summary=_ensure_core_detail_sections(summary_text),
             tags=list(res.tags or []),
             backlinks=list(res.backlinks or []),
             personal=bool(res.personal),
@@ -956,22 +1079,19 @@ def summarize_email_long_aware(
                 for b in all_bullets
                 if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
             ]
-        )[: active_cfg.max_bullets]
-        # If chunk summaries were too thin, supplement from the original body.
-        if len(merged_bullets) < 6:
-            fb = _fallback_bullets_from_body(body_s, limit=12)
-            for x in fb:
-                if (not _is_noise_bullet(x)) and x.lower() not in {
-                    y.lower() for y in merged_bullets
-                }:
-                    merged_bullets.append(x)
-                if len(merged_bullets) >= 9:
-                    break
-
-        if len(merged_bullets) < 2:
-            merged_bullets.append(
-                "\ubcf8\ubb38\uc758 \ucd94\uac00 \uc815\ubcf4\uac00 \uc81c\ud55c\uc801\uc785\ub2c8\ub2e4."
-            )
+        )
+        min_keep = (
+            6
+            if _is_newsletter_like(subject=subject, body=body_s, bullets=merged_bullets)
+            else 4
+        )
+        merged_bullets = _validate_summary_bullets(
+            subject=subject,
+            body=body_s,
+            bullets=merged_bullets,
+            min_keep=min_keep,
+            max_keep=active_cfg.max_bullets,
+        )
         final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
 
     # Prefer newsletter-style sections when the content looks like a newsletter.
@@ -981,6 +1101,18 @@ def summarize_email_long_aware(
             for b in _extract_bullets(final_summary_text)
             if b and ("\ufffd" not in b) and (not _is_noise_bullet(b))
         ]
+    )
+    min_keep = (
+        6
+        if _is_newsletter_like(subject=subject, body=body_s, bullets=final_bullets)
+        else 4
+    )
+    final_bullets = _validate_summary_bullets(
+        subject=subject,
+        body=body_s,
+        bullets=final_bullets,
+        min_keep=min_keep,
+        max_keep=active_cfg.max_bullets,
     )
     if _is_newsletter_like(subject=subject, body=body_s, bullets=final_bullets):
         final_summary_text = _structure_newsletter_summary(
