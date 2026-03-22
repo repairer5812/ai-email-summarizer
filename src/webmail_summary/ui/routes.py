@@ -70,6 +70,33 @@ templates.env.globals["t"] = _t
 templates.env.globals["ui_lang"] = _ui_lang
 
 
+@lru_cache(maxsize=128)
+def _static_asset_version(asset_name: str) -> str:
+    """Return a stable cache-busting version string for a static asset.
+
+    We cannot rely solely on app/exe version for cache busting in WebView,
+    because the packaged Windows ProductVersion may not change as expected.
+    Using a short content hash ensures the UI always receives the updated CSS/JS.
+    """
+
+    try:
+        name = str(asset_name or "").strip().lstrip("/")
+        if not name:
+            return _get_app_version()
+        static_dir = Path(__file__).resolve().parent / "static"
+        p = (static_dir / name).resolve()
+        # Guard against path traversal.
+        if static_dir not in p.parents and p != static_dir:
+            return _get_app_version()
+        if not p.exists() or not p.is_file():
+            return _get_app_version()
+        data = p.read_bytes()
+        h = hashlib.sha1(data).hexdigest()[:10]
+        return f"{_get_app_version()}-{h}"
+    except Exception:
+        return _get_app_version()
+
+
 def _db_path() -> Path:
     return get_app_data_dir() / "db.sqlite3"
 
@@ -411,6 +438,7 @@ def _get_app_version() -> str:
 # Expose version to templates for cache busting.
 try:
     templates.env.globals["app_version"] = _get_app_version
+    templates.env.globals["asset_v"] = _static_asset_version
 except Exception:
     pass
 

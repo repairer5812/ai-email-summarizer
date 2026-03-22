@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ title or "Webmail Summary" }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}?v={{ app_version() }}" />
-    <script src="{{ url_for('static', path='app.js') }}?v={{ app_version() }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}?v={{ asset_v('app.css') }}" />
+    <script src="{{ url_for('static', path='app.js') }}?v={{ asset_v('app.js') }}"></script>
     <link rel="icon" href="/static/app-icon.png" type="image/png" />
     <link rel="manifest" href="/static/site.webmanifest" />
   </head>

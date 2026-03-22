@@ -166,6 +166,81 @@ def _is_newsletter_like(*, subject: str, body: str, bullets: list[str]) -> bool:
     return False
 
 
+def _is_noise_bullet(text: str) -> bool:
+    """Return True if a bullet line is likely UI/notification noise."""
+
+    t = str(text or "").strip()
+    if not t:
+        return True
+
+    low = t.lower()
+
+    if "\ufffd" in t:
+        return True
+
+    # URLs / bare links
+    if "http://" in low or "https://" in low or low.startswith("www."):
+        return True
+
+    # Email header echoes
+    if re.match(r"^(from|to|cc|bcc|subject|sent|date)\s*:\s*", t, re.IGNORECASE):
+        return True
+    if re.match(
+        r"^(\ubcf4\ub0b8\uc0ac\ub78c|\ubcf4\ub0b8 \uc0ac\ub78c|\ubcf4\ub0b8\ub0a0\uc9dc|\uc218\uc2e0|\ucc38\uc870|\uc81c\ubaa9)\s*:\s*",
+        t,
+    ):
+        return True
+
+    # Standalone timestamps / timezone lines
+    if "asia/seoul" in low or "+09:00" in low or "gmt" in low:
+        if re.search(r"\d{4}[-./]\d{2}[-./]\d{2}", t) or re.search(r"\d{1,2}:\d{2}", t):
+            return True
+    if re.fullmatch(
+        r"\d{4}[-./]\d{2}[-./]\d{2}(\([A-Za-z]{3}\))?(\s+\d{1,2}:\d{2}(:\d{2})?)?(\s*\([^)]*\))?",
+        t,
+    ):
+        return True
+
+    # Link-instruction boilerplate
+    if any(
+        k in t
+        for k in [
+            "\ubc14\ub85c\uac00\uae30",
+            "\ubc14\ub85c \uac00\uae30",
+            "\ud074\ub9ad",
+            "Click",
+            "click",
+        ]
+    ):
+        if any(
+            k in t
+            for k in [
+                "\ud655\uc778",
+                "\ubb38\uc11c",
+                "\uc811\uc18d",
+                "\ub9c1\ud06c",
+                "\ud574\ub2f9",
+            ]
+        ):
+            return True
+        if len(t) <= 12:
+            return True
+
+    # Bare email address
+    if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", t):
+        return True
+
+    # Name-only artifacts (Korean or Latin) - remove only if extremely short.
+    if len(t) <= 10 and re.fullmatch(
+        r"[\uac00-\ud7a3]{2,4}(?:\s+[\uac00-\ud7a3]{2,4})?", t
+    ):
+        return True
+    if len(t) <= 24 and re.fullmatch(r"[A-Za-z][A-Za-z .'-]{1,23}", t):
+        return True
+
+    return False
+
+
 def _structure_newsletter_summary(
     *, subject: str, body: str, bullets: list[str]
 ) -> str:
@@ -186,25 +261,7 @@ def _structure_newsletter_summary(
     raw_bullets = _dedupe_keep_order([str(x or "").strip() for x in bullets])
 
     def is_noise(x: str) -> bool:
-        low = x.lower()
-        if not x:
-            return True
-        if "\ufffd" in x:
-            return True
-        if "http://" in low or "https://" in low or low.startswith("www."):
-            return True
-        if any(
-            n in low
-            for n in [
-                "수신거부",
-                "unsubscribe",
-                "privacy",
-                "개인정보",
-                "all rights reserved",
-            ]
-        ):
-            return True
-        return False
+        return _is_noise_bullet(x)
 
     cleaned: list[str] = []
     for b in raw_bullets:
@@ -397,6 +454,8 @@ def _fallback_bullets_from_body(body: str, *, limit: int) -> list[str]:
     ]
 
     def is_noise_line(line: str) -> bool:
+        if _is_noise_bullet(line):
+            return True
         low = line.lower()
         if "http://" in low or "https://" in low or low.startswith("www."):
             return True
@@ -698,7 +757,10 @@ def summarize_email_long_aware(
             [
                 b
                 for b in _extract_bullets(res.summary)
-                if b and ("\ufffd" not in b) and not _is_header_line(b)
+                if b
+                and ("\ufffd" not in b)
+                and (not _is_header_line(b))
+                and (not _is_noise_bullet(b))
             ]
         )
         # If the LLM returns too few bullets, fill from body heuristics to avoid
@@ -706,16 +768,27 @@ def summarize_email_long_aware(
         if len(bullets) < 6:
             fb = _fallback_bullets_from_body(body_s, limit=12)
             for x in fb:
-                if x.lower() not in {y.lower() for y in bullets}:
+                if (not _is_noise_bullet(x)) and x.lower() not in {
+                    y.lower() for y in bullets
+                }:
                     bullets.append(x)
                 if len(bullets) >= 9:
                     break
+
+        if len(bullets) < 2:
+            bullets.append(
+                "\ubcf8\ubb38\uc758 \ucd94\uac00 \uc815\ubcf4\uac00 \uc81c\ud55c\uc801\uc785\ub2c8\ub2e4."
+            )
         summary_text = (
             "\n".join(["- " + b for b in bullets if b]).strip() or res.summary
         )
         # For newsletters, prefer a multi-section structure.
         bullets2 = _dedupe_keep_order(
-            [b for b in _extract_bullets(summary_text) if b and ("\ufffd" not in b)]
+            [
+                b
+                for b in _extract_bullets(summary_text)
+                if b and ("\ufffd" not in b) and (not _is_noise_bullet(b))
+            ]
         )
         if _is_newsletter_like(subject=subject, body=body_s, bullets=bullets2):
             summary_out = _structure_newsletter_summary(
@@ -776,7 +849,10 @@ def summarize_email_long_aware(
         part_bullets = [
             b
             for b in _extract_bullets(res.summary)
-            if b and ("\ufffd" not in b) and not _is_header_line(b)
+            if b
+            and ("\ufffd" not in b)
+            and (not _is_header_line(b))
+            and (not _is_noise_bullet(b))
         ]
         all_bullets.extend(part_bullets)
         tags.extend(list(res.tags or []))
@@ -875,21 +951,36 @@ def summarize_email_long_aware(
 
     if not final_summary_text:
         merged_bullets = _dedupe_keep_order(
-            [b for b in all_bullets if b and not _is_header_line(b)]
+            [
+                b
+                for b in all_bullets
+                if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
+            ]
         )[: active_cfg.max_bullets]
         # If chunk summaries were too thin, supplement from the original body.
         if len(merged_bullets) < 6:
             fb = _fallback_bullets_from_body(body_s, limit=12)
             for x in fb:
-                if x.lower() not in {y.lower() for y in merged_bullets}:
+                if (not _is_noise_bullet(x)) and x.lower() not in {
+                    y.lower() for y in merged_bullets
+                }:
                     merged_bullets.append(x)
                 if len(merged_bullets) >= 9:
                     break
+
+        if len(merged_bullets) < 2:
+            merged_bullets.append(
+                "\ubcf8\ubb38\uc758 \ucd94\uac00 \uc815\ubcf4\uac00 \uc81c\ud55c\uc801\uc785\ub2c8\ub2e4."
+            )
         final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
 
     # Prefer newsletter-style sections when the content looks like a newsletter.
     final_bullets = _dedupe_keep_order(
-        [b for b in _extract_bullets(final_summary_text) if b and ("\ufffd" not in b)]
+        [
+            b
+            for b in _extract_bullets(final_summary_text)
+            if b and ("\ufffd" not in b) and (not _is_noise_bullet(b))
+        ]
     )
     if _is_newsletter_like(subject=subject, body=body_s, bullets=final_bullets):
         final_summary_text = _structure_newsletter_summary(
@@ -964,6 +1055,8 @@ def synthesize_daily_overview(
             for b in _extract_bullets(raw):
                 t = str(b or "").strip()
                 if not t:
+                    continue
+                if _is_noise_bullet(t):
                     continue
                 normalized = t.lower().replace(" ", "").strip("[]").strip()
                 if normalized in {"핵심요약", "상세요약"}:
