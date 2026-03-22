@@ -35,12 +35,15 @@ class CloudProvider(LlmProvider):
         parts: list[str] = [
             "You are an expert editor summarizing business communications.\n",
             "Return ONLY a single valid JSON object with keys: summary, tags (array of strings), backlinks (array of strings), personal (boolean).\n",
-            "The summary MUST be a structural bullet list (JSON array of strings).\n",
+            "The summary MUST be a JSON array of strings where each item is one bullet point.\n",
+            "Write 8~12 bullet points total (at least 6 if the email is very short).\n",
+            "Put the most important points first. Do not repeat the same idea across bullets.\n",
             "**Crucial Rules**:\n",
             "1. Ignore all footer/technical noise: addresses, phone numbers, unsubscribe links, copyright, registration numbers, or technical part markers.\n",
             "2. Do NOT mention keywords like '정보통신망', '수신거부', '무단전재', '대표전화', '서울특별시'.\n",
-            "3. Use bold grouping headers like **[Topic Name]** for related points.\n",
-            "4. Ensure each group has at least 2 detailed points.\n",
+            "3. Do not output a 1-line summary. Always produce multiple bullets.\n",
+            "4. Prefer concrete facts (who/what/why/impact). Avoid generic filler.\n",
+            "Output must start with '{' and end with '}'. Do not wrap output in markdown/code fences.\n",
             "Write everything in Korean.\n\n",
         ]
         parts.extend([f"Subject: {subject}\n\n", f"Body:\n{body[:12000]}\n"])
@@ -68,6 +71,7 @@ class CloudProvider(LlmProvider):
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.2,
+            "max_tokens": 600,
         }
 
         try:

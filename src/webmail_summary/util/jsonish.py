@@ -109,6 +109,11 @@ def coerce_summary_value(v: object) -> str:
             t = x.strip()
             if not t:
                 continue
+            # Preserve markdown-style section headers if the model emits them.
+            # (e.g. "### 핵심 요약", "### 상세 요약")
+            if re.match(r"^#{1,6}\s+", t):
+                parts.append(t)
+                continue
             if t.startswith("-"):
                 parts.append(t)
             else:

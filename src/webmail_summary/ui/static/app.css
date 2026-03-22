@@ -229,6 +229,7 @@ button.nav__link {
   flex-wrap: nowrap;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
 }
 
 .day-actions {

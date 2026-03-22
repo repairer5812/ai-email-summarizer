@@ -45,12 +45,12 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
             try:
                 # Local llama-server can be slow on some machines.
                 # Use generous timeouts and allow a retry (we restart the server on timeout).
-                max_tokens = 160
+                max_tokens = 256
                 request_timeout_s = 180.0
                 max_attempts = 2
                 total_budget_s = 360.0
                 if tier == "fast":
-                    max_tokens = 128
+                    max_tokens = 224
                     request_timeout_s = 120.0
                     max_attempts = 2
                     total_budget_s = 240.0
