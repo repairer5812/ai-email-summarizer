@@ -10,6 +10,7 @@
       try {
         const u = new URL(location.href);
         u.searchParams.delete('saved');
+        u.searchParams.delete('update_checked');
         history.replaceState(null, '', u.toString());
       } catch (e) {}
     })();
@@ -32,6 +33,11 @@
           <button class="btn" type="button" onclick="startAutoUpdate(this)">업데이트 설치</button>
           {% endif %}
         </div>
+        {% if flash and flash.update_checked %}
+        <div class="muted" style="margin-top:6px; font-size:12px; text-align:right;">
+          {{ t(request, 'home.update.checked.' ~ flash.update_checked) }}
+        </div>
+        {% endif %}
       </div>
       {% endif %}
       <div class="hero__btnrow">

@@ -70,7 +70,6 @@ templates.env.globals["t"] = _t
 templates.env.globals["ui_lang"] = _ui_lang
 
 
-@lru_cache(maxsize=128)
 def _static_asset_version(asset_name: str) -> str:
     """Return a stable cache-busting version string for a static asset.
 
@@ -1502,14 +1501,20 @@ def home(request: Request):
         conn.close()
 
     saved = str(request.query_params.get("saved") or "").strip() in {"1", "true", "yes"}
+    update_checked = (
+        str(request.query_params.get("update_checked") or "").strip().lower()
+    )
+    if update_checked not in {"latest", "available", "error"}:
+        update_checked = ""
 
     return templates.TemplateResponse(
-        "home.html",
-        {
+        request=request,
+        name="home.html",
+        context={
             "request": request,
             "theme": settings.ui_theme,
             "days": day_cards,
-            "flash": {"saved": saved},
+            "flash": {"saved": saved, "update_checked": update_checked},
             "active": active_jobs,
             "update": update_state,
             "ai": {
@@ -1610,8 +1615,9 @@ def day_view(request: Request, date_key: str):
         )
 
     return templates.TemplateResponse(
-        "day.html",
-        {
+        request=request,
+        name="day.html",
+        context={
             "request": request,
             "theme": settings.ui_theme,
             "day": dk,
@@ -1666,8 +1672,9 @@ def message_detail(request: Request, message_id: int):
         topics = []
 
     return templates.TemplateResponse(
-        "message_detail.html",
-        {
+        request=request,
+        name="message_detail.html",
+        context={
             "request": request,
             "theme": settings.ui_theme,
             "msg": {
@@ -1788,7 +1795,7 @@ def setup_get(request: Request):
 
     finally:
         conn.close()
-    return templates.TemplateResponse("setup.html", ctx)
+    return templates.TemplateResponse(request=request, name="setup.html", context=ctx)
 
 
 @router.post("/setup/test-imap")
@@ -2200,9 +2207,23 @@ def updates_check_now():
     from webmail_summary.index.db import get_conn
 
     conn = get_conn(_db_path())
+    status = "error"
     try:
         settings = load_settings(conn)
-        _check_github_release(conn, settings, force=True)
+        result = _check_github_release(conn, settings, force=True)
+        settings = load_settings(conn)
+        st = _build_update_state(settings)
+
+        if bool(st.get("has_update")):
+            status = "available"
+        else:
+            reason = str((result or {}).get("reason") or "").strip().lower()
+            if reason in {"ok", "not_modified", ""}:
+                status = "latest"
+            elif reason in {"network_error", "repo_not_set", "locked"}:
+                status = "error"
+            else:
+                status = "latest"
     finally:
         conn.close()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(f"/?update_checked={status}", status_code=303)
