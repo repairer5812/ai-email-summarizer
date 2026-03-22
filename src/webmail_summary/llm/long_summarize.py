@@ -408,8 +408,67 @@ def _fallback_bullets_from_body(body: str, *, limit: int) -> list[str]:
                 return True
         return False
 
-    # Start from lines; many emails are already line-broken reasonably after HTML->text.
-    raw_lines = [re.sub(r"\s+", " ", ln).strip() for ln in s.splitlines()]
+    def _looks_like_new_item(t: str) -> bool:
+        if not t:
+            return False
+        if t.lstrip().startswith("###"):
+            return True
+        if re.match(r"^([\-•·\*]+)\s+", t):
+            return True
+        if re.match(r"^\(?\d+\)?[\.)]\s+", t):
+            return True
+        # "Label: content" often denotes a new bullet-ish item.
+        if re.match(r"^[^\s:]{1,24}\s*:\s*\S+", t):
+            return True
+        return False
+
+    def _ends_sentence(t: str) -> bool:
+        tt = (t or "").strip()
+        if not tt:
+            return False
+        if tt.endswith((".", "?", "!")):
+            return True
+        # Common Korean sentence endings.
+        if tt.endswith(("다.", "니다.", "습니다.", "요.")):
+            return True
+        return False
+
+    # Merge soft-wrapped lines so a single sentence isn't cut at arbitrary newlines.
+    merged_lines: list[str] = []
+    cur = ""
+    for raw in s.splitlines():
+        t = re.sub(r"\s+", " ", str(raw or "")).strip()
+        if not t:
+            if cur:
+                merged_lines.append(cur)
+                cur = ""
+            continue
+        if is_noise_line(t):
+            if cur:
+                merged_lines.append(cur)
+                cur = ""
+            continue
+
+        if not cur:
+            cur = t
+            continue
+
+        if _looks_like_new_item(t):
+            merged_lines.append(cur)
+            cur = t
+            continue
+
+        if _ends_sentence(cur):
+            merged_lines.append(cur)
+            cur = t
+            continue
+
+        cur = (cur + " " + t).strip()
+
+    if cur:
+        merged_lines.append(cur)
+
+    raw_lines = merged_lines
     cand: list[str] = []
     for ln in raw_lines:
         if not ln:
