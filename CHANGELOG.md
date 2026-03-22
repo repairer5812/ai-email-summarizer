@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.48] - 2026-03-22
+
+### Fixed
+
+- 뉴스레터/소식지 유형 메일 요약을 스크린샷 수준의 구조(핵심 결론 + 섹션 헤딩 + 라벨:내용 불릿)로 강제해, 짧거나 평평한 요약이 나오지 않도록 개선했습니다.
+
 ## [0.5.47] - 2026-03-22
 
 ### Fixed

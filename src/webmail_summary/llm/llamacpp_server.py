@@ -236,6 +236,7 @@ class LlamaCppServerProvider(LlmProvider):
                 "2. Do NOT mention keywords like '정보통신망', '수신거부', '무단전재', '대표전화', '서울특별시'.\n",
                 "3. Do not output a 1-line summary. Always produce multiple bullets.\n",
                 "4. Prefer concrete facts (who/what/why/impact). Avoid generic filler.\n",
+                "5. Prefer bullets in '주체: 내용' format when possible (e.g., '회사명: 무엇을 했는지').\n",
                 "If you cannot output an array, output a single string using '; ' to separate bullet points (no newlines).\n",
             ]
             parts.append("Write summary, tags, and backlinks in Korean.\n")

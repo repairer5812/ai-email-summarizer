@@ -153,6 +153,218 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+def _is_newsletter_like(*, subject: str, body: str, bullets: list[str]) -> bool:
+    s = str(subject or "").strip().lower()
+    if any(x in s for x in ["뉴스레터", "소식지", "newsletter", "q-letter", "qletter"]):
+        return True
+    # Many newsletters are long and contain many labeled bullets.
+    if len(str(body or "")) >= 4500:
+        return True
+    labeled = sum(1 for b in bullets if ":" in str(b))
+    if len(bullets) >= 10 and labeled >= 4:
+        return True
+    return False
+
+
+def _structure_newsletter_summary(
+    *, subject: str, body: str, bullets: list[str]
+) -> str:
+    """Build a UI-friendly newsletter summary.
+
+    Target style (as rendered by ui/static/app.js):
+    - [핵심 결론]: ...
+    ### 섹션 제목
+    - 라벨: 내용
+
+    This is a deterministic post-processor so the UI stays consistent even when
+    smaller local models return thin/flat bullets.
+    """
+
+    # subject currently used only for newsletter detection upstream.
+    _ = subject
+
+    raw_bullets = _dedupe_keep_order([str(x or "").strip() for x in bullets])
+
+    def is_noise(x: str) -> bool:
+        low = x.lower()
+        if not x:
+            return True
+        if "\ufffd" in x:
+            return True
+        if "http://" in low or "https://" in low or low.startswith("www."):
+            return True
+        if any(
+            n in low
+            for n in [
+                "수신거부",
+                "unsubscribe",
+                "privacy",
+                "개인정보",
+                "all rights reserved",
+            ]
+        ):
+            return True
+        return False
+
+    cleaned: list[str] = []
+    for b in raw_bullets:
+        if is_noise(b):
+            continue
+        # Remove any existing section markers so we can rebuild consistently.
+        if b.lstrip().startswith("###"):
+            continue
+        n = b.lower().replace(" ", "").strip("[]").strip()
+        if n in {
+            "핵심요약",
+            "상세요약",
+            "핵심결론",
+            "핵심전략결론",
+            "주요소식",
+            "주제별분석",
+            "심층구조화",
+            "구조화",
+        }:
+            continue
+        cleaned.append(b)
+
+    # If we still don't have enough content, use body heuristics.
+    if len(cleaned) < 8:
+        fb = _fallback_bullets_from_body(str(body or ""), limit=14)
+        for x in fb:
+            if is_noise(x):
+                continue
+            if x.lower() not in {y.lower() for y in cleaned}:
+                cleaned.append(x)
+            if len(cleaned) >= 12:
+                break
+
+    cleaned = _dedupe_keep_order(cleaned)
+    if not cleaned:
+        return "- [\ud575\uc2ec \uacb0\ub860]: (\uc694\uc57d \uc5c6\uc74c)."
+
+    def pick_section(b: str) -> str:
+        t = str(b or "")
+        # (keep matching in original case for Korean tokens)
+        # International/partnership
+        if any(
+            k in t
+            for k in [
+                "\uad6d\uc81c",
+                "\uae00\ub85c\ubc8c",
+                "\ud574\uc678",
+                "\ud30c\ud2b8\ub108",
+                "\ud611\ub825",
+                "MOU",
+                "KOTRA",
+                "\uc544\ud504\ub9ac\uce74",
+                "\uc9c4\ucd9c",
+            ]
+        ):
+            return "intl"
+        # Events/expo/contests
+        if any(
+            k in t
+            for k in [
+                "\ubc15\ub78c\ud68c",
+                "\uc804\uc2dc",
+                "\ud589\uc0ac",
+                "\ud3ec\ub7fc",
+                "\uc138\ubbf8\ub098",
+                "\ucee8\ud37c\ub7f0\uc2a4",
+                "\ub300\ud68c",
+                "\uacbd\uc2dc\ub300\ud68c",
+                "\uc2dc\uc0c1",
+                "\uac1c\ucd5c",
+                "\ucc38\uac00",
+            ]
+        ):
+            return "event"
+        # Policy/market
+        if any(
+            k in t
+            for k in [
+                "\uc81c\ub3c4",
+                "\uc815\ucc45",
+                "\uc2dc\uc7a5",
+                "\uaddc\uc81c",
+                "\uc870\ub2ec",
+                "\uc778\uc99d",
+                "\ud45c\uc900",
+                "\uac00\uc774\ub4dc\ub77c\uc778",
+                "\ubcf4\uc548",
+                "\uac1c\uc778\uc815\ubcf4",
+            ]
+        ):
+            return "policy"
+        # Company news: has label: content pattern
+        if ":" in t and len(t.split(":", 1)[0].strip()) <= 24:
+            return "company"
+        return "other"
+
+    sections: dict[str, list[str]] = {
+        "event": [],
+        "company": [],
+        "intl": [],
+        "policy": [],
+        "other": [],
+    }
+    for b in cleaned:
+        sections[pick_section(b)].append(b)
+
+    # Decide which sections to show (up to 3) + spillover.
+    order = ["event", "company", "intl", "policy", "other"]
+    present = [k for k in order if sections.get(k)]
+    chosen = present[:3] if present else ["other"]
+
+    def title_for(key: str) -> str:
+        if key == "event":
+            # Match the user's preferred phrasing when possible.
+            if any(
+                "\ubc15\ub78c\ud68c" in x or "\uc804\uad6d" in x
+                for x in sections.get(key, [])
+            ):
+                return "\uad50\uc721 \ubc0f \uae30\uc220 \ubc15\ub78c\ud68c \ucc38\uac00 \ud604\ud669"
+            return "\ud589\uc0ac/\uc804\uc2dc \ub3d9\ud5a5"
+        if key == "company":
+            return "\uae30\uc5c5\ubcc4 \uc8fc\uc694 \ub274\uc2a4"
+        if key == "intl":
+            return "\uad6d\uc81c \ud611\ub825 \ubc0f \ud30c\ud2b8\ub108\uc2ed"
+        if key == "policy":
+            return "\uc2dc\uc7a5/\uc815\ucc45 \ubcc0\ud654"
+        return "\uae30\ud0c0 \uc8fc\uc694 \uc0ac\ud56d"
+
+    # Core conclusion: mention the dominant sections.
+    sec_names = [title_for(k) for k in chosen]
+    if len(sec_names) >= 2:
+        core = f"\uc774\ubc88 \uba54\uc77c\uc740 {sec_names[0]}\uc640 {sec_names[1]} \uc911\uc2ec\uc73c\ub85c, \uac1c\ubcc4 \uc5c5\uccb4\uc758 \ud65c\ub3d9/\uc131\uacfc \uc5c5\ub370\uc774\ud2b8\uac00 \ud3ec\ud568\ub429\ub2c8\ub2e4."
+    else:
+        core = f"\uc774\ubc88 \uba54\uc77c\uc740 {sec_names[0]} \uad00\ub828 \uc5c5\ub370\uc774\ud2b8\uac00 \ud575\uc2ec\uc785\ub2c8\ub2e4."
+
+    lines: list[str] = [f"- [\ud575\uc2ec \uacb0\ub860]: {core}"]
+
+    max_per_section = 6
+    for key in chosen:
+        lines.append("")
+        lines.append(f"### {title_for(key)}")
+        for b in sections.get(key, [])[:max_per_section]:
+            lines.append("- " + b)
+
+    # If there are leftover bullets from unchosen sections, add a final spillover.
+    leftovers: list[str] = []
+    for key in order:
+        if key in chosen:
+            continue
+        leftovers.extend(sections.get(key, [])[:3])
+    leftovers = _dedupe_keep_order(leftovers)
+    if leftovers:
+        lines.append("")
+        lines.append(f"### {title_for('other')}")
+        for b in leftovers[:5]:
+            lines.append("- " + b)
+
+    return "\n".join(lines).strip()
+
+
 def _fallback_bullets_from_body(body: str, *, limit: int) -> list[str]:
     """Heuristic fallback bullets when the model output is too thin.
 
@@ -442,8 +654,19 @@ def summarize_email_long_aware(
         summary_text = (
             "\n".join(["- " + b for b in bullets if b]).strip() or res.summary
         )
+        # For newsletters, prefer a multi-section structure.
+        bullets2 = _dedupe_keep_order(
+            [b for b in _extract_bullets(summary_text) if b and ("\ufffd" not in b)]
+        )
+        if _is_newsletter_like(subject=subject, body=body_s, bullets=bullets2):
+            summary_out = _structure_newsletter_summary(
+                subject=subject, body=body_s, bullets=bullets2
+            )
+        else:
+            summary_out = _ensure_core_detail_sections(summary_text)
+
         return LlmResult(
-            summary=_ensure_core_detail_sections(summary_text),
+            summary=summary_out,
             tags=list(res.tags or []),
             backlinks=list(res.backlinks or []),
             personal=bool(res.personal),
@@ -605,7 +828,16 @@ def summarize_email_long_aware(
                     break
         final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
 
-    final_summary_text = _ensure_core_detail_sections(final_summary_text)
+    # Prefer newsletter-style sections when the content looks like a newsletter.
+    final_bullets = _dedupe_keep_order(
+        [b for b in _extract_bullets(final_summary_text) if b and ("\ufffd" not in b)]
+    )
+    if _is_newsletter_like(subject=subject, body=body_s, bullets=final_bullets):
+        final_summary_text = _structure_newsletter_summary(
+            subject=subject, body=body_s, bullets=final_bullets
+        )
+    else:
+        final_summary_text = _ensure_core_detail_sections(final_summary_text)
 
     tags = _dedupe_keep_order([str(x) for x in tags])[: active_cfg.max_tags]
     backlinks = _dedupe_keep_order([str(x) for x in backlinks])[
