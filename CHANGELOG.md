@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.52] - 2026-03-23
+
+### Fixed
+
+- 일부 환경에서 업데이트 직후 UI가 `ConnectTimeout`으로 보이던 기동 실패를 수정했습니다.
+  - 원인: 템플릿 렌더 호출 호환성 이슈로 `/` 라우트가 500(`TypeError: unhashable type: 'dict'`)을 반환하던 문제.
+  - 대응: UI 라우트의 `TemplateResponse` 호출을 `request/name/context` 명시 방식으로 통일했습니다.
+- 대시보드의 업데이트 "확인" 버튼 UX를 개선했습니다.
+  - 최신 버전이면 버튼 옆에 `최신 버전입니다.` 텍스트를 작게 표시하고,
+  - 새 버전 발견/오류도 각각 안내 텍스트로 표시합니다.
+
 ## [0.5.51] - 2026-03-22
 
 ### Fixed
