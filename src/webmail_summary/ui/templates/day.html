@@ -89,7 +89,7 @@
         </div>
         <div class="day-item-actions" style="flex: 0 0 auto; margin-left: 20px;">
           {% if it.has_rendered %}
-            <a class="btn btn--secondary" href="/m/{{ it.id }}/rendered.html" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'detail.original') }}</a>
+            <a class="btn btn--secondary" href="/message/{{ it.id }}/original?return_to={{ day }}" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'detail.original') }}</a>
           {% endif %}
           <a class="btn" href="/message/{{ it.id }}?return_to={{ day }}" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'day.open_detail') }}</a>
         </div>

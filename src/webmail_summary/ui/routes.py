@@ -1653,11 +1653,14 @@ def message_detail(request: Request, message_id: int):
     summarize_ms = row[11] if len(row) > 11 else None
 
     return_to = str(request.query_params.get("return_to") or "").strip()
+    return_day = ""
     if len(return_to) == 10 and return_to[4] == "-" and return_to[7] == "-":
+        return_day = return_to
         back_href = f"/day/{return_to}"
     elif (
         len(internal_date) >= 10 and internal_date[4] == "-" and internal_date[7] == "-"
     ):
+        return_day = internal_date[:10]
         back_href = f"/day/{internal_date[:10]}"
     else:
         back_href = "/"
@@ -1689,6 +1692,54 @@ def message_detail(request: Request, message_id: int):
                 if summarized_at
                 else "",
                 "summarize_ms": _fmt_summarize_ms(summarize_ms),
+                "back_href": back_href,
+                "return_day": return_day,
+            },
+            "active": active_jobs,
+        },
+    )
+
+
+@router.get("/message/{message_id}/original", response_class=HTMLResponse)
+def message_original(request: Request, message_id: int):
+    from webmail_summary.index.db import get_conn
+
+    conn = get_conn(_db_path())
+    try:
+        settings = load_settings(conn)
+        row = get_message_detail(conn, int(message_id))
+        active_jobs = _get_active_jobs(conn)
+    finally:
+        conn.close()
+    if row is None:
+        return RedirectResponse("/", status_code=302)
+
+    subject = str(row[1] or "")
+    internal_date = str(row[4] or "")
+    rendered_html_path = row[9]
+    if not rendered_html_path:
+        return RedirectResponse(f"/message/{int(message_id)}", status_code=302)
+
+    return_to = str(request.query_params.get("return_to") or "").strip()
+    if len(return_to) == 10 and return_to[4] == "-" and return_to[7] == "-":
+        back_href = f"/day/{return_to}"
+    elif (
+        len(internal_date) >= 10 and internal_date[4] == "-" and internal_date[7] == "-"
+    ):
+        back_href = f"/day/{internal_date[:10]}"
+    else:
+        back_href = "/"
+
+    return templates.TemplateResponse(
+        request=request,
+        name="message_original.html",
+        context={
+            "request": request,
+            "theme": settings.ui_theme,
+            "msg": {
+                "id": int(row[0]),
+                "subject": subject,
+                "internal_date": format_kst(internal_date, with_seconds=True),
                 "back_href": back_href,
             },
             "active": active_jobs,

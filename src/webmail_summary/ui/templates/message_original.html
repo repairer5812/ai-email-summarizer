@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div class="hero__row">
+    <div>
+      <p class="muted" style="margin-bottom: 4px;">{{ msg.internal_date }}</p>
+      <h1>{{ msg.subject }}</h1>
+    </div>
+    <div class="hero__actions" style="flex-direction: row; align-items: center; gap: 8px;">
+      <a class="btn btn--secondary" href="{{ msg.back_href or '/' }}">{{ t(request, 'detail.back') }}</a>
+      <button class="btn btn--secondary" type="button" id="btn-close-window" data-fallback="{{ msg.back_href or '/' }}">{{ t(request, 'detail.close_window') }}</button>
+    </div>
+  </div>
+</section>
+
+<div class="card" style="padding: 0; overflow: hidden; border-radius: var(--card-radius);">
+  <div class="card__body" style="padding: 0;">
+    <iframe src="/m/{{ msg.id }}/rendered.html" style="width: 100%; height: calc(100vh - 260px); min-height: 520px; border: none; background: white;" title="rendered" referrerpolicy="no-referrer"></iframe>
+  </div>
+</div>
+
+<script>
+(() => {
+  const btn = document.getElementById('btn-close-window');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const fallback = btn.getAttribute('data-fallback') || '/';
+    try {
+      window.close();
+    } catch (e) {}
+    setTimeout(() => {
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = fallback;
+    }, 120);
+  });
+})();
+</script>
+{% endblock %}
