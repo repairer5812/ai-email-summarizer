@@ -25,7 +25,7 @@
       {% if update %}
         <div class="update-mini">
           <div class="update-mini__top">
-            <div class="update-mini__meta">
+            <div class="update-mini__titleline">
               <span class="update-mini__title">{{ t(request, 'home.update.version_prefix') }} {{ update.current }}{% if update.latest and update.latest != update.current %} -> {{ update.latest }}{% endif %}</span>
               {% if flash and flash.update_checked %}
                 <span class="update-mini__status {% if flash.update_checked == 'latest' %}update-mini__status--ok{% elif flash.update_checked == 'error' %}update-mini__status--error{% endif %}">({{ t(request, 'home.update.checked.' ~ flash.update_checked) }})</span>

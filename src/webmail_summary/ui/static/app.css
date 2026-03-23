@@ -624,12 +624,12 @@ label {
   gap: 8px;
 }
 
-.update-mini__meta {
+.update-mini__titleline {
   min-width: 0;
-  display: flex;
+  display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .update-mini__title {
@@ -643,6 +643,7 @@ label {
   font-size: 0.76rem;
   color: var(--text-secondary);
   line-height: 1.35;
+  white-space: nowrap;
 }
 
 .update-mini__status--ok {
