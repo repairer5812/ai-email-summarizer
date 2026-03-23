@@ -42,7 +42,7 @@
       <div class="card__title" style="display: flex; justify-content: space-between; align-items: center;">
         <span>{{ t(request, 'detail.original') }}</span>
         {% if msg.has_rendered %}
-        <a class="btn btn--secondary" href="/m/{{ msg.id }}/rendered.html" style="padding: 6px 12px; font-size: 0.8rem;">새 창에서 열기</a>
+        <a class="btn btn--secondary" href="/message/{{ msg.id }}/original{% if msg.return_day %}?return_to={{ msg.return_day }}{% endif %}" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'detail.view_original') }}</a>
         {% endif %}
       </div>
     <div class="card__body" style="padding: 0; overflow: hidden; border-radius: 0 0 var(--card-radius) var(--card-radius);">
