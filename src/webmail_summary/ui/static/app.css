@@ -619,9 +619,17 @@ label {
 
 .update-mini__top {
   display: grid;
-  grid-template-columns: auto minmax(120px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+}
+
+.update-mini__meta {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .update-mini__title {
@@ -634,10 +642,7 @@ label {
 .update-mini__status {
   font-size: 0.76rem;
   color: var(--text-secondary);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
 }
 
 .update-mini__status--ok {
@@ -882,23 +887,7 @@ label {
   }
 
   .update-mini__top {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "title check"
-      "status status";
-  }
-
-  .update-mini__title {
-    grid-area: title;
-  }
-
-  .update-mini__check-form {
-    grid-area: check;
-  }
-
-  .update-mini__status {
-    grid-area: status;
-    text-align: left;
+    align-items: start;
   }
 
   .day-actions {

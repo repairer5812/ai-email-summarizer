@@ -23,20 +23,18 @@
     </div>
   <div class="hero__actions">
       {% if update %}
-      <div class="update-mini">
-        <div class="update-mini__top">
-          <div class="update-mini__title">버전 {{ update.current }}{% if update.latest and update.latest != update.current %} -> {{ update.latest }}{% endif %}</div>
-          <div class="update-mini__status {% if flash and flash.update_checked == 'latest' %}update-mini__status--ok{% elif flash and flash.update_checked == 'error' %}update-mini__status--error{% endif %}">
-            {% if flash and flash.update_checked %}
-              {{ t(request, 'home.update.checked.' ~ flash.update_checked) }}
-            {% else %}
-              &nbsp;
-            {% endif %}
+        <div class="update-mini">
+          <div class="update-mini__top">
+            <div class="update-mini__meta">
+              <span class="update-mini__title">{{ t(request, 'home.update.version_prefix') }} {{ update.current }}{% if update.latest and update.latest != update.current %} -> {{ update.latest }}{% endif %}</span>
+              {% if flash and flash.update_checked %}
+                <span class="update-mini__status {% if flash.update_checked == 'latest' %}update-mini__status--ok{% elif flash.update_checked == 'error' %}update-mini__status--error{% endif %}">({{ t(request, 'home.update.checked.' ~ flash.update_checked) }})</span>
+              {% endif %}
+            </div>
+            <form class="update-mini__check-form" method="post" action="/updates/check-now">
+              <button class="btn btn--secondary" type="submit">{{ t(request, 'home.update.check') }}</button>
+            </form>
           </div>
-          <form class="update-mini__check-form" method="post" action="/updates/check-now">
-            <button class="btn btn--secondary" type="submit">{{ t(request, 'home.update.check') }}</button>
-          </form>
-        </div>
         {% if update.show_notice %}
         <div class="update-mini__actions">
           <button class="btn" type="button" onclick="startAutoUpdate(this)">{{ t(request, 'home.update.install') }}</button>
