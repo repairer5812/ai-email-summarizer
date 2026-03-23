@@ -605,27 +605,57 @@ label {
 }
 
 .update-mini {
-  min-width: 250px;
-  max-width: 400px;
+  min-width: 320px;
+  max-width: 520px;
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--card-bg);
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.update-mini__top {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .update-mini__title {
   font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.update-mini__status {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.update-mini__status--ok {
+  color: #16a34a;
+}
+
+.update-mini__status--error {
+  color: #dc2626;
+}
+
+.update-mini__check-form {
+  margin: 0;
 }
 
 .update-mini__actions {
   display: flex;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .update-mini .btn {
@@ -843,6 +873,32 @@ label {
   .hero__actions {
     width: 100%;
     align-items: flex-start;
+  }
+
+  .update-mini {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .update-mini__top {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "title check"
+      "status status";
+  }
+
+  .update-mini__title {
+    grid-area: title;
+  }
+
+  .update-mini__check-form {
+    grid-area: check;
+  }
+
+  .update-mini__status {
+    grid-area: status;
+    text-align: left;
   }
 
   .day-actions {

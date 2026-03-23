@@ -24,18 +24,22 @@
   <div class="hero__actions">
       {% if update %}
       <div class="update-mini">
-        <div class="update-mini__title">버전 {{ update.current }}{% if update.latest and update.latest != update.current %} -> {{ update.latest }}{% endif %}</div>
-        <div class="update-mini__actions">
-          <form method="post" action="/updates/check-now" style="margin:0;">
-            <button class="btn btn--secondary" type="submit">확인</button>
+        <div class="update-mini__top">
+          <div class="update-mini__title">버전 {{ update.current }}{% if update.latest and update.latest != update.current %} -> {{ update.latest }}{% endif %}</div>
+          <div class="update-mini__status {% if flash and flash.update_checked == 'latest' %}update-mini__status--ok{% elif flash and flash.update_checked == 'error' %}update-mini__status--error{% endif %}">
+            {% if flash and flash.update_checked %}
+              {{ t(request, 'home.update.checked.' ~ flash.update_checked) }}
+            {% else %}
+              &nbsp;
+            {% endif %}
+          </div>
+          <form class="update-mini__check-form" method="post" action="/updates/check-now">
+            <button class="btn btn--secondary" type="submit">{{ t(request, 'home.update.check') }}</button>
           </form>
-          {% if update.show_notice %}
-          <button class="btn" type="button" onclick="startAutoUpdate(this)">업데이트 설치</button>
-          {% endif %}
         </div>
-        {% if flash and flash.update_checked %}
-        <div class="muted" style="margin-top:6px; font-size:12px; text-align:right;">
-          {{ t(request, 'home.update.checked.' ~ flash.update_checked) }}
+        {% if update.show_notice %}
+        <div class="update-mini__actions">
+          <button class="btn" type="button" onclick="startAutoUpdate(this)">{{ t(request, 'home.update.install') }}</button>
         </div>
         {% endif %}
       </div>
@@ -64,12 +68,12 @@
       </div>
     </div>
     <div class="modal__actions">
-      <button class="btn" type="button" onclick="startAutoUpdate(this)">지금 업데이트</button>
-      <a class="btn btn--secondary" href="{{ update.download_url if update.download_url else (update.release_page_url if update.release_page_url else '/setup?tab=advanced') }}" target="_blank">수동 다운로드</a>
-      <button class="btn btn--secondary" type="button" id="update-modal-close">나중에</button>
-      <form method="post" action="/updates/snooze-day" style="margin:0;"><button class="btn btn--secondary" type="submit">오늘 하루 안보기</button></form>
-      <form method="post" action="/updates/snooze-week" style="margin:0;"><button class="btn btn--secondary" type="submit">1주일 동안 안보기</button></form>
-      <form method="post" action="/updates/skip-latest" style="margin:0;"><button class="btn btn--secondary" type="submit">이 버전 건너뛰기</button></form>
+      <button class="btn" type="button" onclick="startAutoUpdate(this)">{{ t(request, 'home.update.modal.now') }}</button>
+      <a class="btn btn--secondary" href="{{ update.download_url if update.download_url else (update.release_page_url if update.release_page_url else '/setup?tab=advanced') }}" target="_blank">{{ t(request, 'home.update.modal.manual') }}</a>
+      <button class="btn btn--secondary" type="button" id="update-modal-close">{{ t(request, 'home.update.modal.later') }}</button>
+      <form method="post" action="/updates/snooze-day" style="margin:0;"><button class="btn btn--secondary" type="submit">{{ t(request, 'home.update.modal.snooze_day') }}</button></form>
+      <form method="post" action="/updates/snooze-week" style="margin:0;"><button class="btn btn--secondary" type="submit">{{ t(request, 'home.update.modal.snooze_week') }}</button></form>
+      <form method="post" action="/updates/skip-latest" style="margin:0;"><button class="btn btn--secondary" type="submit">{{ t(request, 'home.update.modal.skip') }}</button></form>
     </div>
   </div>
 </div>
@@ -166,6 +170,18 @@
   if (closeBtn) closeBtn.addEventListener('click', close);
   const backdrop = modal.querySelector('.modal__backdrop');
   if (backdrop) backdrop.addEventListener('click', close);
+})();
+</script>
+{% endif %}
+
+{% if flash and flash.update_checked %}
+<script>
+(() => {
+  try {
+    const u = new URL(location.href);
+    u.searchParams.delete('update_checked');
+    history.replaceState(null, '', u.toString());
+  } catch (e) {}
 })();
 </script>
 {% endif %}
