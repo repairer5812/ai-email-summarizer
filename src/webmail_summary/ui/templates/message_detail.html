@@ -47,7 +47,7 @@
       </div>
     <div class="card__body" style="padding: 0; overflow: hidden; border-radius: 0 0 var(--card-radius) var(--card-radius);">
       {% if msg.has_rendered %}
-        <iframe src="/m/{{ msg.id }}/rendered.html" style="width: 100%; height: 600px; border: none; background: white;" title="rendered" referrerpolicy="no-referrer"></iframe>
+        <iframe src="/m/{{ msg.id }}/rendered.html?embed=1" style="width: 100%; height: 600px; border: none; background: white;" title="rendered" referrerpolicy="no-referrer"></iframe>
       {% else %}
         <div style="padding: 24px;" class="muted">{{ t(request, 'detail.no_rendered') }}</div>
       {% endif %}
