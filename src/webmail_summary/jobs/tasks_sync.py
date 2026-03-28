@@ -86,6 +86,223 @@ def _cloud_base_delay_seconds(cloud_provider: str, model: str) -> float:
     return 0.4
 
 
+def _display_subject(subject: str, *, max_len: int = 30) -> str:
+    s = str(subject or "")
+    return (s[:max_len] + "...") if len(s) > max_len else s
+
+
+def _stage_label(stage: str) -> str:
+    stage_map = {
+        "archive": "백업 중",
+        "index": "저장 중",
+        "summarize": "요약 중",
+        "export": "Obsidian 내보내기 중",
+        "mark": "읽음 처리 중",
+    }
+    return stage_map.get(stage, stage)
+
+
+def _build_stage_message(*, stage: str, display_date: str, subject: str) -> str:
+    return f"[{display_date}] {_stage_label(stage)}: {_display_subject(subject)}"
+
+
+def _add_job_event(*, db_path: Path, job_id: str, level: str, text: str) -> None:
+    conn = get_conn(db_path)
+    try:
+        repo.add_event(conn, job_id=job_id, level=level, text=text)
+    finally:
+        conn.close()
+
+
+def _update_job_progress(
+    *, db_path: Path, job_id: str, current: float, total: float, message: str
+) -> None:
+    conn = get_conn(db_path)
+    try:
+        repo.update_progress(
+            conn,
+            job_id=job_id,
+            current=current,
+            total=total,
+            message=message,
+        )
+    finally:
+        conn.close()
+
+
+def _load_body_text_for_llm(
+    *, body_text_path: str | None, body_html_path: str | None
+) -> str:
+    body_text = ""
+    if body_text_path and Path(body_text_path).exists():
+        body_text = Path(body_text_path).read_text(encoding="utf-8", errors="replace")
+    elif body_html_path and Path(body_html_path).exists():
+        raw_html = Path(body_html_path).read_text(encoding="utf-8", errors="replace")
+        body_text = html_to_visible_text(raw_html)
+    return prepare_body_for_llm(body_text)
+
+
+def _llm_timeout_seconds(provider) -> float:
+    tier = getattr(provider, "tier", "standard")
+    if tier == "cloud":
+        return 420.0
+    if tier == "fast":
+        return 240.0
+    return 360.0
+
+
+def _run_llm_summary(
+    *,
+    db_path: Path,
+    job_id: str,
+    provider,
+    subject: str,
+    body_text: str,
+    user_profile: dict,
+    update_sub_progress,
+    item_index: int,
+    item_total: int,
+    display_date: str,
+    display_sub: str,
+) -> LlmResult:
+    llm_done = threading.Event()
+
+    def _llm_heartbeat() -> None:
+        start_ts = time.monotonic()
+        while not llm_done.wait(5.0):
+            elapsed = time.monotonic() - start_ts
+            mm = int(elapsed // 60)
+            ss = int(elapsed % 60)
+            conn_hb = get_conn(db_path)
+            try:
+                cur_job = repo.get_job(conn_hb, job_id)
+                cur_progress = item_index - 0.99
+                if cur_job is not None:
+                    try:
+                        cur_progress = max(
+                            float(cur_progress),
+                            float(cur_job.progress_current or 0),
+                        )
+                    except Exception:
+                        cur_progress = item_index - 0.99
+                repo.update_progress(
+                    conn_hb,
+                    job_id=job_id,
+                    current=cur_progress,
+                    total=max(item_total, 1),
+                    message=(
+                        f"[{display_date}] 요약 중: {display_sub} ({item_index}/{item_total}) "
+                        f"(경과 {mm:02d}:{ss:02d})"
+                    ),
+                )
+            finally:
+                conn_hb.close()
+
+    hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
+    hb_t.start()
+    llm_result_box: dict[str, LlmResult] = {}
+    llm_err_box: dict[str, Exception] = {}
+
+    def _run_llm_call() -> None:
+        try:
+            llm_result_box["res"] = summarize_email_long_aware(
+                provider,
+                subject=sanitize_text_for_llm(str(subject)),
+                body=sanitize_text_for_llm(body_text),
+                on_progress=update_sub_progress,
+                user_profile=user_profile,
+            )
+        except Exception as ex:
+            llm_err_box["err"] = ex
+        finally:
+            llm_done.set()
+
+    llm_t = threading.Thread(target=_run_llm_call, daemon=True)
+    llm_t.start()
+
+    llm_timeout_s = _llm_timeout_seconds(provider)
+    if not llm_done.wait(llm_timeout_s):
+        _add_job_event(
+            db_path=db_path,
+            job_id=job_id,
+            level="warn",
+            text=f"LLM timeout: {llm_timeout_s:.0f}s (item {item_index}/{item_total})",
+        )
+
+        llm_done.set()
+        try:
+            hb_t.join(timeout=1.0)
+        except Exception:
+            pass
+
+        try:
+            stop_done = threading.Event()
+
+            def _stop_local_server() -> None:
+                try:
+                    from webmail_summary.llm.llamacpp_server import stop_server
+
+                    stop_server(force=True)
+                finally:
+                    stop_done.set()
+
+            threading.Thread(target=_stop_local_server, daemon=True).start()
+            stop_done.wait(2.5)
+        except Exception:
+            pass
+
+        try:
+            llm_t.join(timeout=0.2)
+        except Exception:
+            pass
+
+        return LlmResult(
+            summary="(LLM timeout)",
+            tags=[],
+            backlinks=[],
+            personal=False,
+        )
+
+    llm_res = llm_result_box.get("res")
+    if llm_res is None:
+        if "err" in llm_err_box:
+            _add_job_event(
+                db_path=db_path,
+                job_id=job_id,
+                level="warn",
+                text=f"LLM exception: {str(llm_err_box['err'])[:180]}",
+            )
+        llm_res = LlmResult(
+            summary="(LLM unavailable)",
+            tags=[],
+            backlinks=[],
+            personal=False,
+        )
+
+    llm_done.set()
+    try:
+        hb_t.join(timeout=1.0)
+    except Exception:
+        pass
+    return llm_res
+
+
+def _group_processed_notes(
+    processed_notes: list[tuple[str, Path, list[str]]],
+) -> tuple[dict[str, list[Path]], dict[str, list[Path]]]:
+    by_date: dict[str, list[Path]] = {}
+    by_topic: dict[str, list[Path]] = {}
+    for d, note, topics in processed_notes:
+        by_date.setdefault(d, []).append(note)
+        for t in topics:
+            by_topic.setdefault(t, []).append(note)
+    return by_date, by_topic
+
+
+def _build_daily_summary(notes: list[Path]) -> str:
+    return "\n".join([f"- {p.stem}" for p in notes])
+
+
 def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
     def run(job_id: str, cancel: threading.Event) -> None:
         data_dir = get_app_data_dir()
@@ -202,47 +419,30 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     hdr = _parse_headers(m.rfc822)
                     internal_date_str = _email_date(m.internaldate)
                     subject = hdr.get("subject") or "(no subject)"
-                    # Short date for display: YYYY-MM-DD
                     display_date = internal_date_str[:10]
-                    # Short subject for display
-                    display_sub = (
-                        (subject[:30] + "...") if len(subject) > 30 else subject
-                    )
+                    display_sub = _display_subject(subject)
 
                     def set_stage(stage: str) -> None:
-                        stage_map = {
-                            "archive": "백업 중",
-                            "index": "저장 중",
-                            "summarize": "요약 중",
-                            "export": "Obsidian 내보내기 중",
-                            "mark": "읽음 처리 중",
-                        }
-                        stage_name = stage_map.get(stage, stage)
-                        msg = f"[{display_date}] {stage_name}: {display_sub}"
-                        connx = get_conn(db_path)
-                        try:
-                            repo.update_progress(
-                                connx,
-                                job_id=job_id,
-                                current=i - 0.99,
-                                total=max(len(msgs), 1),
-                                message=msg,
-                            )
-                        finally:
-                            connx.close()
+                        _update_job_progress(
+                            db_path=db_path,
+                            job_id=job_id,
+                            current=i - 0.99,
+                            total=max(len(msgs), 1),
+                            message=_build_stage_message(
+                                stage=stage,
+                                display_date=display_date,
+                                subject=subject,
+                            ),
+                        )
 
                     set_stage("archive")
 
-                    connl = get_conn(db_path)
-                    try:
-                        repo.add_event(
-                            connl,
-                            job_id=job_id,
-                            level="info",
-                            text="아카이브 시작",
-                        )
-                    finally:
-                        connl.close()
+                    _add_job_event(
+                        db_path=db_path,
+                        job_id=job_id,
+                        level="info",
+                        text="아카이브 시작",
+                    )
 
                     t0 = time.monotonic()
 
@@ -261,16 +461,12 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
 
                     dt_s = time.monotonic() - t0
                     if dt_s > 15:
-                        connl2 = get_conn(db_path)
-                        try:
-                            repo.add_event(
-                                connl2,
-                                job_id=job_id,
-                                level="warn",
-                                text=f"아카이브가 느립니다 ({dt_s:.1f}초)",
-                            )
-                        finally:
-                            connl2.close()
+                        _add_job_event(
+                            db_path=db_path,
+                            job_id=job_id,
+                            level="warn",
+                            text=f"아카이브가 느립니다 ({dt_s:.1f}초)",
+                        )
 
                     set_stage("index")
                     conn1 = get_conn(db_path)
@@ -330,44 +526,31 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     finally:
                         conn1.close()
 
-                    body_text = ""
-                    if ar.body_text_path and Path(ar.body_text_path).exists():
-                        body_text = Path(ar.body_text_path).read_text(
-                            encoding="utf-8", errors="replace"
-                        )
-                    elif ar.body_html_path and Path(ar.body_html_path).exists():
-                        raw_html = Path(ar.body_html_path).read_text(
-                            encoding="utf-8", errors="replace"
-                        )
-                        body_text = html_to_visible_text(raw_html)
-
-                    body_text = prepare_body_for_llm(body_text)
+                    body_text = _load_body_text_for_llm(
+                        body_text_path=str(ar.body_text_path)
+                        if ar.body_text_path
+                        else None,
+                        body_html_path=str(ar.body_html_path)
+                        if ar.body_html_path
+                        else None,
+                    )
 
                     set_stage("summarize")
-                    connl3 = get_conn(db_path)
-                    try:
-                        repo.add_event(
-                            connl3,
-                            job_id=job_id,
-                            level="info",
-                            text="요약 시작",
-                        )
-                    finally:
-                        connl3.close()
+                    _add_job_event(
+                        db_path=db_path,
+                        job_id=job_id,
+                        level="info",
+                        text="요약 시작",
+                    )
 
                     def update_sub_progress(fraction: float) -> None:
-                        # fraction 0.0-1.0 within the email.
-                        conn_p = get_conn(db_path)
-                        try:
-                            repo.update_progress(
-                                conn_p,
-                                job_id=job_id,
-                                current=i - 1 + fraction,
-                                total=max(len(msgs), 1),
-                                message=f"[{display_date}] 요약 중: {display_sub} ({i}/{len(msgs)})",
-                            )
-                        finally:
-                            conn_p.close()
+                        _update_job_progress(
+                            db_path=db_path,
+                            job_id=job_id,
+                            current=i - 1 + fraction,
+                            total=max(len(msgs), 1),
+                            message=f"[{display_date}] 요약 중: {display_sub} ({i}/{len(msgs)})",
+                        )
 
                     t1 = time.monotonic()
 
@@ -385,165 +568,30 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         "interests": s.user_interests,
                     }
 
-                    # While the LLM call runs, keep updating progress so the UI
-                    # doesn't look frozen on slow machines.
-                    llm_done = threading.Event()
-
-                    def _llm_heartbeat() -> None:
-                        start_ts = time.monotonic()
-                        while not llm_done.wait(5.0):
-                            elapsed = time.monotonic() - start_ts
-                            mm = int(elapsed // 60)
-                            ss = int(elapsed % 60)
-                            conn_hb = get_conn(db_path)
-                            try:
-                                cur_job = repo.get_job(conn_hb, job_id)
-                                cur_progress = i - 0.99
-                                if cur_job is not None:
-                                    try:
-                                        cur_progress = max(
-                                            float(cur_progress),
-                                            float(cur_job.progress_current or 0),
-                                        )
-                                    except Exception:
-                                        cur_progress = i - 0.99
-                                repo.update_progress(
-                                    conn_hb,
-                                    job_id=job_id,
-                                    current=cur_progress,
-                                    total=max(len(msgs), 1),
-                                    message=(
-                                        f"[{display_date}] 요약 중: {display_sub} ({i}/{len(msgs)}) "
-                                        f"(경과 {mm:02d}:{ss:02d})"
-                                    ),
-                                )
-                            finally:
-                                conn_hb.close()
-
-                    hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
-                    hb_t.start()
-                    llm_result_box: dict[str, LlmResult] = {}
-                    llm_err_box: dict[str, Exception] = {}
-
-                    def _run_llm_call() -> None:
-                        try:
-                            llm_result_box["res"] = summarize_email_long_aware(
-                                provider,
-                                subject=sanitize_text_for_llm(str(subject)),
-                                body=sanitize_text_for_llm(body_text),
-                                on_progress=update_sub_progress,
-                                user_profile=user_profile,
-                            )
-                        except Exception as ex:
-                            llm_err_box["err"] = ex
-                        finally:
-                            llm_done.set()
-
-                    llm_t = threading.Thread(target=_run_llm_call, daemon=True)
-                    llm_t.start()
-
-                    tier = getattr(provider, "tier", "standard")
-                    if tier == "cloud":
-                        llm_timeout_s = 420.0
-                    elif tier == "fast":
-                        llm_timeout_s = 240.0
-                    else:
-                        llm_timeout_s = 360.0
-                    if not llm_done.wait(llm_timeout_s):
-                        conn_to = get_conn(db_path)
-                        try:
-                            repo.add_event(
-                                conn_to,
-                                job_id=job_id,
-                                level="warn",
-                                text=f"LLM timeout: {llm_timeout_s:.0f}s (item {i}/{len(msgs)})",
-                            )
-                        finally:
-                            conn_to.close()
-
-                        # Stop per-item heartbeat immediately so stale 1/N updates
-                        # do not overwrite later progress.
-                        llm_done.set()
-                        try:
-                            hb_t.join(timeout=1.0)
-                        except Exception:
-                            pass
-
-                        try:
-                            stop_done = threading.Event()
-
-                            def _stop_local_server() -> None:
-                                try:
-                                    from webmail_summary.llm.llamacpp_server import (
-                                        stop_server,
-                                    )
-
-                                    stop_server(force=True)
-                                finally:
-                                    stop_done.set()
-
-                            threading.Thread(
-                                target=_stop_local_server,
-                                daemon=True,
-                            ).start()
-                            stop_done.wait(2.5)
-                        except Exception:
-                            pass
-
-                        # Best-effort only; do not block the sync loop on a hung
-                        # provider request thread after timeout.
-                        try:
-                            llm_t.join(timeout=0.2)
-                        except Exception:
-                            pass
-
-                        llm_res = LlmResult(
-                            summary="(LLM timeout)",
-                            tags=[],
-                            backlinks=[],
-                            personal=False,
-                        )
-                    else:
-                        llm_res = llm_result_box.get("res")
-                        if llm_res is None:
-                            if "err" in llm_err_box:
-                                conn_er = get_conn(db_path)
-                                try:
-                                    repo.add_event(
-                                        conn_er,
-                                        job_id=job_id,
-                                        level="warn",
-                                        text=f"LLM exception: {str(llm_err_box['err'])[:180]}",
-                                    )
-                                finally:
-                                    conn_er.close()
-                            llm_res = LlmResult(
-                                summary="(LLM unavailable)",
-                                tags=[],
-                                backlinks=[],
-                                personal=False,
-                            )
-
-                        llm_done.set()
-                        try:
-                            hb_t.join(timeout=1.0)
-                        except Exception:
-                            pass
+                    llm_res = _run_llm_summary(
+                        db_path=db_path,
+                        job_id=job_id,
+                        provider=provider,
+                        subject=subject,
+                        body_text=body_text,
+                        user_profile=user_profile,
+                        update_sub_progress=update_sub_progress,
+                        item_index=i,
+                        item_total=len(msgs),
+                        display_date=display_date,
+                        display_sub=display_sub,
+                    )
 
                     topics = llm_res.backlinks
 
                     dt2_s = time.monotonic() - t1
                     if dt2_s > 60:
-                        connl4 = get_conn(db_path)
-                        try:
-                            repo.add_event(
-                                connl4,
-                                job_id=job_id,
-                                level="warn",
-                                text=f"요약이 느립니다 ({dt2_s:.1f}초)",
-                            )
-                        finally:
-                            connl4.close()
+                        _add_job_event(
+                            db_path=db_path,
+                            job_id=job_id,
+                            level="warn",
+                            text=f"요약이 느립니다 ({dt2_s:.1f}초)",
+                        )
 
                     conn2 = get_conn(db_path)
                     try:
@@ -623,16 +671,10 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     processed_notes.append((date_prefix, note_path, topics))
 
                 # Daily digests + topic notes
-                by_date: dict[str, list[Path]] = {}
-                by_topic: dict[str, list[Path]] = {}
-                for d, note, topics in processed_notes:
-                    by_date.setdefault(d, []).append(note)
-                    for t in topics:
-                        by_topic.setdefault(t, []).append(note)
+                by_date, by_topic = _group_processed_notes(processed_notes)
 
                 for d, notes in by_date.items():
-                    # Simple daily summary: list subjects.
-                    daily_summary = "\n".join([f"- {p.stem}" for p in notes])
+                    daily_summary = _build_daily_summary(notes)
                     export_daily_note(
                         vault_root=vault_root,
                         date=datetime.fromisoformat(d).date(),
