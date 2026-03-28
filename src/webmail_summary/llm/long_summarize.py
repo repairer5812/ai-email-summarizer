@@ -89,6 +89,26 @@ def _chunk_text(text: str, *, chunk_chars: int, max_chunks: int | None) -> list[
     return [c for c in chunks if c]
 
 
+def _has_strong_section_boundaries(text: str) -> bool:
+    s = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not s.strip():
+        return False
+
+    lines = s.split("\n")
+    separator_hits = sum(
+        1 for line in lines if re.match(r"^\s*[-_=]{8,}\s*$", str(line or "").strip())
+    )
+    if separator_hits >= 1:
+        return True
+
+    paras = _split_paragraphs(s)
+    if len(paras) >= 7:
+        return True
+
+    short_dense_paras = sum(1 for p in paras if 18 <= len(p) <= 220)
+    return short_dense_paras >= 6
+
+
 def _extract_bullets(summary: str) -> list[str]:
     s = (summary or "").strip()
     if not s:
@@ -301,14 +321,67 @@ def _validate_summary_bullets(
 
     if len(out) < max(1, int(min_keep)):
         # Recover with conservative body-derived bullets.
-        fb = _fallback_bullets_from_body(body, limit=max(12, int(max_keep) + 4))
-        for x in fb:
+        fb = _fallback_bullets_from_body(body, limit=max(16, int(max_keep) + 6))
+        existing_tokens = _tokenize_for_relevance("\n".join(out))
+        seen_lows = {y.lower() for y in out}
+
+        scored: list[tuple[int, int, str]] = []
+        for idx, x in enumerate(fb):
             if not _is_context_relevant_bullet(bullet=x, source_tokens=source_tokens):
                 continue
-            if x.lower() in {y.lower() for y in out}:
+            xl = x.lower()
+            if xl in seen_lows:
+                continue
+            xtoks = _tokenize_for_relevance(x)
+            novelty = sum(1 for t in xtoks if t not in existing_tokens)
+            scored.append((novelty, idx, x))
+
+        # Prefer lexically novel candidates first to avoid repeating only the
+        # opening section when the model output is shallow.
+        scored.sort(key=lambda it: (-it[0], it[1]))
+
+        for _novelty, _idx, x in scored:
+            xl = x.lower()
+            if xl in seen_lows:
                 continue
             out.append(x)
+            seen_lows.add(xl)
+            existing_tokens.update(_tokenize_for_relevance(x))
             if len(out) >= max(1, int(min_keep)):
+                break
+
+    # For medium/long mails, ensure at least one bullet anchored in the latter
+    # part of the body so second-half sections are not dropped entirely.
+    if len(str(body or "")) >= 800 and out:
+        s_body = str(body or "")
+        tail = s_body[int(len(s_body) * 0.55) :]
+        tail_tokens = _tokenize_for_relevance(tail)
+
+        def _is_tail_anchored(x: str) -> bool:
+            if not tail_tokens:
+                return True
+            xt = _tokenize_for_relevance(x)
+            if not xt:
+                return False
+            overlap = sum(1 for t in xt if t in tail_tokens)
+            return overlap >= 2
+
+        if tail_tokens and not any(_is_tail_anchored(b) for b in out):
+            fb_tail = _fallback_bullets_from_body(
+                body, limit=max(20, int(max_keep) + 8)
+            )
+            seen_lows = {y.lower() for y in out}
+            for x in fb_tail:
+                xl = x.lower()
+                if xl in seen_lows:
+                    continue
+                if not _is_tail_anchored(x):
+                    continue
+                if not _is_context_relevant_bullet(
+                    bullet=x, source_tokens=source_tokens
+                ):
+                    continue
+                out.append(x)
                 break
 
     if len(out) < 2:
@@ -853,7 +926,14 @@ def summarize_email_long_aware(
         n = str(x or "").lower().replace(" ", "").strip("[]").strip()
         return n in skip_headers_norm
 
-    if len(body_s) <= active_cfg.chunk_if_body_chars_over:
+    force_chunked_coverage = len(body_s) >= 900 and _has_strong_section_boundaries(
+        body_s
+    )
+
+    if (
+        not force_chunked_coverage
+        and len(body_s) <= active_cfg.chunk_if_body_chars_over
+    ):
         res = provider.summarize(subject=subject, body=body_s)
         raw_bullets = _dedupe_keep_order(
             [
@@ -902,9 +982,13 @@ def summarize_email_long_aware(
             personal=bool(res.personal),
         )
 
+    chunk_chars = active_cfg.chunk_chars
+    if force_chunked_coverage:
+        chunk_chars = min(chunk_chars, 900)
+
     chunks = _chunk_text(
         body_s,
-        chunk_chars=active_cfg.chunk_chars,
+        chunk_chars=chunk_chars,
         max_chunks=active_cfg.max_chunks,
     )
     if not chunks:

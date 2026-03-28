@@ -1748,7 +1748,7 @@ def message_original(request: Request, message_id: int):
 
 
 @router.get("/m/{message_id}/{path:path}")
-def serve_message_file(message_id: int, path: str):
+def serve_message_file(request: Request, message_id: int, path: str):
     from fastapi.responses import FileResponse
 
     from webmail_summary.index.db import get_conn
@@ -1771,6 +1771,17 @@ def serve_message_file(message_id: int, path: str):
         return RedirectResponse("/", status_code=302)
     if not target.exists() or not target.is_file():
         return RedirectResponse("/message/%d" % int(message_id), status_code=302)
+
+    normalized_path = str(path or "").strip().lower()
+    embed = str(request.query_params.get("embed") or "").strip()
+    if normalized_path == "rendered.html" and embed != "1":
+        return_to = str(request.query_params.get("return_to") or "").strip()
+        if len(return_to) == 10 and return_to[4] == "-" and return_to[7] == "-":
+            return RedirectResponse(
+                f"/message/{int(message_id)}/original?return_to={return_to}",
+                status_code=302,
+            )
+        return RedirectResponse(f"/message/{int(message_id)}/original", status_code=302)
 
     return FileResponse(str(target))
 
