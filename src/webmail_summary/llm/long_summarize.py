@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from collections.abc import Callable
 
-from webmail_summary.llm.base import LlmProvider, LlmResult
+from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
 import re
 
 
@@ -184,6 +184,44 @@ def _is_newsletter_like(*, subject: str, body: str, bullets: list[str]) -> bool:
     if len(bullets) >= 10 and labeled >= 4:
         return True
     return False
+
+
+def _is_article_like(*, subject: str, body: str) -> bool:
+    s = str(subject or "").strip().lower()
+    body_s = str(body or "")
+    if len(body_s) < 900:
+        return False
+    if any(x in s for x in ["뉴스레터", "newsletter", "소식지"]):
+        return False
+
+    paras = _split_paragraphs(body_s)
+    dense_paras = sum(1 for p in paras if len(p) >= 45)
+    if len(paras) >= 6 and dense_paras >= 6:
+        return True
+    if len(paras) >= 6 and dense_paras >= 5 and _has_strong_section_boundaries(body_s):
+        return True
+
+    lines = [ln.strip() for ln in body_s.splitlines() if ln.strip()]
+    dense_lines = sum(1 for ln in lines if len(ln) >= 45)
+    if len(lines) >= 8 and dense_lines >= 6:
+        return True
+
+    long_sentences = sum(
+        1 for seg in re.split(r"(?<=[.!?])\s+", body_s) if len(seg.strip()) >= 60
+    )
+    if len(lines) >= 8 and long_sentences >= 6:
+        return True
+
+    return False
+
+
+def _target_min_bullets(*, subject: str, body: str, bullets: list[str]) -> int:
+    body_len = len(str(body or ""))
+    if _is_newsletter_like(subject=subject, body=body, bullets=bullets):
+        return 8 if body_len >= 2500 else 6
+    if _is_article_like(subject=subject, body=body):
+        return 10 if body_len >= 2500 else 8
+    return 4
 
 
 def _is_noise_bullet(text: str) -> bool:
@@ -904,6 +942,7 @@ def summarize_email_long_aware(
     on_detail: Callable[[dict], None] | None = None,
     on_progress: Callable[[float], None] | None = None,
     user_profile: dict | None = None,
+    multimodal_inputs: list[LlmImageInput] | None = None,
 ) -> LlmResult:
     body_s = str(body or "")
 
@@ -926,15 +965,20 @@ def summarize_email_long_aware(
         n = str(x or "").lower().replace(" ", "").strip("[]").strip()
         return n in skip_headers_norm
 
-    force_chunked_coverage = len(body_s) >= 900 and _has_strong_section_boundaries(
-        body_s
+    article_like = _is_article_like(subject=subject, body=body_s)
+    force_chunked_coverage = len(body_s) >= 900 and (
+        _has_strong_section_boundaries(body_s) or article_like
     )
 
     if (
         not force_chunked_coverage
         and len(body_s) <= active_cfg.chunk_if_body_chars_over
     ):
-        res = provider.summarize(subject=subject, body=body_s)
+        res = provider.summarize(
+            subject=subject,
+            body=body_s,
+            multimodal_inputs=multimodal_inputs,
+        )
         raw_bullets = _dedupe_keep_order(
             [
                 b
@@ -945,10 +989,8 @@ def summarize_email_long_aware(
                 and (not _is_noise_bullet(b))
             ]
         )
-        min_keep = (
-            6
-            if _is_newsletter_like(subject=subject, body=body_s, bullets=raw_bullets)
-            else 4
+        min_keep = _target_min_bullets(
+            subject=subject, body=body_s, bullets=raw_bullets
         )
         bullets = _validate_summary_bullets(
             subject=subject,
@@ -992,7 +1034,11 @@ def summarize_email_long_aware(
         max_chunks=active_cfg.max_chunks,
     )
     if not chunks:
-        res = provider.summarize(subject=subject, body=body_s[: active_cfg.chunk_chars])
+        res = provider.summarize(
+            subject=subject,
+            body=body_s[: active_cfg.chunk_chars],
+            multimodal_inputs=multimodal_inputs,
+        )
         raw_bullets = _dedupe_keep_order(
             [
                 b
@@ -1003,10 +1049,8 @@ def summarize_email_long_aware(
                 and (not _is_noise_bullet(b))
             ]
         )
-        min_keep = (
-            6
-            if _is_newsletter_like(subject=subject, body=body_s, bullets=raw_bullets)
-            else 4
+        min_keep = _target_min_bullets(
+            subject=subject, body=body_s, bullets=raw_bullets
         )
         checked = _validate_summary_bullets(
             subject=subject,
@@ -1066,7 +1110,10 @@ def summarize_email_long_aware(
         backlinks.extend(list(res.backlinks or []))
         personal = personal or bool(res.personal)
 
-        short = _dedupe_keep_order(part_bullets)[: max(1, int(active_cfg.part_bullets))]
+        part_limit = max(1, int(active_cfg.part_bullets))
+        if article_like:
+            part_limit = max(part_limit, 7)
+        short = _dedupe_keep_order(part_bullets)[:part_limit]
         if short:
             lines = "\n".join(["- " + x for x in short if x]).strip()
             if lines:
@@ -1100,20 +1147,25 @@ def summarize_email_long_aware(
                 guidelines = (
                     "1. 형식 고정: 반드시 '### 핵심 요약' 섹션과 '### 상세 요약' 섹션 2개로 작성하세요.\n"
                     "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
-                    "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
+                    f"3. 상세 요약: 본문 사실에 충실하게 {'8~12개 불릿으로 최대한 폭넓게' if article_like else '최대 7개 불릿으로'} 작성하세요.\n"
                     "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
                     "5. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
                 )
             elif tier == "cloud":
                 # Executive version for high-capability models (Gemini, OpenAI etc)
                 system_role = "전문적인 전략 분석가 및 수석 에디터"
+                article_line = (
+                    "6. 앞부분 요지만 반복하지 말고 후반부 정보와 사례도 반드시 포함하세요.\n"
+                    if article_like
+                    else ""
+                )
                 guidelines = (
                     "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
-                    "2. 핵심 요약: 최상단에 전체를 관통하는 핵심 결론 3~5개를 불릿으로 작성하세요.\n"
-                    "3. 상세 요약: 본문 사실에 근거해 주제별 핵심 사실을 최대 7개 불릿으로 정리하세요(7개 미만 가능).\n"
+                    f"2. 핵심 요약: 최상단에 전체를 관통하는 핵심 결론 {'3~4개' if article_like else '3~5개'}를 불릿으로 작성하세요.\n"
+                    f"3. 상세 요약: 본문 사실에 근거해 주제별 핵심 사실을 {'8~12개 불릿으로 최대한 폭넓게 정리' if article_like else '최대 7개 불릿으로 정리'}하세요.\n"
                     "4. 데이터 밀도: 수치, 인물, 결정 사항을 포함하되 과장/추측은 금지하세요.\n"
                     "5. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
-                    "6. 반드시 한국어로만 격식 있는 문체로 작성하세요."
+                    f"{article_line}7. 반드시 한국어로만 격식 있는 문체로 작성하세요."
                 )
             else:
                 # Standard version (EXAONE, Qwen 3B etc)
@@ -1121,7 +1173,7 @@ def summarize_email_long_aware(
                 guidelines = (
                     "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
                     "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿으로 작성하세요.\n"
-                    "3. 상세 요약: 본문 사실에 충실하게 최대 7개 불릿으로 작성하세요(7개 미만 가능).\n"
+                    f"3. 상세 요약: 본문 사실에 충실하게 {'8~12개 불릿으로 최대한 폭넓게' if article_like else '최대 7개 불릿으로'} 작성하세요.\n"
                     "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
                     "5. 반드시 한국어로 작성하고 모든 문장은 마침표(.)로 끝맺으세요."
                 )
@@ -1134,6 +1186,7 @@ def summarize_email_long_aware(
                     f"작성 지침:\n{guidelines}{custom_tailor}\n\n"
                     "요약 초안 목록:\n" + synth_body
                 ),
+                multimodal_inputs=multimodal_inputs,
             )
 
             # Preserve original formatting (headers/bold) if it looks structured
@@ -1143,6 +1196,33 @@ def summarize_email_long_aware(
             else:
                 merged_bullets = _extract_bullets(raw_synth)
                 final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
+
+            synth_bullets = _dedupe_keep_order(
+                [
+                    b
+                    for b in _extract_bullets(final_summary_text)
+                    if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
+                ]
+            )
+            target_min = _target_min_bullets(
+                subject=subject,
+                body=body_s,
+                bullets=synth_bullets,
+            )
+            merged_chunk_bullets = _dedupe_keep_order(
+                [
+                    b
+                    for b in all_bullets
+                    if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
+                ]
+            )
+            if (
+                len(synth_bullets) < target_min
+                and len(merged_chunk_bullets) >= target_min
+            ):
+                final_summary_text = "\n".join(
+                    ["- " + b for b in merged_chunk_bullets if b]
+                )
 
             tags.extend(list(synth.tags or []))
             backlinks.extend(list(synth.backlinks or []))
@@ -1164,10 +1244,8 @@ def summarize_email_long_aware(
                 if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
             ]
         )
-        min_keep = (
-            6
-            if _is_newsletter_like(subject=subject, body=body_s, bullets=merged_bullets)
-            else 4
+        min_keep = _target_min_bullets(
+            subject=subject, body=body_s, bullets=merged_bullets
         )
         merged_bullets = _validate_summary_bullets(
             subject=subject,
@@ -1186,11 +1264,7 @@ def summarize_email_long_aware(
             if b and ("\ufffd" not in b) and (not _is_noise_bullet(b))
         ]
     )
-    min_keep = (
-        6
-        if _is_newsletter_like(subject=subject, body=body_s, bullets=final_bullets)
-        else 4
-    )
+    min_keep = _target_min_bullets(subject=subject, body=body_s, bullets=final_bullets)
     final_bullets = _validate_summary_bullets(
         subject=subject,
         body=body_s,
