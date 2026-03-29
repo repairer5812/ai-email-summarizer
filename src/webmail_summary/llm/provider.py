@@ -50,7 +50,7 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
                 max_attempts = 2
                 total_budget_s = 360.0
                 if tier == "fast":
-                    max_tokens = 224
+                    max_tokens = 384
                     request_timeout_s = 120.0
                     max_attempts = 2
                     total_budget_s = 240.0
