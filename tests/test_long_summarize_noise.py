@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from webmail_summary.llm.base import LlmProvider, LlmResult
+from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
 
 
@@ -14,7 +14,14 @@ class _DummyProvider(LlmProvider):
     def tier(self) -> str:
         return self._tier
 
-    def summarize(self, *, subject: str, body: str) -> LlmResult:
+    def summarize(
+        self,
+        *,
+        subject: str,
+        body: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
+        _ = (subject, body, multimodal_inputs)
         return LlmResult(summary=self._summary, tags=[], backlinks=[], personal=False)
 
 
@@ -23,7 +30,13 @@ class _SectionAwareProvider(LlmProvider):
     def tier(self) -> str:
         return "standard"
 
-    def summarize(self, *, subject: str, body: str) -> LlmResult:
+    def summarize(
+        self,
+        *,
+        subject: str,
+        body: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
         if "요약 초안 목록:" in body:
             return LlmResult(
                 summary="\n".join(
@@ -62,6 +75,34 @@ class _SectionAwareProvider(LlmProvider):
             backlinks=[],
             personal=False,
         )
+
+
+class _RecordingProvider(LlmProvider):
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def summarize(
+        self,
+        *,
+        subject: str,
+        body: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
+        self.calls.append(
+            {
+                "subject": subject,
+                "body": body,
+                "multimodal_count": len(multimodal_inputs or []),
+            }
+        )
+        if "요약 초안 목록:" in body:
+            return LlmResult(
+                summary="### 핵심 요약\n- 앞부분과 뒷부분을 모두 반영합니다.\n\n### 상세 요약\n- 후반부 핵심 이미지를 함께 참고했습니다.",
+                tags=[],
+                backlinks=[],
+                personal=False,
+            )
+        return LlmResult(summary="- 파트 요약", tags=[], backlinks=[], personal=False)
 
 
 def test_summary_filters_noise_bullets_and_avoids_placeholder():
@@ -183,3 +224,140 @@ def test_multi_section_medium_mail_uses_chunked_full_coverage():
     assert "첫번째 주" in s or "춘삼월" in s or "기대와 설렘" in s
     assert "무지를 벗어나는 가장 근본적인 방법" in s
     assert "반응하기 전에 관찰" in s
+
+
+def test_multimodal_inputs_only_used_for_single_pass_or_synthesis(tmp_path):
+    provider = _RecordingProvider()
+    img = tmp_path / "hero.jpg"
+    img.write_bytes(b"fake-image-bytes")
+
+    body = "\n\n".join(
+        [
+            "도입부 문장입니다.\n봄의 기대를 설명합니다.",
+            "---------------------------------------------",
+            "중간 본문을 길게 채웁니다. " * 40,
+            "후반부에서는 무지에서 벗어나는 알아차림의 중요성을 설명합니다. " * 20,
+        ]
+    )
+
+    summarize_email_long_aware(
+        provider,
+        subject="멀티모달 테스트",
+        body=body,
+        multimodal_inputs=[LlmImageInput(path=str(img), mime_type="image/jpeg")],
+    )
+
+    assert len(provider.calls) >= 2
+    assert provider.calls[0]["multimodal_count"] == 0
+    assert provider.calls[-1]["multimodal_count"] == 1
+
+
+class _ArticleShallowProvider(LlmProvider):
+    @property
+    def tier(self) -> str:
+        return "cloud"
+
+    def summarize(
+        self,
+        *,
+        subject: str,
+        body: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
+        _ = (subject, multimodal_inputs)
+        if "요약 초안 목록:" in body:
+            return LlmResult(
+                summary="\n".join(
+                    [
+                        "### 핵심 요약",
+                        "- 하버드대는 논증적 글쓰기 수업을 필수로 운영한다.",
+                        "### 상세 요약",
+                        "- 스탠퍼드대도 작문 단계의 AI 활용을 엄격히 금지한다.",
+                        "- 코넬대는 AI 작성 글을 표절로 판단할 수 있다.",
+                    ]
+                ),
+                tags=[],
+                backlinks=[],
+                personal=False,
+            )
+
+        if "[Part 1/2]" in body:
+            return LlmResult(
+                summary="\n".join(
+                    [
+                        "- 하버드대는 모든 학생이 논증적 글쓰기 수업을 필수로 듣게 한다.",
+                        "- 교수는 학생 글을 1대1로 첨삭하고 토론을 진행한다.",
+                        "- 기초 글쓰기 과목을 통해 부족한 학생을 보완한다.",
+                        "- 생성형 AI 글쓰기 과제는 A 학점을 받을 수 없다고 명시했다.",
+                    ]
+                ),
+                tags=[],
+                backlinks=[],
+                personal=False,
+            )
+
+        return LlmResult(
+            summary="\n".join(
+                [
+                    "- 스탠퍼드대는 기초·심화·전공 글쓰기 수업 체계를 운영한다.",
+                    "- 스탠퍼드대는 글을 쓰거나 수정할 때 AI 활용을 엄격히 금지한다.",
+                    "- 코넬대는 AI 작성 글을 표절로 보고 반성문이나 낙제를 줄 수 있다.",
+                    "- 여러 미국 명문대가 교육 과정 전반에서 직접 글쓰기 훈련을 강화하고 있다.",
+                ]
+            ),
+            tags=[],
+            backlinks=[],
+            personal=False,
+        )
+
+
+def test_article_like_summary_falls_back_to_chunk_coverage_when_synthesis_is_shallow():
+    provider = _ArticleShallowProvider()
+    body = "\n\n".join(
+        [
+            "Elite universities are strengthening human writing instruction without relying on AI tools in final composition work.",
+            "Harvard requires argumentative writing courses for all students and uses one-on-one feedback plus live discussion to improve reasoning, evidence selection, and response to counterarguments in a structured classroom setting.",
+            "The school also runs a placement-style writing check for freshmen and directs weaker students into foundational writing courses before they move into the required full writing curriculum.",
+            "In the AI era guidance, Harvard still allows limited preparation-stage AI use for discovery or data analysis, but final writing quality and grades depend on what the student personally writes and can explain.",
+            "Students are expected to document how they found ideas, how they summarized readings, and how peer feedback shaped the final draft instead of outsourcing the thinking process to a chatbot or automated writer.",
+            "Stanford uses a three-stage writing sequence that covers foundational writing, advanced rhetoric, and later field-specific writing, which means writing practice is embedded across the broader educational path rather than treated as a single introductory course.",
+            "Stanford also blocks AI use in actual drafting and revision, stating that students should not rely on AI even for individual sentences or word-level phrasing when producing formal writing assignments.",
+            "Cornell treats AI-authored student writing as plagiarism in its first-year writing context and may require reflection papers or failing grades, reinforcing the view that writing remains central to thinking and academic integrity.",
+        ]
+    )
+
+    res = summarize_email_long_aware(
+        provider,
+        subject="미 명문대는 AI 없이 직접 글쓰는 수업 강화",
+        body=body,
+    )
+    bullets = [
+        line for line in res.summary.splitlines() if line.strip().startswith("-")
+    ]
+
+    assert len(bullets) >= 8
+    assert "하버드대" in res.summary
+    assert "스탠퍼드대" in res.summary
+    assert "코넬대" in res.summary
+
+
+def test_article_like_detection_handles_soft_wrapped_lines_without_blank_paragraphs():
+    body = "\n".join(
+        [
+            "Elite universities are strengthening human writing instruction without relying on AI tools in final composition work.",
+            "Harvard requires argumentative writing courses for all students and uses one-on-one feedback plus live discussion to improve reasoning, evidence selection, and response to counterarguments in a structured classroom setting.",
+            "The school also runs a placement-style writing check for freshmen and directs weaker students into foundational writing courses before they move into the required full writing curriculum.",
+            "In the AI era guidance, Harvard still allows limited preparation-stage AI use for discovery or data analysis, but final writing quality and grades depend on what the student personally writes and can explain.",
+            "Students are expected to document how they found ideas, how they summarized readings, and how peer feedback shaped the final draft instead of outsourcing the thinking process to a chatbot or automated writer.",
+            "Stanford uses a three-stage writing sequence that covers foundational writing, advanced rhetoric, and later field-specific writing, which means writing practice is embedded across the broader educational path rather than treated as a single introductory course.",
+            "Stanford also blocks AI use in actual drafting and revision, stating that students should not rely on AI even for individual sentences or word-level phrasing when producing formal writing assignments.",
+            "Cornell treats AI-authored student writing as plagiarism in its first-year writing context and may require reflection papers or failing grades, reinforcing the view that writing remains central to thinking and academic integrity.",
+        ]
+    )
+
+    from webmail_summary.llm.long_summarize import _is_article_like
+
+    assert _is_article_like(
+        subject="미 명문대는 AI 없이 직접 글쓰는 수업 강화",
+        body=body,
+    )
