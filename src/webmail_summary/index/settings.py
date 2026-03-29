@@ -15,6 +15,7 @@ class Settings:
     obsidian_root: str
     llm_backend: str
     cloud_provider: str
+    cloud_multimodal_enabled: bool
     openrouter_model: str
     local_model_id: str
     external_max_bytes: int
@@ -67,6 +68,9 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     obsidian_root = get_setting(conn, "obsidian_root") or ""
     llm_backend = get_setting(conn, "llm_backend") or "local"
     cloud_provider = get_setting(conn, "cloud_provider") or "openai"
+    cloud_multimodal_enabled = (
+        get_setting(conn, "cloud_multimodal_enabled") or "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
     openrouter_model = get_setting(conn, "openrouter_model") or "openai/gpt-4o-mini"
     from webmail_summary.llm.local_models import get_local_model, recommend_local_model
 
@@ -121,6 +125,7 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         obsidian_root=obsidian_root,
         llm_backend=llm_backend,
         cloud_provider=cloud_provider,
+        cloud_multimodal_enabled=cloud_multimodal_enabled,
         openrouter_model=openrouter_model,
         local_model_id=local_model_id,
         external_max_bytes=external_max_bytes,

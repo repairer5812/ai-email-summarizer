@@ -274,6 +274,19 @@
                       <button type="button" class="btn btn--secondary" id="btn-test-cloud-key">API 키 테스트</button>
                       <span id="cloud-test-status" class="muted"></span>
                     </div>
+
+                    <div class="form-group" style="margin-top: 16px;">
+                      <label>{{ t(request, 'setup.cloud.multimodal') }}</label>
+                      <div class="card" style="padding: 12px; background: rgba(0,0,0,0.02);">
+                        <label style="display:flex; align-items:flex-start; gap:12px; cursor:pointer; margin-bottom:0;">
+                          <input type="checkbox" name="cloud_multimodal_enabled" {% if defaults.cloud_multimodal_enabled %}checked{% endif %} style="width:auto; margin-top: 2px;" />
+                          <span>
+                            <strong>{{ t(request, 'setup.cloud.multimodal.label') }}</strong><br>
+                            <span class="muted">{{ t(request, 'setup.cloud.multimodal.help') }}</span>
+                          </span>
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
