@@ -17,9 +17,12 @@ from email.parser import BytesParser
 from pathlib import Path
 
 import keyring
+from PIL import Image
 
 from webmail_summary.archive.paths import get_message_paths
 from webmail_summary.archive.pipeline import archive_message
+from webmail_summary.archive.html_rewrite import ExternalAsset
+from webmail_summary.archive.mime_parts import SavedAttachment
 from webmail_summary.export.obsidian.exporter import (
     MessageExportInput,
     export_daily_note,
@@ -39,7 +42,7 @@ from webmail_summary.index.mail_repo import (
 )
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
-from webmail_summary.llm.base import LlmResult
+from webmail_summary.llm.base import LlmImageInput, LlmResult
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
 from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
@@ -151,6 +154,99 @@ def _llm_timeout_seconds(provider) -> float:
     return 360.0
 
 
+_SUPPORTED_MM_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_MIN_MM_IMAGE_BYTES = 1024
+
+
+def _is_supported_mm_image(*, path: Path, mime_type: str | None) -> bool:
+    mime = str(mime_type or "").strip().lower()
+    if mime.startswith("image/") and mime not in {"image/svg+xml"}:
+        return True
+    return path.suffix.lower() in _SUPPORTED_MM_EXTS
+
+
+def _image_dimensions(path: Path) -> tuple[int, int] | None:
+    try:
+        with Image.open(path) as img:
+            w, h = img.size
+            return int(w), int(h)
+    except Exception:
+        return None
+
+
+def _select_multimodal_inputs(
+    *,
+    base_dir: Path,
+    attachments: list[SavedAttachment],
+    external_assets: list[ExternalAsset],
+    max_images: int = 3,
+    max_total_bytes: int = 4 * 1024 * 1024,
+) -> list[LlmImageInput]:
+    wide_candidates: list[tuple[int, Path, str | None, str]] = []
+    candidates: list[tuple[int, Path, str | None, str]] = []
+
+    for a in attachments or []:
+        p = (base_dir / str(a.rel_path or "")).resolve()
+        if not p.is_file() or not _is_supported_mm_image(path=p, mime_type=a.mime_type):
+            continue
+        size = int(a.size_bytes or 0)
+        source = "inline_attachment" if bool(a.is_inline) else "attachment"
+        item = (size, p, a.mime_type, source)
+        dims = _image_dimensions(p)
+        if dims and dims[0] > 600:
+            wide_candidates.append(item)
+        else:
+            if size <= _MIN_MM_IMAGE_BYTES:
+                continue
+            candidates.append(item)
+
+    for a in external_assets or []:
+        if str(a.status or "").strip().lower() != "downloaded":
+            continue
+        rel = str(a.rel_path or "").strip()
+        if not rel:
+            continue
+        p = (base_dir / rel).resolve()
+        if not p.is_file() or not _is_supported_mm_image(path=p, mime_type=a.mime_type):
+            continue
+        size = int(a.size_bytes or (p.stat().st_size if p.exists() else 0) or 0)
+        item = (size, p, a.mime_type, "external_asset")
+        dims = _image_dimensions(p)
+        if dims and dims[0] > 600:
+            wide_candidates.append(item)
+        else:
+            if size <= _MIN_MM_IMAGE_BYTES:
+                continue
+            candidates.append(item)
+
+    wide_candidates.sort(key=lambda x: x[0], reverse=True)
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    out: list[LlmImageInput] = []
+    seen: set[str] = set()
+
+    for _size, p, mime, source in wide_candidates:
+        rp = str(p)
+        if rp in seen:
+            continue
+        out.append(LlmImageInput(path=rp, mime_type=mime, detail="low", source=source))
+        seen.add(rp)
+
+    total = sum(p.stat().st_size for p in [Path(x.path) for x in out] if p.exists())
+
+    for size, p, mime, source in candidates:
+        rp = str(p)
+        if rp in seen:
+            continue
+        if len(out) >= int(max_images):
+            break
+        if total + int(size) > int(max_total_bytes):
+            continue
+        out.append(LlmImageInput(path=rp, mime_type=mime, detail="low", source=source))
+        seen.add(rp)
+        total += int(size)
+    return out
+
+
 def _run_llm_summary(
     *,
     db_path: Path,
@@ -164,6 +260,7 @@ def _run_llm_summary(
     item_total: int,
     display_date: str,
     display_sub: str,
+    multimodal_inputs: list[LlmImageInput] | None,
 ) -> LlmResult:
     llm_done = threading.Event()
 
@@ -211,6 +308,7 @@ def _run_llm_summary(
                 body=sanitize_text_for_llm(body_text),
                 on_progress=update_sub_progress,
                 user_profile=user_profile,
+                multimodal_inputs=multimodal_inputs,
             )
         except Exception as ex:
             llm_err_box["err"] = ex
@@ -534,6 +632,17 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         if ar.body_html_path
                         else None,
                     )
+                    multimodal_inputs: list[LlmImageInput] | None = None
+                    if provider.supports_multimodal_inputs() and bool(
+                        getattr(s, "cloud_multimodal_enabled", False)
+                    ):
+                        selected_inputs = _select_multimodal_inputs(
+                            base_dir=paths.base_dir,
+                            attachments=list(ar.attachments or []),
+                            external_assets=list(ar.external_assets or []),
+                        )
+                        if selected_inputs:
+                            multimodal_inputs = selected_inputs
 
                     set_stage("summarize")
                     _add_job_event(
@@ -580,6 +689,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         item_total=len(msgs),
                         display_date=display_date,
                         display_sub=display_sub,
+                        multimodal_inputs=multimodal_inputs,
                     )
 
                     topics = llm_res.backlinks
