@@ -12,7 +12,7 @@ from pathlib import Path
 import requests
 import psutil
 
-from webmail_summary.llm.base import LlmProvider, LlmResult
+from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
 from webmail_summary.util.jsonish import coerce_summary_text, coerce_summary_value
 
 
@@ -219,7 +219,13 @@ class LlamaCppServerProvider(LlmProvider):
     def tier(self) -> str:
         return self._tier
 
-    def summarize(self, *, subject: str, body: str) -> LlmResult:
+    def summarize(
+        self,
+        *,
+        subject: str,
+        body: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
         ensure_server(self._cfg)
         started_at = time.monotonic()
 
@@ -255,9 +261,9 @@ class LlamaCppServerProvider(LlmProvider):
             body_len = len(str(body or ""))
             dynamic_max_tokens = int(self._cfg.max_tokens)
             if body_len <= 2500:
-                dynamic_max_tokens = min(dynamic_max_tokens, 192)
+                dynamic_max_tokens = min(dynamic_max_tokens, 320)
             if int(attempt) > 0:
-                dynamic_max_tokens = min(dynamic_max_tokens, 192)
+                dynamic_max_tokens = min(dynamic_max_tokens, 256)
             payload = {
                 "model": self._cfg.alias,
                 "messages": [
