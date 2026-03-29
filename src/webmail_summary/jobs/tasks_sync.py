@@ -174,6 +174,37 @@ def _image_dimensions(path: Path) -> tuple[int, int] | None:
         return None
 
 
+def _should_exclude_mm_image(
+    *,
+    path: Path,
+    mime_type: str | None,
+    source: str,
+    dims: tuple[int, int] | None,
+) -> bool:
+    name = path.name.lower()
+    if any(k in name for k in ["logo", "icon", "favicon", "avatar", "sprite", "badge"]):
+        return True
+
+    if dims:
+        width, height = dims
+        if width <= 220 or height <= 120:
+            return True
+        if width >= 600 and height <= 140:
+            return True
+        if height > 0:
+            aspect = width / height
+            if width >= 600 and aspect >= 5.5 and height <= 180:
+                return True
+            if source == "inline_attachment" and aspect >= 4.0 and height <= 160:
+                return True
+
+    mime = str(mime_type or "").strip().lower()
+    if mime == "image/gif" and dims and dims[1] <= 180:
+        return True
+
+    return False
+
+
 def _select_multimodal_inputs(
     *,
     base_dir: Path,
@@ -191,8 +222,12 @@ def _select_multimodal_inputs(
             continue
         size = int(a.size_bytes or 0)
         source = "inline_attachment" if bool(a.is_inline) else "attachment"
-        item = (size, p, a.mime_type, source)
         dims = _image_dimensions(p)
+        if _should_exclude_mm_image(
+            path=p, mime_type=a.mime_type, source=source, dims=dims
+        ):
+            continue
+        item = (size, p, a.mime_type, source)
         if dims and dims[0] > 600:
             wide_candidates.append(item)
         else:
@@ -210,8 +245,15 @@ def _select_multimodal_inputs(
         if not p.is_file() or not _is_supported_mm_image(path=p, mime_type=a.mime_type):
             continue
         size = int(a.size_bytes or (p.stat().st_size if p.exists() else 0) or 0)
-        item = (size, p, a.mime_type, "external_asset")
         dims = _image_dimensions(p)
+        if _should_exclude_mm_image(
+            path=p,
+            mime_type=a.mime_type,
+            source="external_asset",
+            dims=dims,
+        ):
+            continue
+        item = (size, p, a.mime_type, "external_asset")
         if dims and dims[0] > 600:
             wide_candidates.append(item)
         else:
