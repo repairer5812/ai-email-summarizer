@@ -270,6 +270,15 @@
                       </select>
                     </div>
 
+                    <div class="form-group">
+                      <label>{{ t(request, 'setup.cloud.multimodal.vision_title') }}</label>
+                      <div class="card" style="padding: 12px; background: rgba(0,0,0,0.02);">
+                        <div class="muted" style="margin-bottom: 10px;">{{ t(request, 'setup.cloud.multimodal.vision_help') }}</div>
+                        <div id="cloud-vision-list" class="help" style="line-height: 1.7;"></div>
+                        <div id="cloud-vision-current" class="help" style="margin-top: 10px;"></div>
+                      </div>
+                    </div>
+
                     <div class="actions" style="justify-content:flex-start; margin-top:8px; gap:10px; align-items:center;">
                       <button type="button" class="btn btn--secondary" id="btn-test-cloud-key">API 키 테스트</button>
                       <span id="cloud-test-status" class="muted"></span>
@@ -433,6 +442,8 @@
   const cloudModelSearchWrap = document.getElementById('cloud-model-search-wrap');
   const cloudModelSearch = document.getElementById('cloud-model-search');
   const cloudModelHint = document.getElementById('cloud-model-hint');
+  const cloudVisionList = document.getElementById('cloud-vision-list');
+  const cloudVisionCurrent = document.getElementById('cloud-vision-current');
   const btnRefreshOpenrouter = document.getElementById('btn-refresh-openrouter');
   const btnRefreshOpenrouterInline = document.getElementById('btn-refresh-openrouter-inline');
   const btnTestCloudKey = document.getElementById('btn-test-cloud-key');
@@ -444,28 +455,55 @@
 
   const CLOUD_MODELS = {
     openai: [
-      { id: 'gpt-4o-mini', label: 'GPT-4o mini (추천)' },
-      { id: 'gpt-4o', label: 'GPT-4o (고성능)' }
+      { id: 'gpt-4o-mini', label: 'GPT-4o mini (추천)', multimodal: true },
+      { id: 'gpt-4o', label: 'GPT-4o (고성능)', multimodal: true }
     ],
     upstage: [
-      { id: 'solar-mini', label: 'Solar Mini (속도)' },
-      { id: 'solar-pro', label: 'Solar Pro (품질)' }
+      { id: 'solar-mini', label: 'Solar Mini (속도)', multimodal: false },
+      { id: 'solar-pro', label: 'Solar Pro (품질)', multimodal: false }
     ],
     google: [
-      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (속도)' },
-      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (품질)' }
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (속도)', multimodal: true },
+      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (품질)', multimodal: true }
     ],
     anthropic: [
-      { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-      { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' }
+      { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', multimodal: true },
+      { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', multimodal: true }
     ]
   };
 
   const OPENROUTER_FALLBACK = [
-    { id: 'google/gemma-3-4b-it', label: 'google/gemma-3-4b-it' },
-    { id: 'meta-llama/llama-3.1-8b-instruct', label: 'meta-llama/llama-3.1-8b-instruct' },
-    { id: 'mistralai/mistral-7b-instruct', label: 'mistralai/mistral-7b-instruct' }
+    { id: 'openai/gpt-4o-mini', label: 'openai/gpt-4o-mini', multimodal: true },
+    { id: 'google/gemini-2.5-flash', label: 'google/gemini-2.5-flash', multimodal: true },
+    { id: 'anthropic/claude-3.5-sonnet', label: 'anthropic/claude-3.5-sonnet', multimodal: true },
+    { id: 'google/gemma-3-4b-it', label: 'google/gemma-3-4b-it', multimodal: false },
+    { id: 'meta-llama/llama-3.1-8b-instruct', label: 'meta-llama/llama-3.1-8b-instruct', multimodal: false },
+    { id: 'mistralai/mistral-7b-instruct', label: 'mistralai/mistral-7b-instruct', multimodal: false }
   ];
+
+  const VISION_BADGE = "{{ t(request, 'setup.cloud.multimodal.vision_badge') }}";
+  const VISION_CURRENT = "{{ t(request, 'setup.cloud.multimodal.vision_current') }}";
+  const VISION_MISSING = "{{ t(request, 'setup.cloud.multimodal.vision_missing') }}";
+
+  function modelLooksVisionCapable(id) {
+    const v = String(id || '').toLowerCase();
+    const positives = ['gpt-4o', 'gpt-4.1', 'gemini', 'claude-3', 'claude-4', 'qwen2.5-vl', 'qwen-vl', 'llama-3.2-vision', 'pixtral', 'vision', 'vl', 'omni'];
+    const negatives = ['gemma-3-4b-it', 'mistral-7b-instruct', 'llama-3.1-8b-instruct', 'text-embedding', 'embed', 'rerank', 'whisper', 'tts', 'asr', 'transcribe', 'moderation'];
+    if (negatives.some(x => v.includes(x))) return false;
+    return positives.some(x => v.includes(x));
+  }
+
+  function annotateVision(model) {
+    const baseLabel = model && (model.label || model.id) ? String(model.label || model.id) : '';
+    const isVision = Object.prototype.hasOwnProperty.call(model || {}, 'multimodal')
+      ? !!model.multimodal
+      : modelLooksVisionCapable(model && model.id);
+    return {
+      ...model,
+      multimodal: isVision,
+      label: isVision ? `${baseLabel} [${VISION_BADGE}]` : baseLabel,
+    };
+  }
 
   let openrouterModels = null;
   let openrouterLoading = false;
@@ -526,6 +564,7 @@
       const opt = document.createElement('option');
       opt.value = m.id;
       opt.textContent = m.label || m.id;
+      if (m.multimodal) opt.setAttribute('data-multimodal', '1');
       cloudModelSelect.appendChild(opt);
     });
 
@@ -553,7 +592,7 @@
   function _renderOpenRouterModels() {
     const base = Array.isArray(openrouterModels) && openrouterModels.length ? openrouterModels : OPENROUTER_FALLBACK;
     const q = cloudModelSearch ? cloudModelSearch.value : '';
-    const filtered = _filterModels(base, q).slice(0, 600);
+    const filtered = _filterModels(base.map(annotateVision), q).slice(0, 600);
     _populateCloudSelect(filtered, "{{ defaults.openrouter_model }}");
     if (openrouterLoading) {
       _setCloudModelHint('모델 목록 불러오는 중...');
@@ -562,6 +601,26 @@
     } else {
       _setCloudModelHint('총 ' + base.length + '개 중 ' + filtered.length + '개 표시');
     }
+    renderVisionGuide();
+  }
+
+  function renderVisionGuide() {
+    if (!cloudVisionList || !cloudVisionCurrent || !cloudProvider || !cloudModelSelect) return;
+    const provider = cloudProvider.value;
+    const models = provider === 'openrouter'
+      ? (Array.isArray(openrouterModels) && openrouterModels.length ? openrouterModels.map(annotateVision) : OPENROUTER_FALLBACK.map(annotateVision))
+      : (CLOUD_MODELS[provider] || []).map(annotateVision);
+
+    const visionModels = models.filter(m => m.multimodal).slice(0, 6);
+    cloudVisionList.innerHTML = visionModels.length
+      ? visionModels.map(m => `<div>- ${m.id}</div>`).join('')
+      : '<div class="muted">No known vision-capable presets.</div>';
+
+    const currentId = cloudModelSelect.value || "{{ defaults.openrouter_model }}";
+    const currentVision = models.find(m => m.id === currentId)?.multimodal || modelLooksVisionCapable(currentId);
+    cloudVisionCurrent.innerHTML = currentId
+      ? `<strong>${VISION_CURRENT}</strong> ${currentId}${currentVision ? ` <span class="muted">[${VISION_BADGE}]</span>` : `<div class="muted" style="margin-top:4px;">${VISION_MISSING}</div>`}`
+      : '';
   }
 
   async function _ensureOpenRouterModelsLoaded(forceRefresh) {
@@ -582,6 +641,7 @@
         openrouterModels = models.map(m => ({
           id: m.id,
           label: m.label || m.id,
+          multimodal: !!m.multimodal_hint || modelLooksVisionCapable(m.id + ' ' + (m.name || '')),
         }));
       }
     } catch (e) {
@@ -622,7 +682,8 @@
       btnRefreshOpenrouterInline.style.display = 'none';
     }
     const models = CLOUD_MODELS[p] || [];
-    _populateCloudSelect(models, "{{ defaults.openrouter_model }}");
+    _populateCloudSelect(models.map(annotateVision), "{{ defaults.openrouter_model }}");
+    renderVisionGuide();
   }
 
   function syncModelNotes() {
@@ -667,6 +728,7 @@
   // --- Event Listeners ---
   if (backendSelect) backendSelect.addEventListener('change', syncAiMenus);
   if (cloudProvider) cloudProvider.addEventListener('change', syncCloudModelList);
+  if (cloudModelSelect) cloudModelSelect.addEventListener('change', renderVisionGuide);
   if (cloudModelSearch) cloudModelSearch.addEventListener('input', () => {
     if (cloudProvider && cloudProvider.value === 'openrouter') _renderOpenRouterModels();
   });
@@ -841,6 +903,7 @@
   syncAiMenus();
   syncModelNotes();
   syncRoleButtons();
+  renderVisionGuide();
   const ACTIVE_INSTALL = "{{ (active.local_install.id if active and active.local_install else '') }}";
   if (ACTIVE_INSTALL) watchInstall(ACTIVE_INSTALL);
 

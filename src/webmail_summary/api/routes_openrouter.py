@@ -41,6 +41,44 @@ class OpenRouterModel:
         return " - ".join([p for p in parts if p])
 
 
+def _looks_multimodal_capable(model_id: str, model_name: str = "") -> bool:
+    text = f"{model_id} {model_name}".strip().lower()
+    if not text:
+        return False
+
+    positives = [
+        "gpt-4o",
+        "gpt-4.1",
+        "gemini",
+        "claude-3",
+        "claude-4",
+        "qwen2.5-vl",
+        "qwen-vl",
+        "llama-3.2-vision",
+        "pixtral",
+        "vision",
+        "vl",
+        "omni",
+    ]
+    negatives = [
+        "gemma-3-4b-it",
+        "mistral-7b-instruct",
+        "llama-3.1-8b-instruct",
+        "text-embedding",
+        "embed",
+        "rerank",
+        "whisper",
+        "tts",
+        "asr",
+        "transcribe",
+        "moderation",
+    ]
+
+    if any(x in text for x in negatives):
+        return False
+    return any(x in text for x in positives)
+
+
 _CACHE_TTL_S = 6 * 60 * 60
 _cache: dict[str, object] = {
     "fetched_at": 0.0,
@@ -252,6 +290,7 @@ def openrouter_models(refresh: int = 0, q: str = "", limit: int = 500):
                 "id": m.id,
                 "name": m.name,
                 "label": m.label,
+                "multimodal_hint": _looks_multimodal_capable(m.id, m.name),
                 "context_length": int(m.context_length),
                 "prompt_price": m.prompt_price,
                 "completion_price": m.completion_price,
