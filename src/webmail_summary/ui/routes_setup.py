@@ -73,6 +73,7 @@ def setup_get(request: Request):
                 "obsidian_root": settings.obsidian_root or "",
                 "llm_backend": settings.llm_backend,
                 "cloud_provider": provider_name,
+                "cloud_multimodal_enabled": settings.cloud_multimodal_enabled,
                 "local_model_id": settings.local_model_id,
                 "openrouter_model": settings.openrouter_model,
                 "external_max_bytes": str(settings.external_max_bytes),
@@ -250,6 +251,7 @@ def setup_save(
     llm_backend: str = Form("local"),
     local_model_id: str = Form("fast"),
     cloud_provider: str = Form("openai"),
+    cloud_multimodal_enabled: str = Form("0"),
     openrouter_model: str = Form(""),
     openai_api_key: str = Form(""),
     anthropic_api_key: str = Form(""),
@@ -291,6 +293,14 @@ def setup_save(
             set_setting(conn, "llm_backend", llm_backend.strip().lower())
         if cloud_provider:
             set_setting(conn, "cloud_provider", cloud_provider.strip().lower())
+        set_setting(
+            conn,
+            "cloud_multimodal_enabled",
+            "1"
+            if (cloud_multimodal_enabled or "").strip().lower()
+            in {"1", "on", "true", "yes"}
+            else "0",
+        )
         if local_model_id:
             set_setting(
                 conn,
