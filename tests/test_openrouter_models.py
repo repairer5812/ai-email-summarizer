@@ -5,7 +5,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
 
@@ -84,12 +83,19 @@ def test_openrouter_models_fetches_and_filters(tmp_path: Path, monkeypatch):
     )
 
     def _fake_get(url, headers=None, timeout=0):
+        _ = timeout
         assert url.endswith("/api/v1/models")
         assert headers and "Authorization" in headers
         return _Resp(
             status_code=200,
             payload={
                 "data": [
+                    {
+                        "id": "openai/gpt-4o-mini",
+                        "name": "GPT-4o mini",
+                        "context_length": 128000,
+                        "pricing": {"prompt": "0.2", "completion": "0.6"},
+                    },
                     {
                         "id": "google/gemma-3-4b-it",
                         "name": "Gemma 3 4B",
@@ -112,10 +118,15 @@ def test_openrouter_models_fetches_and_filters(tmp_path: Path, monkeypatch):
     r1 = c.get("/api/openrouter/models")
     assert r1.status_code == 200
     j1 = r1.json()
-    assert j1.get("count") == 2
+    assert j1.get("count") == 3
 
     r2 = c.get("/api/openrouter/models?q=llama")
     assert r2.status_code == 200
     j2 = r2.json()
     assert j2.get("count") == 1
     assert "llama" in j2["models"][0]["id"]
+
+    models = {m["id"]: m for m in j1["models"]}
+    assert models["openai/gpt-4o-mini"]["multimodal_hint"] is True
+    assert models["google/gemma-3-4b-it"]["multimodal_hint"] is False
+    assert models["meta-llama/llama-3.1-8b-instruct:free"]["multimodal_hint"] is False
