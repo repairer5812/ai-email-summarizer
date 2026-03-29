@@ -7,7 +7,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from webmail_summary.llm.base import LlmProvider, LlmResult
+from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
 from webmail_summary.util.jsonish import coerce_summary_text, coerce_summary_value
 
 
@@ -43,7 +43,13 @@ class LlamaCppBinProvider(LlmProvider):
     def tier(self) -> str:
         return self._tier
 
-    def summarize(self, *, subject: str, body: str) -> LlmResult:
+    def summarize(
+        self,
+        *,
+        subject: str,
+        body: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
         ko = True  # Default to Korean per PRD
         parts: list[str] = [
             "You are an expert editor summarizing business communications.\n",

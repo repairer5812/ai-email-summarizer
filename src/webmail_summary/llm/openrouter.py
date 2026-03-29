@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import requests
 
-from webmail_summary.llm.base import LlmProvider, LlmResult
+from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
 from webmail_summary.util.jsonish import (
     coerce_summary_text,
     coerce_summary_value,
@@ -31,7 +34,68 @@ class CloudProvider(LlmProvider):
     def tier(self) -> str:
         return "cloud"
 
-    def summarize(self, *, subject: str, body: str) -> LlmResult:
+    def supports_multimodal_inputs(self) -> bool:
+        return self._supports_multimodal()
+
+    def _supports_multimodal(self) -> bool:
+        base = str(self._cfg.base_url or "").lower()
+        model = str(self._cfg.model or "").lower()
+        if "generativelanguage.googleapis.com" in base:
+            return True
+        allow = [
+            "gpt-4o",
+            "gpt-4.1",
+            "gemini",
+            "claude-3",
+            "claude-4",
+            "qwen2.5-vl",
+            "qwen-vl",
+            "llama-3.2-vision",
+            "pixtral",
+        ]
+        return any(x in model for x in allow)
+
+    def _build_image_parts(
+        self, multimodal_inputs: list[LlmImageInput] | None
+    ) -> list[dict]:
+        if not multimodal_inputs or not self._supports_multimodal():
+            return []
+
+        parts: list[dict] = []
+        for item in multimodal_inputs:
+            try:
+                p = Path(str(item.path or "")).resolve()
+                if not p.is_file():
+                    continue
+                blob = p.read_bytes()
+                if not blob:
+                    continue
+                mime = (
+                    str(item.mime_type or "").strip()
+                    or mimetypes.guess_type(p.name)[0]
+                    or "image/jpeg"
+                )
+                b64 = base64.b64encode(blob).decode("ascii")
+                parts.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime};base64,{b64}",
+                            "detail": str(item.detail or "auto"),
+                        },
+                    }
+                )
+            except Exception:
+                continue
+        return parts
+
+    def summarize(
+        self,
+        *,
+        subject: str,
+        body: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
         parts: list[str] = [
             "You are an expert editor summarizing business communications.\n",
             "Return ONLY a single valid JSON object with keys: summary, tags (array of strings), backlinks (array of strings), personal (boolean).\n",
@@ -52,7 +116,7 @@ class CloudProvider(LlmProvider):
 
         # Handle Google Gemini Native API
         if "generativelanguage.googleapis.com" in self._cfg.base_url:
-            return self._summarize_gemini(prompt)
+            return self._summarize_gemini(prompt, multimodal_inputs=multimodal_inputs)
 
         url = f"{self._cfg.base_url}/chat/completions"
         headers = {
@@ -65,11 +129,18 @@ class CloudProvider(LlmProvider):
         if "api.anthropic.com" in self._cfg.base_url:
             headers["anthropic-version"] = "2023-06-01"
 
+        image_parts = self._build_image_parts(multimodal_inputs)
+        user_content: str | list[dict]
+        if image_parts:
+            user_content = [{"type": "text", "text": prompt}, *image_parts]
+        else:
+            user_content = prompt
+
         payload = {
             "model": self._cfg.model,
             "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": user_content},
             ],
             "temperature": 0.2,
             "max_tokens": 600,
@@ -163,14 +234,42 @@ class CloudProvider(LlmProvider):
             raise RuntimeError("request failed before receiving a response")
         return last_resp
 
-    def _summarize_gemini(self, prompt: str) -> LlmResult:
+    def _summarize_gemini(
+        self,
+        prompt: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
         model_id = self._cfg.model
         if not model_id.startswith("models/"):
             model_id = f"models/{model_id}"
 
         url = f"https://generativelanguage.googleapis.com/v1beta/{model_id}:generateContent?key={self._cfg.api_key}"
+        gemini_parts: list[dict] = [{"text": prompt}]
+        for item in multimodal_inputs or []:
+            try:
+                p = Path(str(item.path or "")).resolve()
+                if not p.is_file():
+                    continue
+                blob = p.read_bytes()
+                if not blob:
+                    continue
+                mime = (
+                    str(item.mime_type or "").strip()
+                    or mimetypes.guess_type(p.name)[0]
+                    or "image/jpeg"
+                )
+                gemini_parts.append(
+                    {
+                        "inline_data": {
+                            "mime_type": mime,
+                            "data": base64.b64encode(blob).decode("ascii"),
+                        }
+                    }
+                )
+            except Exception:
+                continue
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": [{"parts": gemini_parts}],
             "generationConfig": {
                 "temperature": 0.2,
                 "response_mime_type": "application/json",
