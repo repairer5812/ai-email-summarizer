@@ -22,6 +22,24 @@
         <nav class="nav">
           <a class="nav__link" href="/">{{ t(request, 'nav.dashboard') }}</a>
           <a class="nav__link" href="/setup">{{ t(request, 'nav.setup') }}</a>
+          <div class="nav__menu" id="developer-menu">
+            <button class="nav__link" id="btn-developer" type="button" aria-expanded="false" aria-controls="developer-card">{{ t(request, 'nav.developer') }}</button>
+            <div class="developer-card" id="developer-card" hidden>
+              <div class="developer-card__title">{{ t(request, 'developer.title') }}</div>
+              <div class="developer-card__row">
+                <span class="developer-card__label">{{ t(request, 'developer.name_label') }}</span>
+                <strong>{{ t(request, 'developer.name') }}</strong>
+              </div>
+              <div class="developer-card__row">
+                <span class="developer-card__label">{{ t(request, 'developer.email_label') }}</span>
+                <a class="developer-card__link" href="mailto:{{ t(request, 'developer.email') }}">{{ t(request, 'developer.email') }}</a>
+              </div>
+              <div class="developer-card__actions">
+                <button class="btn btn--secondary developer-card__copy" id="btn-copy-developer-email" type="button" data-email="{{ t(request, 'developer.email') }}">{{ t(request, 'developer.copy') }}</button>
+                <span class="muted" id="developer-copy-status" aria-live="polite"></span>
+              </div>
+            </div>
+          </div>
           <button class="nav__link" id="btn-lang" type="button">{% if ui_lang(request) == 'ko' %}English{% else %}한국어{% endif %}</button>
         </nav>
       </header>
@@ -30,6 +48,50 @@
       </main>
       <footer class="footer">{{ t(request, 'footer') }}</footer>
     </div>
+
+    <script>
+    (() => {
+      const btn = document.getElementById('btn-developer');
+      const card = document.getElementById('developer-card');
+      const wrap = document.getElementById('developer-menu');
+      const copyBtn = document.getElementById('btn-copy-developer-email');
+      const copyStatus = document.getElementById('developer-copy-status');
+      const copiedText = {{ t(request, 'developer.copied')|tojson }};
+      if (!btn || !card || !wrap) return;
+
+      const closeCard = () => {
+        card.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+      };
+
+      btn.addEventListener('click', () => {
+        const open = card.hidden;
+        card.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+
+      document.addEventListener('click', (ev) => {
+        if (!wrap.contains(ev.target)) closeCard();
+      });
+
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') closeCard();
+      });
+
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const email = copyBtn.getAttribute('data-email') || '';
+          try {
+            await navigator.clipboard.writeText(email);
+            if (copyStatus) copyStatus.textContent = copiedText;
+            setTimeout(() => { if (copyStatus) copyStatus.textContent = ''; }, 1600);
+          } catch (e) {
+            window.location.href = 'mailto:' + email;
+          }
+        });
+      }
+    })();
+    </script>
 
     <script>
     (() => {
