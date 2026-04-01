@@ -257,8 +257,9 @@ def _get_models_cached(*, force_refresh: bool) -> tuple[list[OpenRouterModel], b
 
 @router.get("/openrouter/models")
 def openrouter_models(refresh: int = 0, q: str = "", limit: int = 500):
+    force_refresh = bool(int(refresh or 0))
     try:
-        models, refreshed = _get_models_cached(force_refresh=bool(int(refresh or 0)))
+        models, refreshed = _get_models_cached(force_refresh=force_refresh)
     except Exception as e:
         return JSONResponse(
             {
