@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.57] - 2026-03-30
+
+### Added
+
+- 동기화 후 변경된 날짜들의 `daily_overview`를 자동으로 다시 생성하도록 연결했습니다.
+  - 이제 새 메일을 백업/요약한 뒤, 그 날짜의 개별 이메일 요약을 바탕으로 날짜별 개요도 함께 갱신됩니다.
+
+### Changed
+
+- 홈의 `날짜별 요약` 버튼 의미를 실제 동작에 맞게 정리했습니다.
+  - 체크된 날짜 1개를 기준으로 그 날짜의 모든 이메일을 다시 요약하고,
+  - 이어서 해당 날짜의 `daily_overview`도 다시 생성합니다.
+- `resummarize-day`와 `refresh-overviews`가 같은 날짜별 개요 재생성 helper를 공유하도록 정리했습니다.
+  - 날짜 재요약 후 `daily_overview`가 누락되거나 경로별 동작이 달라지는 문제를 줄였습니다.
+
 ## [0.5.56] - 2026-03-30
 
 ### Added
