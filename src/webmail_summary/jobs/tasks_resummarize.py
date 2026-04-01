@@ -19,6 +19,7 @@ from webmail_summary.index.mail_repo import (
 )
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
+from webmail_summary.jobs.tasks_refresh_overviews import refresh_overviews_for_dates
 from webmail_summary.llm.base import LlmResult
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
@@ -611,67 +612,14 @@ def resummarize_day_task(
                     daily_summary=daily_summary,
                 )
 
-            # Synthesize Daily Overview for Dashboard
-            from webmail_summary.index.mail_repo import (
-                list_messages_by_date,
-                set_daily_overview,
+            refresh_overviews_for_dates(
+                db_path=db_path,
+                provider=provider,
+                settings=s,
+                date_keys=[day.isoformat()],
+                force_refresh=True,
+                job_id=job_id,
             )
-            from webmail_summary.llm.long_summarize import synthesize_daily_overview
-
-            connr = get_conn(db_path)
-            try:
-                msg_rows = list_messages_by_date(connr, date_prefix=day.isoformat())
-                all_sums = [str(r["summary"] or "") for r in msg_rows if r["summary"]]
-            finally:
-                connr.close()
-
-            if all_sums and not cancel.is_set():
-                user_profile = {
-                    "roles": s.user_roles,
-                    "interests": s.user_interests,
-                }
-
-                # Prevent a stuck LLM call from blocking the entire job queue.
-                ov_done = threading.Event()
-                ov_box: dict[str, str] = {}
-
-                def _run_ov() -> None:
-                    try:
-                        ov_box["ov"] = (
-                            synthesize_daily_overview(
-                                provider,
-                                day=day.isoformat(),
-                                summaries=all_sums,
-                                user_profile=user_profile,
-                            )
-                            or ""
-                        )
-                    finally:
-                        ov_done.set()
-
-                threading.Thread(target=_run_ov, daemon=True).start()
-                tier = getattr(provider, "tier", "standard")
-                ov_timeout_s = 180.0 if tier == "cloud" else 120.0
-                if ov_done.wait(float(ov_timeout_s)) and ov_box.get("ov"):
-                    connd2 = get_conn(db_path)
-                    try:
-                        set_daily_overview(
-                            connd2, day=day.isoformat(), overview=ov_box["ov"]
-                        )
-                        connd2.commit()
-                    finally:
-                        connd2.close()
-                else:
-                    connw5 = get_conn(db_path)
-                    try:
-                        repo.add_event(
-                            connw5,
-                            job_id=job_id,
-                            level="warn",
-                            text=f"daily overview synthesis skipped (timeout {ov_timeout_s:.0f}s)",
-                        )
-                    finally:
-                        connw5.close()
         except Exception:
             pass
 
