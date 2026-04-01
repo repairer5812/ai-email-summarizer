@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.58] - 2026-03-30
+
+### Changed
+
+- 자동 이메일 에러 리포트 기능을 제거했습니다.
+  - 오픈소스 배포 환경에서 발송 자격증명을 함께 다루지 않도록 관련 훅과 유틸을 정리했습니다.
+
 ## [0.5.57] - 2026-03-30
 
 ### Added
