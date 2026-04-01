@@ -110,6 +110,12 @@ body {
 .nav {
   display: flex;
   gap: 10px;
+  align-items: center;
+  position: relative;
+}
+
+.nav__menu {
+  position: relative;
 }
 
 .nav__link {
@@ -132,6 +138,60 @@ button.nav__link {
   background: transparent;
   cursor: pointer;
   font: inherit;
+}
+
+.developer-card {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(320px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 1.2rem;
+  border: 1px solid var(--border);
+  background: linear-gradient(160deg, var(--card-bg) 0%, var(--card-bg-soft) 100%);
+  box-shadow: var(--shadow-soft);
+  z-index: 200;
+}
+
+.developer-card__title {
+  font-size: 0.95rem;
+  font-weight: 900;
+  margin-bottom: 12px;
+}
+
+.developer-card__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.developer-card__label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.developer-card__link {
+  color: var(--accent);
+  font-weight: 800;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.developer-card__link:hover {
+  text-decoration: underline;
+}
+
+.developer-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.developer-card__copy {
+  padding: 8px 12px;
+  font-size: 0.84rem;
 }
 
 .main {
