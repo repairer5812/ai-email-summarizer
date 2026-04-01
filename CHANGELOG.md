@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.5.59] - 2026-03-30
+
+### Added
+
+- 상단 네비게이션에 `개발자정보` 패널을 추가했습니다.
+  - 대시보드/설정/언어 전환 오른쪽에서 개발자 이름과 이메일을 바로 볼 수 있고,
+  - 이메일 복사 및 메일 앱 열기(`mailto:`)가 가능합니다.
+
+### Changed
+
+- README를 최신 동작 기준으로 갱신했습니다.
+  - `daily overview` 자동 갱신,
+  - `선택 날짜 전체 다시 요약`,
+  - 클라우드 멀티모달 동작 안내를 반영했습니다.
+
 ## [0.5.58] - 2026-03-30
 
 ### Changed
