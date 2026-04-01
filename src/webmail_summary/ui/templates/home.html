@@ -277,6 +277,7 @@
   const STR_MAILS = "{{ t(request, 'home.day.mails') }}", STR_OPEN_HINT = "{{ t(request, 'home.day.open_hint') }}";
   const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }}, LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }}, LABEL_REFRESH = {{ t(request, 'home.btn.refresh_overviews')|tojson }}, LABEL_SUMMARIZING = {{ t(request, 'home.btn.refresh_ing')|tojson }};
   const STR_STARTING = {{ ("동기화를 시작합니다" if ui_lang(request) == 'ko' else "Starting sync")|tojson }}, STR_ERROR = {{ ("오류" if ui_lang(request) == 'ko' else "Error")|tojson }}, STR_EVENT_STREAM = {{ ("오류: 이벤트 스트림" if ui_lang(request) == 'ko' else "Error: event stream")|tojson }};
+  const STR_PICK_ONE_DAY = {{ t(request, 'home.btn.refresh_pick_one')|tojson }};
 
   let es = null, resumEs = null, refreshEs = null;
   let currentJobId = "", currentResumId = "", currentRefreshId = "";
@@ -341,6 +342,10 @@
       const raw = el.getAttribute('data-raw');
       if (raw) el.innerHTML = formatSummary(raw);
     });
+  }
+
+  function getSelectedDays() {
+    return Array.from(document.querySelectorAll('input.day-select:checked')).map(cb => cb.value).filter(Boolean);
   }
 
   // --- Logic Functions ---
@@ -609,14 +614,21 @@
   });
 
   if (btnRefresh) btnRefresh.addEventListener('click', async () => {
-    if (currentRefreshId) { btnRefresh.disabled = true; await fetch('/api/jobs/' + currentRefreshId + '/cancel', { method: 'POST' }); return; }
-    const selectedDays = Array.from(document.querySelectorAll('input.day-select:checked')).map(cb => cb.value);
+    if (currentResumId) { btnRefresh.disabled = true; await fetch('/api/jobs/' + currentResumId + '/cancel', { method: 'POST' }); return; }
+    const selectedDays = getSelectedDays();
+    if (selectedDays.length !== 1) {
+      alert(STR_PICK_ONE_DAY);
+      return;
+    }
     btnRefresh.disabled = true;
     btnRefresh.textContent = LABEL_SUMMARIZING;
-    const payload = selectedDays.length > 0 ? { date_keys: selectedDays, force_refresh: true } : { force_refresh: true };
-    const res = await fetch('/api/jobs/refresh-overviews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await fetch('/api/jobs/resummarize-day', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date_key: selectedDays[0], only_failed: false })
+    });
     const j = await res.json();
-    if (res.ok) watchRefresh(j.job_id); else { btnRefresh.disabled = false; btnRefresh.textContent = LABEL_REFRESH; }
+    if (res.ok) watchResummarize(j.job_id); else { btnRefresh.disabled = false; btnRefresh.textContent = LABEL_REFRESH; }
   });
 
   const ACTIVE_SYNC = "{{ (active.sync.id if active and active.sync else '') }}";
