@@ -42,6 +42,7 @@ from webmail_summary.index.mail_repo import (
 )
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
+from webmail_summary.jobs.tasks_refresh_overviews import refresh_overviews_for_dates
 from webmail_summary.llm.base import LlmImageInput, LlmResult
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
@@ -838,6 +839,24 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     export_topic_note(
                         vault_root=vault_root, topic=t, message_notes=notes
                     )
+
+                if by_date:
+                    refreshed_days = refresh_overviews_for_dates(
+                        db_path=db_path,
+                        provider=provider,
+                        settings=s,
+                        date_keys=list(by_date.keys()),
+                        force_refresh=True,
+                        job_id=job_id,
+                    )
+                    if refreshed_days:
+                        _add_job_event(
+                            db_path=db_path,
+                            job_id=job_id,
+                            level="info",
+                            text="daily_overview refreshed: "
+                            + ", ".join(refreshed_days),
+                        )
 
             finally:
                 if revert_seen and to_revert:
