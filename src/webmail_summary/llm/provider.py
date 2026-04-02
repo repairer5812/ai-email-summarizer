@@ -21,6 +21,14 @@ class LlmNotReady(RuntimeError):
     pass
 
 
+def _find_llama_server_sibling(cli_path):
+    for name in ["llama-server.exe", "llama-server"]:
+        candidate = cli_path.with_name(name)
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def get_llm_provider(settings: Settings) -> LlmProvider:
     backend = (settings.llm_backend or "local").strip().lower()
 
@@ -40,8 +48,8 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
             raise LlmNotReady("Local model not installed")
 
         # Prefer persistent llama-server to avoid reloading the model per email.
-        server_exe = inst.llama_cli_path.with_name("llama-server.exe")
-        if server_exe.exists():
+        server_exe = _find_llama_server_sibling(inst.llama_cli_path)
+        if server_exe is not None:
             try:
                 # Local llama-server can be slow on some machines.
                 # Use generous timeouts and allow a retry (we restart the server on timeout).
