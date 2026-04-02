@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import platform
 
 from webmail_summary.util.ssl_certs import configure_requests_ca_bundle
+from webmail_summary.util.platform_caps import ui_platform_caps
 
 from webmail_summary.app.main import ServeOptions, serve
 from webmail_summary.jobs.runner import get_runner
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> None:
         p = None
         if args.cmd == "ui":
             p = int(args.port) if int(args.port) > 0 else None
-        if (platform.system() or "").strip().lower() == "windows":
+        if ui_platform_caps().use_native_window:
             run_ui(port=p)
             return
         # Non-Windows environments keep the browser flow.

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import queue
-import os
-import signal
 import subprocess
 import sys
 import threading
@@ -15,24 +13,11 @@ from webmail_summary.index.db import get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.worker_probe import kill_sync_worker
 from webmail_summary.util.app_data import get_app_data_dir
+from webmail_summary.util.process_control import hidden_subprocess_kwargs
+from webmail_summary.util.process_control import terminate_process_tree
 
 
 JobFunc = Callable[[str, threading.Event], None]
-
-
-def _run_quiet_command(cmd: list[str]) -> None:
-    run_kwargs: dict = {
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "check": False,
-    }
-    if sys.platform == "win32":
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = subprocess.SW_HIDE
-        run_kwargs["startupinfo"] = si
-        run_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-    subprocess.run(cmd, **run_kwargs)
 
 
 def _sync_worker_command(job_id: str) -> list[str]:
@@ -99,14 +84,10 @@ class JobRunner:
                     proc.terminate()
                 except Exception:
                     pass
-                # Best-effort: on Windows, also kill the whole process tree.
-                if sys.platform == "win32":
-                    try:
-                        _run_quiet_command(
-                            ["taskkill", "/PID", str(int(proc.pid)), "/T", "/F"]
-                        )
-                    except Exception:
-                        pass
+                try:
+                    terminate_process_tree(int(proc.pid))
+                except Exception:
+                    pass
                 return True
             ev = self._active.get(jid)
             if ev is not None:
@@ -164,13 +145,7 @@ class JobRunner:
                         "stderr": subprocess.DEVNULL,
                         "text": True,
                     }
-                    if sys.platform == "win32":
-                        # Prevent child worker from opening a console window.
-                        si = subprocess.STARTUPINFO()
-                        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                        si.wShowWindow = subprocess.SW_HIDE
-                        popen_kwargs["startupinfo"] = si
-                        popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                    popen_kwargs.update(hidden_subprocess_kwargs())
                     proc = subprocess.Popen(
                         cmd,
                         **popen_kwargs,
@@ -219,19 +194,10 @@ class JobRunner:
                                     proc.terminate()
                                 except Exception:
                                     pass
-                                if sys.platform == "win32":
-                                    try:
-                                        _run_quiet_command(
-                                            [
-                                                "taskkill",
-                                                "/PID",
-                                                str(int(proc.pid)),
-                                                "/T",
-                                                "/F",
-                                            ]
-                                        )
-                                    except Exception:
-                                        pass
+                                try:
+                                    terminate_process_tree(int(proc.pid))
+                                except Exception:
+                                    pass
                                 try:
                                     rc = proc.wait(timeout=4.0)
                                 except subprocess.TimeoutExpired:
@@ -367,12 +333,7 @@ class JobRunner:
             pids = [p.pid for p in self._active_procs.values()]
             for pid in pids:
                 try:
-                    if sys.platform == "win32":
-                        _run_quiet_command(
-                            ["taskkill", "/PID", str(int(pid)), "/T", "/F"]
-                        )
-                    else:
-                        os.kill(int(pid), signal.SIGTERM)
+                    terminate_process_tree(int(pid))
                 except Exception:
                     pass
             self._active_procs.clear()

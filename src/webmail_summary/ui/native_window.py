@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import platform
 import subprocess
 import sys
 import threading
@@ -11,6 +10,8 @@ from typing import Any, Protocol, cast
 import requests
 
 from webmail_summary.util.app_data import get_app_data_dir
+from webmail_summary.util.platform_caps import is_windows, ui_platform_caps
+from webmail_summary.util.process_control import detached_subprocess_kwargs
 from webmail_summary.util.single_instance import SingleInstanceLock
 from webmail_summary.util.ui_lifecycle import (
     clear_ui_pid,
@@ -118,7 +119,7 @@ def _is_reachable(url: str) -> bool:
 
 
 def _show_error(title: str, message: str) -> None:
-    if (platform.system() or "").strip().lower() != "windows":
+    if not is_windows():
         return
     try:
         import ctypes
@@ -167,7 +168,7 @@ def _load_tray_image() -> object:
 
 
 def run_ui(*, port: int | None = None) -> None:
-    if (platform.system() or "").strip().lower() != "windows":
+    if not ui_platform_caps().use_native_window:
         # Non-Windows environments can keep using the browser flow.
         from webmail_summary.app.main import ServeOptions, serve
 
@@ -210,13 +211,8 @@ def run_ui(*, port: int | None = None) -> None:
         if not url:
             # Ensure server is running (separate process) and avoid Chrome.
             cmd = _server_command(port)
-            creationflags = (
-                int(getattr(subprocess, "DETACHED_PROCESS", 0))
-                | int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-                | int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
-            )
             server_proc = subprocess.Popen(
-                cmd, close_fds=True, creationflags=creationflags
+                cmd, close_fds=True, **detached_subprocess_kwargs()
             )
 
             # Wait for the server to write a fresh URL (avoid stale active_url.txt).
