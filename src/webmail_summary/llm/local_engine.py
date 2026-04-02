@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import platform
 
 import zipfile
 from dataclasses import dataclass
@@ -23,27 +24,61 @@ class LlamaCppInstall:
     llama_cli_path: Path
 
 
-def _pick_windows_assets(assets: list[dict]) -> list[dict]:
+def _normalized_arch() -> str:
+    m = (platform.machine() or "").strip().lower()
+    if m in {"x86_64", "amd64", "x64"}:
+        return "x64"
+    if m in {"arm64", "aarch64"}:
+        return "arm64"
+    return m or "unknown"
+
+
+def _pick_release_assets(assets: list[dict]) -> list[dict]:
+    sys_name = (platform.system() or "").strip().lower()
+    arch = _normalized_arch()
+
     def score(a: dict) -> int:
         name = str(a.get("name") or "")
         n = name.lower()
         if not name.endswith(".zip"):
             return -10_000
-        if "win" not in n:
-            return -10_000
-        if "arm64" in n:
-            return -10_000
-        if "x64" not in n and "x86_64" not in n:
-            return -10_000
+
+        if sys_name == "windows":
+            if "win" not in n:
+                return -10_000
+            if arch == "x64" and ("x64" not in n and "x86_64" not in n):
+                return -10_000
+            if arch == "arm64" and "arm64" not in n:
+                return -10_000
+        elif sys_name == "darwin":
+            if not any(x in n for x in ["mac", "darwin", "osx"]):
+                return -10_000
+            if arch == "x64" and not any(x in n for x in ["x64", "x86_64", "intel"]):
+                return -10_000
+            if arch == "arm64" and not any(x in n for x in ["arm64", "apple-silicon"]):
+                return -10_000
+        else:
+            if "linux" not in n:
+                return -10_000
+            if arch == "x64" and ("x64" not in n and "x86_64" not in n):
+                return -10_000
+            if arch == "arm64" and "arm64" not in n:
+                return -10_000
 
         s = 0
         # Strongly prefer the actual llama binary bundle.
-        if n.startswith("llama-") and "bin-win" in n:
+        if n.startswith("llama-") and "bin-" in n:
             s += 5_000
-        if "bin-win-cpu-x64" in n:
-            s += 2_000
         if "cpu" in n:
-            s += 200
+            s += 2_000
+        if sys_name == "windows" and "bin-win-cpu" in n:
+            s += 500
+        if sys_name == "darwin" and any(
+            x in n for x in ["bin-macos", "bin-darwin", "bin-osx"]
+        ):
+            s += 500
+        if sys_name not in {"windows", "darwin"} and "bin-linux" in n:
+            s += 500
 
         # De-prioritize helper bundles that may not include executables.
         if n.startswith("cudart-"):
@@ -59,7 +94,7 @@ def _pick_windows_assets(assets: list[dict]) -> list[dict]:
 
 
 def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
-    # Install under %LOCALAPPDATA%\WebmailSummary\engines\llama.cpp\<tag>\
+    # Install under app-data/WebmailSummary/engines/llama.cpp/<tag>/
     engines = get_engines_dir() / "llama.cpp"
     engines.mkdir(parents=True, exist_ok=True)
 
@@ -78,10 +113,12 @@ def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
 
     tag = str(data.get("tag_name") or "latest").strip() or "latest"
     assets = data.get("assets") or []
-    candidates = _pick_windows_assets(list(assets))
+    candidates = _pick_release_assets(list(assets))
     if not candidates:
+        platform_name = (platform.system() or "unknown").strip() or "unknown"
+        arch = _normalized_arch()
         raise EngineInstallError(
-            "No suitable Windows zip asset found in llama.cpp release"
+            f"No suitable {platform_name} {arch} zip asset found in llama.cpp release"
         )
 
     tag_dir = engines / tag
