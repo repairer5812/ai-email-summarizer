@@ -64,7 +64,7 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     imap_port = int(get_setting(conn, "imap_port") or "993")
     imap_user = get_setting(conn, "imap_user") or ""
     imap_folder = get_setting(conn, "imap_folder") or "INBOX"
-    sender_filter = get_setting(conn, "sender_filter") or "hslee@tekville.com"
+    sender_filter = get_setting(conn, "sender_filter") or ""
     obsidian_root = get_setting(conn, "obsidian_root") or ""
     llm_backend = get_setting(conn, "llm_backend") or "local"
     cloud_provider = get_setting(conn, "cloud_provider") or "openai"

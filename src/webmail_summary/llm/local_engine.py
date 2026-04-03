@@ -4,6 +4,7 @@ import io
 import platform
 
 import zipfile
+import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -24,6 +25,23 @@ class LlamaCppInstall:
     llama_cli_path: Path
 
 
+def _safe_extract_tar_gz(*, fileobj: io.BytesIO, dest_dir: Path) -> None:
+    dest_root = dest_dir.resolve()
+    with tarfile.open(fileobj=fileobj, mode="r:gz") as tf:
+        for member in tf.getmembers():
+            name = str(member.name or "")
+            if not name or Path(name).is_absolute():
+                raise EngineInstallError(f"Unsafe llama.cpp archive member: {name!r}")
+            target = (dest_dir / name).resolve()
+            try:
+                target.relative_to(dest_root)
+            except ValueError as e:
+                raise EngineInstallError(
+                    f"Unsafe llama.cpp archive member: {name!r}"
+                ) from e
+        tf.extractall(dest_dir)
+
+
 def _normalized_arch() -> str:
     m = (platform.machine() or "").strip().lower()
     if m in {"x86_64", "amd64", "x64"}:
@@ -37,10 +55,19 @@ def _pick_release_assets(assets: list[dict]) -> list[dict]:
     sys_name = (platform.system() or "").strip().lower()
     arch = _normalized_arch()
 
+    def _archive_kind(name: str) -> str | None:
+        n = (name or "").strip().lower()
+        if n.endswith(".zip"):
+            return "zip"
+        if n.endswith(".tar.gz") or n.endswith(".tgz"):
+            return "tar.gz"
+        return None
+
     def score(a: dict) -> int:
         name = str(a.get("name") or "")
         n = name.lower()
-        if not name.endswith(".zip"):
+        kind = _archive_kind(name)
+        if kind is None:
             return -10_000
 
         if sys_name == "windows":
@@ -69,6 +96,15 @@ def _pick_release_assets(assets: list[dict]) -> list[dict]:
         # Strongly prefer the actual llama binary bundle.
         if n.startswith("llama-") and "bin-" in n:
             s += 5_000
+
+        # Prefer packaging appropriate for the platform.
+        if sys_name == "windows":
+            if kind == "zip":
+                s += 120
+        else:
+            # Newer llama.cpp releases frequently ship macOS/Linux as tar.gz.
+            if kind == "tar.gz":
+                s += 120
         if "cpu" in n:
             s += 2_000
         if sys_name == "windows" and "bin-win-cpu" in n:
@@ -117,8 +153,11 @@ def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
     if not candidates:
         platform_name = (platform.system() or "unknown").strip() or "unknown"
         arch = _normalized_arch()
+        names = [str(a.get("name") or "").strip() for a in list(assets)[:30]]
+        names = [n for n in names if n]
+        hint = ("; assets: " + ", ".join(names)) if names else ""
         raise EngineInstallError(
-            f"No suitable {platform_name} {arch} zip asset found in llama.cpp release"
+            f"No suitable {platform_name} {arch} archive asset found in llama.cpp release{hint}"
         )
 
     tag_dir = engines / tag
@@ -132,11 +171,27 @@ def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
             last_err = f"asset has no download url: {name}"
             continue
 
+        nlow = name.lower()
+        if nlow.endswith(".zip"):
+            kind = "zip"
+        elif nlow.endswith(".tar.gz") or nlow.endswith(".tgz"):
+            kind = "tar.gz"
+        else:
+            last_err = f"unsupported archive type: {name}"
+            continue
+
         stem = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
-        extract_dir = tag_dir / stem.replace(".zip", "")
+        extract_name = stem
+        if extract_name.lower().endswith(".zip"):
+            extract_name = extract_name[: -len(".zip")]
+        elif extract_name.lower().endswith(".tar.gz"):
+            extract_name = extract_name[: -len(".tar.gz")]
+        elif extract_name.lower().endswith(".tgz"):
+            extract_name = extract_name[: -len(".tgz")]
+        extract_dir = tag_dir / extract_name
         extract_dir.mkdir(parents=True, exist_ok=True)
 
-        # Download zip into memory (avoid partial extract) with a cap (CPU zips are ~tens of MB)
+        # Download archive into memory (avoid partial extract) with a cap (~tens of MB)
         try:
             rr = requests.get(url, stream=True, timeout=(3.05, float(timeout_s)))
             rr.raise_for_status()
@@ -147,18 +202,21 @@ def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
                     continue
                 total += len(chunk)
                 if total > 1024 * 1024 * 900:
-                    raise EngineInstallError("engine zip unexpectedly large")
+                    raise EngineInstallError("engine archive unexpectedly large")
                 buf.write(chunk)
         except Exception as e:
-            last_err = f"Failed to download llama.cpp zip ({name}): {e}"
+            last_err = f"Failed to download llama.cpp archive ({name}): {e}"
             continue
 
         buf.seek(0)
         try:
-            with zipfile.ZipFile(buf) as z:
-                z.extractall(extract_dir)
+            if kind == "zip":
+                with zipfile.ZipFile(buf) as z:
+                    z.extractall(extract_dir)
+            else:
+                _safe_extract_tar_gz(fileobj=buf, dest_dir=extract_dir)
         except Exception as e:
-            last_err = f"Failed to extract llama.cpp zip ({name}): {e}"
+            last_err = f"Failed to extract llama.cpp archive ({name}): {e}"
             continue
 
         cli = _find_llama_cli(extract_dir)

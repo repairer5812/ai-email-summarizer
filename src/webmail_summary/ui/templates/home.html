@@ -207,6 +207,7 @@
       <div id="sync-progress-box">
         <div class="bar"><div class="bar__fill" id="sync-bar" style="width:0%"></div></div>
         <div class="muted" id="sync-text" style="margin-top: 8px;">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
+        <div class="muted" id="sync-meta" style="margin-top: 6px; display:none; font-size: 0.85rem;"></div>
 
         <div class="stepper" id="sync-stepper" style="display:none; margin-top:16px;">
           <div class="stepper__track" id="sync-track" style="width:0%"></div>
@@ -268,7 +269,7 @@
 <script>
 (() => {
   // --- UI Elements ---
-  const btn = document.getElementById('btn-sync'), bar = document.getElementById('sync-bar'), text = document.getElementById('sync-text');
+  const btn = document.getElementById('btn-sync'), bar = document.getElementById('sync-bar'), text = document.getElementById('sync-text'), meta = document.getElementById('sync-meta');
   const stepperEl = document.getElementById('sync-stepper'), trackEl = document.getElementById('sync-track');
   const resumBox = document.getElementById('resum-progress-box'), resumBar = document.getElementById('resum-bar'), resumText = document.getElementById('resum-text');
   const btnRefresh = document.getElementById('btn-refresh-overviews'), refreshBox = document.getElementById('refresh-progress-box'), refreshBar = document.getElementById('refresh-bar'), refreshText = document.getElementById('refresh-text');
@@ -278,12 +279,14 @@
   const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }}, LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }}, LABEL_REFRESH = {{ t(request, 'home.btn.refresh_overviews')|tojson }}, LABEL_SUMMARIZING = {{ t(request, 'home.btn.refresh_ing')|tojson }};
   const STR_STARTING = {{ ("동기화를 시작합니다" if ui_lang(request) == 'ko' else "Starting sync")|tojson }}, STR_ERROR = {{ ("오류" if ui_lang(request) == 'ko' else "Error")|tojson }}, STR_EVENT_STREAM = {{ ("오류: 이벤트 스트림" if ui_lang(request) == 'ko' else "Error: event stream")|tojson }};
   const STR_PICK_ONE_DAY = {{ t(request, 'home.btn.refresh_pick_one')|tojson }};
+  const STR_META_COUNT = {{ t(request, 'home.progress.meta.count')|tojson }}, STR_META_ETA = {{ t(request, 'home.progress.meta.eta')|tojson }}, STR_META_STOPPING = {{ t(request, 'home.progress.meta.stopping')|tojson }};
 
   let es = null, resumEs = null, refreshEs = null;
   let currentJobId = "", currentResumId = "", currentRefreshId = "";
   let dayRefreshTimer = null;
   let refreshPollTimer = null;
   let syncPollTimer = null;
+  let syncStartedAt = 0;
 
   // --- Shared Formatting Logic ---
   function escapeHtml(str) {
@@ -416,6 +419,35 @@
     if (text) text.textContent = (msg || '...') + ' (' + p.toFixed(2) + '%)';
   }
 
+  function formatEta(seconds) {
+    const sec = Math.max(0, Math.round(Number(seconds || 0)));
+    if (!sec) return '';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function renderMeta(cur, total) {
+    if (!meta) return;
+    const parts = [];
+    if (total > 0) parts.push(`${STR_META_COUNT} ${Math.floor(cur)}/${Math.floor(total)}`);
+    if (syncStartedAt > 0 && total > 0 && cur > 0 && total > cur) {
+      const elapsed = (Date.now() - syncStartedAt) / 1000;
+      if (elapsed > 1) {
+        const rate = cur / elapsed;
+        if (rate > 0) {
+          const eta = formatEta((total - cur) / rate);
+          if (eta) parts.push(`${STR_META_ETA} ${eta}`);
+        }
+      }
+    }
+    meta.textContent = parts.join(' · ');
+    meta.style.display = parts.length ? 'block' : 'none';
+  }
+
   function watchResummarize(jobId) {
     if (!jobId || !resumBox) return;
     currentResumId = String(jobId);
@@ -514,15 +546,28 @@
     if (p && p.status === 'cancel_requested') {
       if (bar) bar.style.width = '100%';
       if (text) text.textContent = "{% if ui_lang(request) == 'ko' %}멈추는 중...{% else %}Stopping...{% endif %}";
+      if (meta) { meta.textContent = STR_META_STOPPING; meta.style.display = 'block'; }
       if (btn) btn.disabled = true;
       if (stepperEl) stepperEl.style.display = 'none';
       return;
     }
     const total = Number(p.total || 0), cur = Number(p.current || 0);
-    const pct = Math.max(0, Math.min(100, (cur / (total || 1)) * 100));
     const msg = (p.message || p.status || '...');
+
+    // If message contains an explicit (x/y), prefer it for display.
+    let dispCur = cur, dispTotal = total;
+    try {
+      const m = String(msg || '').match(/\((\d+)\/(\d+)\)\s*$/);
+      if (m) {
+        dispCur = Number(m[1] || dispCur);
+        dispTotal = Number(m[2] || dispTotal);
+      }
+    } catch (e) {}
+
+    const pct = Math.max(0, Math.min(100, (dispCur / (dispTotal || 1)) * 100));
     if (bar) bar.style.width = pct + '%';
-    if (text) text.textContent = msg + ' (' + (total > 0 ? (Math.floor(cur) + '/' + total) : Math.floor(cur)) + ', ' + pct.toFixed(2) + '%)';
+    if (text) text.textContent = msg + ' (' + (dispTotal > 0 ? (Math.floor(dispCur) + '/' + dispTotal) : Math.floor(dispCur)) + ', ' + pct.toFixed(2) + '%)';
+    renderMeta(dispCur, dispTotal);
     if (btn) btn.disabled = false;
     if (stepperEl && cur > 0) {
       stepperEl.style.display = 'flex';
@@ -544,6 +589,7 @@
   function watch(jobId) {
     if (!jobId) return;
     currentJobId = String(jobId);
+    syncStartedAt = Date.now();
     if (btn) btn.textContent = LABEL_STOP;
     if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
 
@@ -552,8 +598,10 @@
       if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
       if (es) { try { es.close(); } catch (e) {} }
       es = null; currentJobId = "";
+      syncStartedAt = 0;
       if (btn) btn.textContent = LABEL_START;
       if (stepperEl) stepperEl.style.display = 'none';
+      if (meta) { meta.style.display = 'none'; meta.textContent = ''; }
       if (status === 'succeeded') setTimeout(() => location.reload(), 400);
     };
 

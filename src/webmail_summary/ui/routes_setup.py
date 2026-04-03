@@ -69,7 +69,7 @@ def setup_get(request: Request):
                 "imap_port": str(settings.imap_port) or "993",
                 "imap_user": settings.imap_user or "",
                 "imap_folder": settings.imap_folder or "INBOX",
-                "sender_filter": settings.sender_filter or "hslee@tekville.com",
+                "sender_filter": settings.sender_filter or "",
                 "obsidian_root": settings.obsidian_root or "",
                 "llm_backend": settings.llm_backend,
                 "cloud_provider": provider_name,
@@ -246,7 +246,7 @@ def setup_save(
     imap_port: str = Form("993"),
     imap_user: str = Form(""),
     imap_folder: str = Form("INBOX"),
-    sender_filter: str = Form("hslee@tekville.com"),
+    sender_filter: str = Form(""),
     obsidian_root: str = Form(""),
     llm_backend: str = Form("local"),
     local_model_id: str = Form("fast"),
@@ -285,8 +285,7 @@ def setup_save(
             set_setting(conn, "imap_user", imap_user)
         if imap_folder:
             set_setting(conn, "imap_folder", imap_folder)
-        if sender_filter:
-            set_setting(conn, "sender_filter", sender_filter)
+        set_setting(conn, "sender_filter", (sender_filter or "").strip())
         if obsidian_root:
             set_setting(conn, "obsidian_root", obsidian_root)
         if llm_backend:
