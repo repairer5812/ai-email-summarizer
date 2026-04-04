@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import datetime as dt
 
-from webmail_summary.imap_client import ImapSession, parse_mail_search_filter
+from webmail_summary.imap_client import (
+    ImapSession,
+    MailSearchFilter,
+    build_mail_search_filter_value,
+    parse_mail_search_filter,
+)
 
 
 class _FakeClient:
@@ -98,6 +103,21 @@ def test_parse_mail_search_filter_supports_composite_tokens():
     assert filt.from_terms == ("alice@example.com", "@foo.com", "bob@example.com")
     assert filt.domain_terms == ("example.org",)
     assert filt.subject_terms == ("invoice",)
+
+
+def test_build_mail_search_filter_value_serializes_split_fields():
+    out = build_mail_search_filter_value(
+        MailSearchFilter(
+            from_terms=("alice@example.com", "bob@example.com"),
+            domain_terms=("example.org", "@vendor.co.kr"),
+            subject_terms=("invoice", "security"),
+        )
+    )
+
+    assert out == (
+        "alice@example.com, bob@example.com, domain:example.org, "
+        "domain:vendor.co.kr, subject:invoice, subject:security"
+    )
 
 
 def test_parse_mail_search_filter_ignores_empty_prefixed_terms():

@@ -310,7 +310,20 @@
               <div class="card__body">
                 <div class="form-group">
                   <label>{{ t(request, 'setup.sender_filter') }}</label>
-                  <input name="sender_filter" value="{{ defaults.sender_filter }}" placeholder="{{ t(request, 'setup.sender_filter.placeholder') }}" />
+                  <div style="display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));">
+                    <div>
+                      <label style="font-size:0.9rem;">{{ t(request, 'setup.sender_filter.from') }}</label>
+                      <input name="sender_from_filter" value="{{ defaults.sender_from_filter }}" placeholder="{{ t(request, 'setup.sender_filter.from.placeholder') }}" />
+                    </div>
+                    <div>
+                      <label style="font-size:0.9rem;">{{ t(request, 'setup.sender_filter.domain') }}</label>
+                      <input name="sender_domain_filter" value="{{ defaults.sender_domain_filter }}" placeholder="{{ t(request, 'setup.sender_filter.domain.placeholder') }}" />
+                    </div>
+                    <div>
+                      <label style="font-size:0.9rem;">{{ t(request, 'setup.sender_filter.subject') }}</label>
+                      <input name="sender_subject_filter" value="{{ defaults.sender_subject_filter }}" placeholder="{{ t(request, 'setup.sender_filter.subject.placeholder') }}" />
+                    </div>
+                  </div>
                   <div class="help">{{ t(request, 'setup.sender_filter.help') }}</div>
                 </div>
                 <div class="form-group">

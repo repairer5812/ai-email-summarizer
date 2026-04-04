@@ -286,7 +286,6 @@
   let dayRefreshTimer = null;
   let refreshPollTimer = null;
   let syncPollTimer = null;
-  let syncStartedAt = 0;
 
   // --- Shared Formatting Logic ---
   function escapeHtml(str) {
@@ -430,12 +429,18 @@
     return `${s}s`;
   }
 
-  function renderMeta(cur, total) {
+  function parseIsoMs(value) {
+    const ts = Date.parse(String(value || ''));
+    return Number.isFinite(ts) ? ts : 0;
+  }
+
+  function renderMeta(cur, total, p) {
     if (!meta) return;
     const parts = [];
     if (total > 0) parts.push(`${STR_META_COUNT} ${Math.floor(cur)}/${Math.floor(total)}`);
-    if (syncStartedAt > 0 && total > 0 && cur > 0 && total > cur) {
-      const elapsed = (Date.now() - syncStartedAt) / 1000;
+    const startedAtMs = parseIsoMs(p && p.created_at);
+    if (startedAtMs > 0 && total > 0 && cur > 0 && total > cur) {
+      const elapsed = (Date.now() - startedAtMs) / 1000;
       if (elapsed > 1) {
         const rate = cur / elapsed;
         if (rate > 0) {
@@ -567,7 +572,7 @@
     const pct = Math.max(0, Math.min(100, (dispCur / (dispTotal || 1)) * 100));
     if (bar) bar.style.width = pct + '%';
     if (text) text.textContent = msg + ' (' + (dispTotal > 0 ? (Math.floor(dispCur) + '/' + dispTotal) : Math.floor(dispCur)) + ', ' + pct.toFixed(2) + '%)';
-    renderMeta(dispCur, dispTotal);
+    renderMeta(cur, total, p);
     if (btn) btn.disabled = false;
     if (stepperEl && cur > 0) {
       stepperEl.style.display = 'flex';
@@ -589,7 +594,6 @@
   function watch(jobId) {
     if (!jobId) return;
     currentJobId = String(jobId);
-    syncStartedAt = Date.now();
     if (btn) btn.textContent = LABEL_STOP;
     if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
 
@@ -598,7 +602,6 @@
       if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
       if (es) { try { es.close(); } catch (e) {} }
       es = null; currentJobId = "";
-      syncStartedAt = 0;
       if (btn) btn.textContent = LABEL_START;
       if (stepperEl) stepperEl.style.display = 'none';
       if (meta) { meta.style.display = 'none'; meta.textContent = ''; }
@@ -615,6 +618,8 @@
           current: j.progress_current,
           total: j.progress_total,
           message: j.message,
+          created_at: j.created_at,
+          updated_at: j.updated_at,
         });
         if (j.status === 'running' && !dayRefreshTimer) dayRefreshTimer = setInterval(refreshDayList, 15000);
         if (j.status === 'succeeded' || j.status === 'failed' || j.status === 'cancelled') onTerminal(j.status);

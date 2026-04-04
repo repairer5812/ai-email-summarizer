@@ -24,6 +24,23 @@ class MailSearchFilter:
     subject_terms: tuple[str, ...] = ()
 
 
+def build_mail_search_filter_value(mail_filter: MailSearchFilter) -> str:
+    parts: list[str] = []
+    for term in mail_filter.from_terms:
+        t = str(term or "").strip()
+        if t:
+            parts.append(t)
+    for term in mail_filter.domain_terms:
+        t = str(term or "").strip().lstrip("@")
+        if t:
+            parts.append(f"domain:{t}")
+    for term in mail_filter.subject_terms:
+        t = str(term or "").strip()
+        if t:
+            parts.append(f"subject:{t}")
+    return ", ".join(parts)
+
+
 def parse_mail_search_filter(raw_value: str) -> MailSearchFilter:
     raw = str(raw_value or "").strip()
     if not raw:

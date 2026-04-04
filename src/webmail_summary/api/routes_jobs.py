@@ -421,6 +421,8 @@ def stream_events(job_id: str):
                 "total": job.progress_total,
                 "message": job.message,
                 "date_key": date_key,
+                "created_at": job.created_at,
+                "updated_at": job.updated_at,
             }
             yield f"event: progress\ndata: {json.dumps(progress_payload, ensure_ascii=True)}\n\n"
 
