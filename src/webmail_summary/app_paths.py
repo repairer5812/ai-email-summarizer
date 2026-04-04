@@ -22,10 +22,20 @@ class AppPaths:
         return self.base_dir / "logs"
 
 
+def _expand_env_dir(value: str | None) -> Path | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    expanded = os.path.expanduser(os.path.expandvars(raw)).strip()
+    if not expanded:
+        return None
+    return Path(expanded)
+
+
 def get_app_paths() -> AppPaths:
-    appdata = os.environ.get("APPDATA")
+    appdata = _expand_env_dir(os.environ.get("APPDATA"))
     if appdata:
-        base = Path(appdata) / "WebmailSummary"
+        base = appdata / "WebmailSummary"
     else:
         base = Path.home() / ".webmail-summary"
     base.mkdir(parents=True, exist_ok=True)
