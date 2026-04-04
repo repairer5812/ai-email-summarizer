@@ -9,11 +9,21 @@ def _platform_key() -> str:
     return (platform.system() or "").strip().lower()
 
 
+def _expand_env_dir(value: str | None) -> Path | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    expanded = os.path.expanduser(os.path.expandvars(raw)).strip()
+    if not expanded:
+        return None
+    return Path(expanded)
+
+
 def get_app_data_dir() -> Path:
     sys_name = _platform_key()
     if sys_name == "windows":
-        base = os.environ.get("LOCALAPPDATA")
-        p = Path(base) / "WebmailSummary" if base else Path.home() / ".webmail-summary"
+        base = _expand_env_dir(os.environ.get("LOCALAPPDATA"))
+        p = base / "WebmailSummary" if base else Path.home() / ".webmail-summary"
     elif sys_name == "darwin":
         p = Path.home() / "Library" / "Application Support" / "WebmailSummary"
     else:
