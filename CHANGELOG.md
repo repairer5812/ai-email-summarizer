@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.1] - 2026-04-17
+
+### Changed
+
+- 비-Apple 환경(Windows/Linux)에서 MLX 추론 엔진 선택과 MLX 모델 목록을 숨겼습니다.
+  - Apple Silicon Mac에서만 엔진 선택(자동/llama.cpp/MLX)과 MLX 모델이 표시됩니다.
+
 ## [0.6.5] - 2026-04-17
 
 ### Fixed
