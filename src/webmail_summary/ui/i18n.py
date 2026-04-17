@@ -216,7 +216,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "developer.title": "개발자 정보",
         "developer.name_label": "이름",
         "developer.email_label": "이메일",
-        "developer.name": "이형세",
+        "developer.name": "최경찬",
         "developer.email": "repairer5812@gmail.com",
         "developer.copy": "이메일 복사",
         "developer.copied": "복사됨",
