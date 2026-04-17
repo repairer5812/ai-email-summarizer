@@ -16,6 +16,7 @@ from webmail_summary.imap_client import (
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
 from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, MLX_MODELS, get_local_model
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
+from webmail_summary.llm.local_engine import find_llama_cpp_installed
 from webmail_summary.util.platform_caps import is_apple_silicon as _is_apple_silicon
 from webmail_summary.ui.settings_gateway import db_path, set_setting
 from webmail_summary.ui.setup_service import get_cloud_keys
@@ -25,6 +26,15 @@ from webmail_summary.ui.updates import _DEFAULT_UPDATE_REPO, _get_app_version
 from webmail_summary.ui.web_shared import get_active_jobs, templates
 
 router = APIRouter()
+
+
+def _get_engine_tag() -> str:
+    """Return the currently installed llama.cpp engine tag, or empty string."""
+    try:
+        inst = find_llama_cpp_installed()
+        return inst.version_tag if inst else ""
+    except Exception:
+        return ""
 
 
 def _is_auth_error(msg: str) -> bool:
@@ -209,6 +219,7 @@ def setup_get(request: Request):
                 "engine_ok": local_ready.engine_ok,
                 "model_ok": local_ready.model_ok,
             },
+            "engine_tag": _get_engine_tag(),
             "model_installed": model_installed,
             "model_size": model_size,
         }

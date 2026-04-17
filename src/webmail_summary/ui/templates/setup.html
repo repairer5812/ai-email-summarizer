@@ -209,10 +209,11 @@
                     <div class="form-group">
                       <label>{{ t(request, 'setup.local.status') }}</label>
                       <div class="help">
-                        {% if local_ready.engine_ok %}{{ t(request, 'setup.local.engine_ok') }}{% else %}{{ t(request, 'setup.local.engine_missing') }}{% endif %}
+                        {% if local_ready.engine_ok %}{{ t(request, 'setup.local.engine_ok') }} ({{ engine_tag }}){% else %}{{ t(request, 'setup.local.engine_missing') }}{% endif %}
                         ·
                         {% if local_ready.model_ok %}{{ t(request, 'setup.local.model_ok') }}{% else %}{{ t(request, 'setup.local.model_missing') }}{% endif %}
                       </div>
+                      <div class="help muted" style="margin-top: 4px; font-size: 0.82rem;">{% if ui_lang(request) == 'ko' %}아래 "엔진 + 모델 설치" 버튼을 누르면 엔진이 자동으로 최신 버전으로 업데이트됩니다.{% else %}Click "Install Engine + Model" below to auto-update the engine to the latest version.{% endif %}</div>
                     </div>
 
                     {# ── Installed Models Management ── #}
