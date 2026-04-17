@@ -23,6 +23,11 @@ jobs:
           pip install -r requirements.txt
           pip install -e .
 
+      - name: Verify pydantic runtime pair
+        run: |
+          python -c "import pydantic, pydantic_core; print('pydantic', pydantic.__version__); print('pydantic_core', pydantic_core.__version__)"
+
+
       - name: Syntax check
         run: |
           python -m compileall src
