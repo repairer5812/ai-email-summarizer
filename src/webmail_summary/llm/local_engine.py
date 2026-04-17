@@ -147,18 +147,36 @@ def ensure_llama_cpp_installed(
     engines = get_engines_dir() / "llama.cpp"
     engines.mkdir(parents=True, exist_ok=True)
 
-    existing = find_llama_cpp_installed(min_build=min_build)
-    if existing is not None:
-        return existing
-
-    # Download latest release info
+    # Download latest release info first to compare versions.
     api = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+    latest_tag: str | None = None
+    data: dict | None = None
     try:
         r = requests.get(api, timeout=(3.05, float(timeout_s)))
         r.raise_for_status()
         data = r.json()
-    except Exception as e:
-        raise EngineInstallError(f"Failed to fetch llama.cpp release metadata: {e}")
+        latest_tag = str(data.get("tag_name") or "").strip() or None
+    except Exception:
+        data = None
+        latest_tag = None
+
+    existing = find_llama_cpp_installed(min_build=min_build)
+    if existing is not None:
+        # If already at the latest tag, skip.
+        if latest_tag is None or existing.version_tag == latest_tag:
+            return existing
+        # If latest is newer, upgrade.
+        existing_build = _parse_build_number(existing.version_tag)
+        latest_build = _parse_build_number(latest_tag)
+        if latest_build <= existing_build:
+            return existing
+        # Fall through to download the newer engine.
+
+    if data is None:
+        # Network failed and we have no existing engine at all.
+        if existing is not None:
+            return existing
+        raise EngineInstallError("Failed to fetch llama.cpp release metadata")
 
     tag = str(data.get("tag_name") or "latest").strip() or "latest"
     assets = data.get("assets") or []
