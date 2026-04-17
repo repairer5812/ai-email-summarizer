@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.1] - 2026-04-17
+
+### Fixed
+
+- `pydantic`와 `pydantic-core`를 호환되는 쌍으로 고정해, Windows 단일 실행 파일에서 시작 시 버전 불일치로 종료되던 문제를 막았습니다.
+- CI와 릴리즈 워크플로에 런타임 import 검증을 추가해, 잘못된 `pydantic` 조합이 다시 배포되지 않도록 했습니다.
+
 ## [0.6.0] - 2026-04-17
 
 ### Added
