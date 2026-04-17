@@ -383,7 +383,7 @@
     <div class="card__body">
       <p>{{ t(request, 'setup.ai.not_ready.body') }}</p>
       {% if ai.not_ready_reason %}
-      <p class="muted" style="margin-top: 8px; color: #dc2626;">원인: {{ ai.not_ready_reason }}</p>
+      <p style="margin-top: 8px; color: #dc2626; font-size: 0.95rem;">{{ ai.not_ready_reason }}</p>
       {% endif %}
       <div style="margin-top:20px;">
       <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>

@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.4] - 2026-04-17
+
+### Fixed
+
+- 업데이트 후 기존 모델(EXAONE 3.5)이 설치되어 있는데도 "AI가 준비되지 않았습니다"가 표시되던 문제를 수정했습니다.
+  - `check_local_ready`에서도 migration fallback을 인식하도록 보강했습니다.
+- "AI 준비 안됨" 안내 메시지를 비개발자도 이해할 수 있도록 구체적으로 변경했습니다.
+
 ## [0.6.3] - 2026-04-17
 
 ### Fixed

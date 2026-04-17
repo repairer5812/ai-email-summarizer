@@ -66,6 +66,25 @@ def check_local_ready(*, model_id: str) -> LocalReady:
     mp = get_local_model_path(model_id=model_id)
     complete = get_local_model_complete_marker(model_id=model_id)
     model_ok = mp.exists() and mp.is_file() and complete.exists() and complete.is_file()
+
+    # Migration fallback: if the primary model is missing, check the fallback.
+    if not model_ok:
+        try:
+            from webmail_summary.llm.local_models import MIGRATION_FALLBACKS, get_local_model
+
+            fallback_id = MIGRATION_FALLBACKS.get(model_id)
+            if fallback_id:
+                fb = get_local_model(fallback_id)
+                fb_path = get_gguf_path_for_repo_file(
+                    hf_repo_id=fb.hf_repo_id, hf_filename=fb.hf_filename
+                )
+                fb_marker = fb_path.parent / (fb_path.name + ".complete")
+                if fb_path.exists() and fb_path.is_file() and fb_marker.exists():
+                    model_ok = True
+                    mp = fb_path
+        except Exception:
+            pass
+
     return LocalReady(
         engine_ok=engine_ok,
         model_ok=model_ok,

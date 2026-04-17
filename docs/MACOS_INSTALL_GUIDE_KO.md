@@ -51,7 +51,9 @@ python -m webmail_summary serve
 | 기존 | Gemma 3 4B | 안정적 균형 품질 |
 | 기존 | Qwen 2.5 3B | 짧은 메일 빠른 처리 |
 
-- **Apple Silicon (M1/M2/M3/M4)**: 로컬 모델 권장. llama.cpp가 Metal GPU를 활용하여 빠르게 동작합니다.
+- **Apple Silicon (M1/M2/M3/M4)**: 로컬 모델 권장. 설정에서 **추론 엔진을 MLX**로 선택하면 llama.cpp 대비 20~87% 더 빠른 추론이 가능합니다.
+  - MLX 모델 (Apple Silicon 전용): EXAONE 4.0 1.2B, Gemma 4 E4B, Qwen 3.5 4B의 MLX 최적화 버전을 별도 제공합니다.
+  - 설정 > AI > 추론 엔진에서 "자동" 선택 시, Apple Silicon이면 MLX를 자동으로 사용합니다.
 - **Intel Mac**: 로컬 모델도 가능하나, 속도가 느릴 수 있습니다. 클라우드 API 권장.
 
 ## 4. 사용하기

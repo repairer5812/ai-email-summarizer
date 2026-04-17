@@ -14,8 +14,9 @@ from webmail_summary.imap_client import (
     parse_mail_search_filter,
 )
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
-from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, get_local_model
+from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, MLX_MODELS, get_local_model
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
+from webmail_summary.util.platform_caps import is_apple_silicon as _is_apple_silicon
 from webmail_summary.ui.settings_gateway import db_path, set_setting
 from webmail_summary.ui.setup_service import get_cloud_keys
 from webmail_summary.ui.setup_service import pick_directory_dialog
@@ -175,6 +176,7 @@ def setup_get(request: Request):
                 "cloud_provider": provider_name,
                 "cloud_multimodal_enabled": settings.cloud_multimodal_enabled,
                 "local_model_id": settings.local_model_id,
+                "local_engine": getattr(settings, "local_engine", "auto"),
                 "openrouter_model": settings.openrouter_model,
                 "external_max_bytes": str(settings.external_max_bytes),
                 "revert_seen": settings.revert_seen_after_sync,
@@ -201,6 +203,8 @@ def setup_get(request: Request):
             "local_models": LOCAL_MODELS,
             "recommended_models": RECOMMENDED_MODELS,
             "legacy_models": LEGACY_MODELS,
+            "mlx_models": MLX_MODELS,
+            "is_apple_silicon": _is_apple_silicon(),
             "local_ready": {
                 "engine_ok": local_ready.engine_ok,
                 "model_ok": local_ready.model_ok,
@@ -357,6 +361,7 @@ def setup_save(
     obsidian_root: str = Form(""),
     llm_backend: str = Form("local"),
     local_model_id: str = Form("fast"),
+    local_engine: str = Form("auto"),
     cloud_provider: str = Form("openai"),
     cloud_multimodal_enabled: str = Form("0"),
     openrouter_model: str = Form(""),
@@ -419,6 +424,10 @@ def setup_save(
                 "local_model_id",
                 get_local_model(local_model_id.strip().lower()).id,
             )
+        eng = (local_engine or "auto").strip().lower()
+        if eng not in {"auto", "llamacpp", "mlx"}:
+            eng = "auto"
+        set_setting(conn, "local_engine", eng)
         if openrouter_model:
             set_setting(conn, "openrouter_model", openrouter_model.strip())
         if external_max_bytes:

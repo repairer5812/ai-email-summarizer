@@ -169,16 +169,33 @@
                   <!-- Local Specific Section -->
                   <div id="local-section">
                     <div class="form-group">
+                      <label>{% if ui_lang(request) == 'ko' %}추론 엔진{% else %}Inference Engine{% endif %}</label>
+                      <select name="local_engine" id="local-engine">
+                        <option value="auto" {% if defaults.local_engine == 'auto' %}selected{% endif %}>{% if ui_lang(request) == 'ko' %}자동 (Apple Silicon이면 MLX){% else %}Auto (MLX on Apple Silicon){% endif %}</option>
+                        <option value="llamacpp" {% if defaults.local_engine == 'llamacpp' %}selected{% endif %}>llama.cpp ({% if ui_lang(request) == 'ko' %}모든 플랫폼{% else %}All platforms{% endif %})</option>
+                        <option value="mlx" {% if defaults.local_engine == 'mlx' %}selected{% endif %} {% if not is_apple_silicon %}disabled{% endif %}>MLX (Apple Silicon {% if ui_lang(request) == 'ko' %}전용{% else %}only{% endif %}){% if not is_apple_silicon %} — {% if ui_lang(request) == 'ko' %}미지원 환경{% else %}Not supported{% endif %}{% endif %}</option>
+                      </select>
+                      <div class="help">{% if ui_lang(request) == 'ko' %}MLX는 Apple Silicon Mac에서 20~87% 더 빠른 추론을 제공합니다.{% else %}MLX provides 20-87% faster inference on Apple Silicon Macs.{% endif %}</div>
+                    </div>
+
+                    <div class="form-group">
                       <label>{{ t(request, 'setup.local_tier') }}</label>
                       <select name="local_model_id" id="local-model">
-                        <optgroup label="추천 모델">
+                        <optgroup label="{% if ui_lang(request) == 'ko' %}추천 모델{% else %}Recommended{% endif %}">
                         {% for m in recommended_models %}
-                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" data-engine="gguf" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
                         {% endfor %}
                         </optgroup>
-                        <optgroup label="기존 모델">
+                        {% if mlx_models %}
+                        <optgroup label="MLX (Apple Silicon)" id="mlx-optgroup">
+                        {% for m in mlx_models %}
+                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" data-engine="mlx" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                        {% endfor %}
+                        </optgroup>
+                        {% endif %}
+                        <optgroup label="{% if ui_lang(request) == 'ko' %}기존 모델{% else %}Legacy{% endif %}">
                         {% for m in legacy_models %}
-                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" data-engine="gguf" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
                         {% endfor %}
                         </optgroup>
                       </select>

@@ -81,9 +81,9 @@ def home(request: Request):
         ai_not_ready_reason = ""
         if settings.llm_backend == "local":
             if not local_ready.engine_ok:
-                ai_not_ready_reason = "로컬 엔진이 설치되지 않았습니다. 설정에서 로컬 모델 설치를 다시 실행하세요."
+                ai_not_ready_reason = "AI 엔진이 설치되지 않았습니다. 아래 '설정' 버튼을 누른 뒤, AI 탭에서 '엔진 + 모델 설치' 버튼을 클릭해주세요."
             elif not local_ready.model_ok:
-                ai_not_ready_reason = "모델 파일 또는 완료 마커(.complete)를 찾지 못했습니다. 설정에서 모델 설치를 다시 실행하세요."
+                ai_not_ready_reason = "AI 모델이 아직 설치되지 않았습니다. 아래 '설정' 버튼을 누른 뒤, AI 탭에서 '엔진 + 모델 설치' 버튼을 클릭해주세요."
         elif settings.llm_backend in {"openrouter", "cloud"}:
             provider_name = (settings.cloud_provider or "openai").strip().lower()
             cloud_keys = get_cloud_keys()

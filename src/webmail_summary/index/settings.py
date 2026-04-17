@@ -33,6 +33,7 @@ class Settings:
     update_last_checked_at: str
     update_download_url: str
     update_last_check_status: str
+    local_engine: str = "auto"  # "auto" | "llamacpp" | "mlx"
     new_models_v2_dismissed: bool = False
 
 
@@ -116,6 +117,9 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     update_last_check_status = (
         get_setting(conn, "update_last_check_status") or ""
     ).strip()
+    local_engine = (get_setting(conn, "local_engine") or "auto").strip().lower()
+    if local_engine not in {"auto", "llamacpp", "mlx"}:
+        local_engine = "auto"
     new_models_v2_dismissed = (
         get_setting(conn, "new_models_v2_dismissed") or "0"
     ).strip().lower() in {"1", "true", "yes", "on"}
@@ -147,5 +151,6 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         update_last_checked_at=update_last_checked_at,
         update_download_url=update_download_url,
         update_last_check_status=update_last_check_status,
+        local_engine=local_engine,
         new_models_v2_dismissed=new_models_v2_dismissed,
     )
