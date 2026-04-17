@@ -30,21 +30,12 @@ LOCAL_MODELS: list[LocalModelChoice] = [
         group="recommended",
     ),
     LocalModelChoice(
-        id="exaone40_1.2b",
-        label="초경량 — EXAONE 4.0 1.2B (Q4_K_M)",
-        tier="fast",
-        hf_repo_id="LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF",
-        hf_filename="EXAONE-4.0-1.2B-Q4_K_M.gguf",
-        notes="EXAONE 4.0 1.2B 모델입니다. 매우 빠르지만 요약 품질은 2.4B보다 낮을 수 있습니다.",
-        group="recommended",
-    ),
-    LocalModelChoice(
-        id="gemma4_e4b",
-        label="표준 — Gemma 4 E4B (Q4_K_M)",
+        id="standard",
+        label="표준 — Gemma 3 4B (Q4_K_M)",
         tier="standard",
-        hf_repo_id="unsloth/gemma-4-E4B-it-GGUF",
-        hf_filename="gemma-4-E4B-it-Q4_K_M.gguf",
-        notes="Gemma 4 E4B 모델입니다. 추론·코딩 성능이 크게 향상된 최신 모델입니다.",
+        hf_repo_id="bartowski/google_gemma-3-4b-it-GGUF",
+        hf_filename="google_gemma-3-4b-it-Q4_K_M.gguf",
+        notes="Gemma 3 4B 모델입니다. 안정적인 균형 품질.",
         group="recommended",
     ),
     LocalModelChoice(
@@ -56,15 +47,7 @@ LOCAL_MODELS: list[LocalModelChoice] = [
         notes="Qwen 3.5 4B 모델입니다. 다국어·코딩 성능이 우수한 최신 모델입니다.",
         group="recommended",
     ),
-    LocalModelChoice(
-        id="standard",
-        label="기존 — Gemma 3 4B (Q4_K_M)",
-        tier="standard",
-        hf_repo_id="bartowski/google_gemma-3-4b-it-GGUF",
-        hf_filename="google_gemma-3-4b-it-Q4_K_M.gguf",
-        notes="Gemma 3 4B 모델입니다. 안정적인 균형 품질.",
-        group="legacy",
-    ),
+    # ── 기존 모델 (Legacy) ───────────────────────────────
     LocalModelChoice(
         id="performance",
         label="기존 — Qwen 2.5 3B (Q4_K_M)",
@@ -77,21 +60,21 @@ LOCAL_MODELS: list[LocalModelChoice] = [
     # ── MLX 모델 (Apple Silicon 전용) ────────────────────
     LocalModelChoice(
         id="mlx_fast",
-        label="MLX 빠름 — EXAONE 4.0 1.2B (4bit)",
+        label="MLX 빠름 — EXAONE 3.5 2.4B (4bit)",
         tier="fast",
-        hf_repo_id="mlx-community/EXAONE-4.0-1.2B-4bit",
+        hf_repo_id="mlx-community/EXAONE-3.5-2.4B-Instruct-4bit",
         hf_filename="",  # MLX: repo 전체를 다운로드
-        notes="Apple Silicon 전용. EXAONE 4.0 1.2B MLX 최적화 모델.",
+        notes="Apple Silicon 전용. EXAONE 3.5 2.4B MLX 최적화 모델. 한국어 특화.",
         group="mlx",
         engine="mlx",
     ),
     LocalModelChoice(
-        id="mlx_gemma4_e4b",
-        label="MLX 표준 — Gemma 4 E4B (4bit)",
+        id="mlx_standard",
+        label="MLX 표준 — Gemma 3 4B (4bit)",
         tier="standard",
-        hf_repo_id="mlx-community/gemma-4-E4B-it-4bit",
+        hf_repo_id="mlx-community/gemma-3-4b-it-4bit",
         hf_filename="",
-        notes="Apple Silicon 전용. Gemma 4 E4B MLX 최적화 모델.",
+        notes="Apple Silicon 전용. Gemma 3 4B MLX 최적화 모델.",
         group="mlx",
         engine="mlx",
     ),
@@ -124,7 +107,7 @@ MIGRATION_FALLBACKS: dict[str, str] = {
 # GGUF ↔ MLX model mapping for automatic engine switching.
 _GGUF_TO_MLX: dict[str, str] = {
     "fast": "mlx_fast",
-    "gemma4_e4b": "mlx_gemma4_e4b",
+    "standard": "mlx_standard",
     "qwen35_4b": "mlx_qwen35_4b",
 }
 _MLX_TO_GGUF: dict[str, str] = {v: k for k, v in _GGUF_TO_MLX.items()}
@@ -150,6 +133,10 @@ def get_local_model(model_id: str) -> LocalModelChoice:
     aliases = {
         "low": "performance",
         "ultra": "standard",
+        "exaone40_1.2b": "fast",     # removed model → fallback to default
+        "gemma4_e4b": "standard",    # Gemma 4 E4B → Gemma 3 4B
+        "exaone35_2.4b": "fast",     # legacy ID
+        "mlx_gemma4_e4b": "mlx_standard",  # MLX Gemma 4 → MLX Gemma 3
     }
     mid = aliases.get(mid, mid)
 
