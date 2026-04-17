@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.10] - 2026-04-18
+
+### Changed
+
+- 설정 화면에 현재 엔진 버전을 표시하고, "엔진 + 모델 설치"로 최신 엔진이 자동 적용됨을 안내합니다.
+
 ## [0.6.5.9] - 2026-04-18
 
 ### Changed
