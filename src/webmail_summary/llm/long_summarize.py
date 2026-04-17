@@ -437,7 +437,7 @@ def _build_dynamic_cfg(
 ) -> LongSummarizeConfig:
     # Derive chunk sizes from model context when available.
     default_ctx_tokens = {
-        "fast": 3072,
+        "fast": 6144,
         "standard": 4096,
         "performance": 4096,
         "cloud": 8192,
@@ -467,8 +467,8 @@ def _build_dynamic_cfg(
     max_chunks = _clamp(est_chunks + 1, 2, 10)
 
     if tier == "fast":
-        chunk_chars = min(chunk_chars, 3200)
-        max_chunks = min(max_chunks, 4)
+        chunk_chars = min(chunk_chars, 5000)
+        max_chunks = min(max_chunks, 6)
     elif tier in {"standard", "performance"}:
         chunk_chars = min(chunk_chars, 4200)
         max_chunks = min(max_chunks, 6)
