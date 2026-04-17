@@ -54,6 +54,19 @@ def _is_stale_active_sync_job(job: repo.JobRow) -> tuple[bool, str]:
         worker_alive = False
 
     if status == "queued" and age_s > 120:
+        # Don't mark as stale if the runner is busy with another job.
+        try:
+            conn_check = get_conn(_db_path())
+            try:
+                running = conn_check.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE status = 'running'"
+                ).fetchone()
+                if running and int(running[0]) > 0:
+                    return False, ""  # runner is busy, queue is legitimate
+            finally:
+                conn_check.close()
+        except Exception:
+            pass
         return True, "stale queued job (no transition for 120s)"
     if status == "cancel_requested" and not worker_alive and age_s > 20:
         return True, "stale cancel_requested job (worker not running)"
