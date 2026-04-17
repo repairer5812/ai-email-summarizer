@@ -16,10 +16,11 @@ from webmail_summary.jobs.tasks_sync import sync_mailbox_task
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.jobs.tasks_local_install import local_install_task
 from webmail_summary.llm.local_models import get_local_model, recommend_local_model
-from webmail_summary.llm.local_status import check_local_ready
+from webmail_summary.llm.local_status import check_local_ready, delete_gguf_and_marker
 from webmail_summary.llm.local_status import (
     get_local_model_complete_marker,
     get_local_model_path,
+    get_gguf_path_for_repo_file,
 )
 from webmail_summary.llm.provider import LlmNotReady
 from webmail_summary.index.settings import load_settings
@@ -453,3 +454,42 @@ def stream_events(job_id: str):
             time.sleep(0.5)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.get("/local/models")
+def list_local_models():
+    """Return all local models with their installation status."""
+    from webmail_summary.llm.local_models import LOCAL_MODELS
+
+    result: list[dict] = []
+    for m in LOCAL_MODELS:
+        mp = get_gguf_path_for_repo_file(hf_repo_id=m.hf_repo_id, hf_filename=m.hf_filename)
+        marker = mp.parent / (mp.name + ".complete")
+        installed = mp.exists() and mp.is_file() and marker.exists()
+        size_bytes = int(mp.stat().st_size) if installed and mp.exists() else 0
+        result.append(
+            {
+                "id": m.id,
+                "label": m.label,
+                "group": m.group,
+                "hf_repo_id": m.hf_repo_id,
+                "hf_filename": m.hf_filename,
+                "installed": installed,
+                "size_bytes": size_bytes,
+            }
+        )
+    return {"models": result}
+
+
+@router.delete("/local/models/{model_id}")
+def delete_local_model(model_id: str):
+    """Delete a downloaded local model's GGUF file and marker."""
+    m = get_local_model(model_id)
+
+    mp = get_gguf_path_for_repo_file(hf_repo_id=m.hf_repo_id, hf_filename=m.hf_filename)
+    marker = mp.parent / (mp.name + ".complete")
+    if not mp.exists() and not marker.exists():
+        return JSONResponse({"error": "model not installed"}, status_code=404)
+
+    delete_gguf_and_marker(hf_repo_id=m.hf_repo_id, hf_filename=m.hf_filename)
+    return {"ok": True, "model_id": m.id}

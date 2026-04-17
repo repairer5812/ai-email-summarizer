@@ -15,7 +15,7 @@ from webmail_summary.imap_client import (
 )
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
 from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, get_local_model
-from webmail_summary.llm.local_status import check_local_ready
+from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.ui.settings_gateway import db_path, set_setting
 from webmail_summary.ui.setup_service import get_cloud_keys
 from webmail_summary.ui.setup_service import pick_directory_dialog
@@ -121,6 +121,19 @@ def setup_get(request: Request):
         cloud_keys = get_cloud_keys()
 
         local_ready = check_local_ready(model_id=settings.local_model_id)
+
+        # Build per-model installation status for the UI delete buttons.
+        model_installed: dict[str, bool] = {}
+        model_size: dict[str, int] = {}
+        for _m in LOCAL_MODELS:
+            _mp = get_gguf_path_for_repo_file(
+                hf_repo_id=_m.hf_repo_id, hf_filename=_m.hf_filename
+            )
+            _marker = _mp.parent / (_mp.name + ".complete")
+            _ok = _mp.exists() and _mp.is_file() and _marker.exists()
+            model_installed[_m.id] = _ok
+            model_size[_m.id] = int(_mp.stat().st_size) if _ok else 0
+
         parsed_mail_filter = parse_mail_search_filter(settings.sender_filter or "")
         display_from_terms: list[str] = []
         display_domain_terms: list[str] = list(parsed_mail_filter.domain_terms)
@@ -192,6 +205,8 @@ def setup_get(request: Request):
                 "engine_ok": local_ready.engine_ok,
                 "model_ok": local_ready.model_ok,
             },
+            "model_installed": model_installed,
+            "model_size": model_size,
         }
     finally:
         conn.close()

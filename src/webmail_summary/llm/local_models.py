@@ -20,11 +20,11 @@ LOCAL_MODELS: list[LocalModelChoice] = [
     # ── 추천 모델 (Recommended) ──────────────────────────
     LocalModelChoice(
         id="fast",
-        label="빠름 — EXAONE 3.5 2.4B (Q4_K_M)",
+        label="빠름 — EXAONE 4.0 1.2B (Q4_K_M)",
         tier="fast",
-        hf_repo_id="LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF",
-        hf_filename="EXAONE-3.5-2.4B-Instruct-Q4_K_M.gguf",
-        notes="EXAONE 3.5 2.4B 모델입니다. 가장 빠른 응답, 한국어 특화.",
+        hf_repo_id="LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF",
+        hf_filename="EXAONE-4.0-1.2B-Q4_K_M.gguf",
+        notes="EXAONE 4.0 1.2B 모델입니다. 가장 빠른 응답, 한국어 특화. (64K 컨텍스트)",
         group="recommended",
     ),
     LocalModelChoice(
@@ -46,6 +46,15 @@ LOCAL_MODELS: list[LocalModelChoice] = [
         group="recommended",
     ),
     # ── 기존 모델 (Legacy) ───────────────────────────────
+    LocalModelChoice(
+        id="exaone35_2.4b",
+        label="기존 — EXAONE 3.5 2.4B (Q4_K_M)",
+        tier="fast",
+        hf_repo_id="LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF",
+        hf_filename="EXAONE-3.5-2.4B-Instruct-Q4_K_M.gguf",
+        notes="EXAONE 3.5 2.4B 모델입니다. 이전 기본 모델.",
+        group="legacy",
+    ),
     LocalModelChoice(
         id="standard",
         label="기존 — Gemma 3 4B (Q4_K_M)",

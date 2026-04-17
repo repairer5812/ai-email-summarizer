@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.2] - 2026-04-17
+
+### Changed
+
+- 로컬 AI 기본 모델을 `EXAONE 3.5 2.4B`에서 `EXAONE 4.0 1.2B`로 교체했습니다.
+  - 파라미터 수가 절반(2.4B → 1.2B)이라 더 빠르고, 4.0 세대 업그레이드로 한국어 성능이 향상되었습니다.
+  - 64K 컨텍스트와 Reasoning 모드를 지원합니다.
+  - 기존 EXAONE 3.5 2.4B는 `기존 모델` 그룹에서 계속 선택·사용할 수 있습니다.
+
+### Added
+
+- 설정 화면에 설치된 로컬 모델 관리 UI를 추가했습니다.
+  - 설치된 모델의 용량을 확인하고, 삭제 버튼으로 디스크 공간을 회수할 수 있습니다.
+  - 모델 삭제 API(`DELETE /api/local/models/{model_id}`)를 추가했습니다.
+
 ## [0.6.1] - 2026-04-17
 
 ### Fixed
