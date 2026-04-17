@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import platform
+from typing import Callable
 
 import zipfile
 import tarfile
@@ -141,7 +142,10 @@ def _pick_release_assets(assets: list[dict]) -> list[dict]:
 
 
 def ensure_llama_cpp_installed(
-    *, timeout_s: int = 180, min_build: int = 0
+    *,
+    timeout_s: int = 180,
+    min_build: int = 0,
+    on_progress: "Callable[[int, int, str], None] | None" = None,
 ) -> LlamaCppInstall:
     # Install under app-data/WebmailSummary/engines/llama.cpp/<tag>/
     engines = get_engines_dir() / "llama.cpp"
@@ -226,6 +230,7 @@ def ensure_llama_cpp_installed(
         try:
             rr = requests.get(url, stream=True, timeout=(3.05, float(timeout_s)))
             rr.raise_for_status()
+            content_length = int(rr.headers.get("content-length") or 0)
             buf = io.BytesIO()
             total = 0
             for chunk in rr.iter_content(chunk_size=1024 * 256):
@@ -235,6 +240,8 @@ def ensure_llama_cpp_installed(
                 if total > 1024 * 1024 * 900:
                     raise EngineInstallError("engine archive unexpectedly large")
                 buf.write(chunk)
+                if on_progress and content_length > 0:
+                    on_progress(total, content_length, f"engine download ({name})")
         except Exception as e:
             last_err = f"Failed to download llama.cpp archive ({name}): {e}"
             continue
