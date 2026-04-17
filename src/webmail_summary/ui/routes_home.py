@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from webmail_summary.index.settings import load_settings, set_setting
-from webmail_summary.llm.local_status import check_local_ready
+from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.ui.settings_gateway import db_path, get_setting
 from webmail_summary.ui.setup_service import (
     get_cloud_keys,
@@ -16,6 +16,49 @@ from webmail_summary.ui.updates import _build_update_state, _check_github_releas
 from webmail_summary.ui.web_shared import get_active_jobs, templates
 
 router = APIRouter()
+
+
+def _check_model_migration(settings) -> dict | None:
+    """Check if the user needs to migrate from an old default model to a new one."""
+    if settings.llm_backend != "local":
+        return None
+    from webmail_summary.llm.local_models import (
+        MIGRATION_FALLBACKS,
+        get_local_model,
+    )
+
+    model = get_local_model(settings.local_model_id)
+    fallback_id = MIGRATION_FALLBACKS.get(model.id)
+    if not fallback_id:
+        return None
+
+    # Check if the new model is NOT installed but the old one IS installed.
+    new_path = get_gguf_path_for_repo_file(
+        hf_repo_id=model.hf_repo_id, hf_filename=model.hf_filename
+    )
+    new_marker = new_path.parent / (new_path.name + ".complete")
+    new_installed = new_path.exists() and new_marker.exists()
+    if new_installed:
+        return None  # already migrated
+
+    old = get_local_model(fallback_id)
+    old_path = get_gguf_path_for_repo_file(
+        hf_repo_id=old.hf_repo_id, hf_filename=old.hf_filename
+    )
+    old_marker = old_path.parent / (old_path.name + ".complete")
+    old_installed = old_path.exists() and old_marker.exists()
+    if not old_installed:
+        return None  # neither installed, normal setup flow handles this
+
+    old_size = int(old_path.stat().st_size) if old_path.exists() else 0
+    return {
+        "needed": True,
+        "new_model_id": model.id,
+        "new_label": model.label,
+        "old_model_id": old.id,
+        "old_label": old.label,
+        "old_size_mb": old_size // (1024 * 1024),
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -102,6 +145,7 @@ def home(request: Request):
                 "cloud_cloud_keys": cloud_keys,
                 "local": {
                     "model_id": settings.local_model_id,
+                    "engine": getattr(settings, "local_engine", "auto"),
                     "engine_ok": local_ready.engine_ok,
                     "model_ok": local_ready.model_ok,
                 },
@@ -111,6 +155,7 @@ def home(request: Request):
                 not settings.new_models_v2_dismissed
                 and settings.llm_backend == "local"
             ),
+            "migration": _check_model_migration(settings),
         },
     )
 

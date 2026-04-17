@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.3] - 2026-04-17
+
+### Fixed
+
+- 업데이트 후 기존 사용자가 "AI가 준비되지 않았습니다" 오류를 겪던 문제를 해결했습니다.
+  - EXAONE 4.0 1.2B가 아직 설치되지 않은 경우, 기존 EXAONE 3.5 2.4B로 자동 fallback하여 요약이 중단되지 않습니다.
+- 업데이트 설치 시 "Failed to start embedded python interpreter" 오류를 완화했습니다.
+  - 업데이트 스크립트의 프로세스 종료 대기를 강화하고, 잔류 `_MEI` 임시 폴더를 정리하도록 개선했습니다.
+
+### Added
+
+- 홈 화면에 모델 마이그레이션 팝업을 추가했습니다.
+  - 기존 모델 사용자에게 새 모델 설치를 안내하고, 설치 완료 후 기존 모델 삭제를 선택할 수 있습니다.
+
 ## [0.6.2] - 2026-04-17
 
 ### Changed
