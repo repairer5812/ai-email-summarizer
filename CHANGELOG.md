@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.6] - 2026-04-17
+
+### Changed
+
+- 기본 모델을 EXAONE 3.5 2.4B로 복원했습니다.
+  - EXAONE 4.0 1.2B는 속도는 빠르지만 요약 품질(구체성, 팩트 추출)이 2.4B보다 부족하여 기본에서 제외.
+  - EXAONE 4.0 1.2B는 `초경량` 옵션으로 추천 모델에서 계속 선택할 수 있습니다.
+- 요약 설정을 EXAONE 3.5 2.4B에 맞게 복원했습니다 (ctx 4096, max_tokens 384, body 6000자).
+- 프롬프트 간결화와 마크다운 펜스 자동 제거는 유지합니다.
+
 ## [0.6.5.5] - 2026-04-17
 
 ### Fixed

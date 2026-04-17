@@ -21,11 +21,20 @@ LOCAL_MODELS: list[LocalModelChoice] = [
     # ── 추천 모델 (Recommended) ──────────────────────────
     LocalModelChoice(
         id="fast",
-        label="빠름 — EXAONE 4.0 1.2B (Q4_K_M)",
+        label="빠름 — EXAONE 3.5 2.4B (Q4_K_M)",
+        tier="fast",
+        hf_repo_id="LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF",
+        hf_filename="EXAONE-3.5-2.4B-Instruct-Q4_K_M.gguf",
+        notes="EXAONE 3.5 2.4B 모델입니다. 가장 빠른 응답, 한국어 특화.",
+        group="recommended",
+    ),
+    LocalModelChoice(
+        id="exaone40_1.2b",
+        label="초경량 — EXAONE 4.0 1.2B (Q4_K_M)",
         tier="fast",
         hf_repo_id="LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF",
         hf_filename="EXAONE-4.0-1.2B-Q4_K_M.gguf",
-        notes="EXAONE 4.0 1.2B 모델입니다. 가장 빠른 응답, 한국어 특화. (64K 컨텍스트)",
+        notes="EXAONE 4.0 1.2B 모델입니다. 매우 빠르지만 요약 품질은 2.4B보다 낮을 수 있습니다.",
         group="recommended",
     ),
     LocalModelChoice(
@@ -45,16 +54,6 @@ LOCAL_MODELS: list[LocalModelChoice] = [
         hf_filename="Qwen3.5-4B-Q4_K_M.gguf",
         notes="Qwen 3.5 4B 모델입니다. 다국어·코딩 성능이 우수한 최신 모델입니다.",
         group="recommended",
-    ),
-    # ── 기존 모델 (Legacy) ───────────────────────────────
-    LocalModelChoice(
-        id="exaone35_2.4b",
-        label="기존 — EXAONE 3.5 2.4B (Q4_K_M)",
-        tier="fast",
-        hf_repo_id="LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF",
-        hf_filename="EXAONE-3.5-2.4B-Instruct-Q4_K_M.gguf",
-        notes="EXAONE 3.5 2.4B 모델입니다. 이전 기본 모델.",
-        group="legacy",
     ),
     LocalModelChoice(
         id="standard",
@@ -116,7 +115,8 @@ GGUF_MODELS = [m for m in LOCAL_MODELS if m.engine == "gguf"]
 # When a new default model is not yet installed, fall back to the previous one.
 # key = new model id, value = legacy model id to use as fallback.
 MIGRATION_FALLBACKS: dict[str, str] = {
-    "fast": "exaone35_2.4b",  # EXAONE 4.0 → EXAONE 3.5
+    # No active migration fallbacks needed.
+    # EXAONE 3.5 2.4B is back as the default "fast" model.
 }
 
 
