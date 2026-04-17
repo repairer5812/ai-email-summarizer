@@ -42,14 +42,16 @@ jobs:
           $ver = "${{ github.ref_name }}".TrimStart('v')
           Set-Content -Path src/webmail_summary/_version.txt -Value $ver -Encoding ascii
           $parts = $ver.Split('.')
-          if ($parts.Length -lt 3) { throw "Version must be in form X.Y.Z (got: $ver)" }
-          $v4 = "$($parts[0]).$($parts[1]).$($parts[2]).0"
+          if ($parts.Length -lt 3) { throw "Version must be in form X.Y.Z or X.Y.Z.W (got: $ver)" }
+          # Pad to 4 parts for Windows version info (X.Y.Z.W)
+          while ($parts.Length -lt 4) { $parts += '0' }
+          $v4 = "$($parts[0]).$($parts[1]).$($parts[2]).$($parts[3])"
           $versionInfoLines = @(
             '# UTF-8',
-            'VSVersionInfo(', 
-            '  ffi=FixedFileInfo(', 
-            "    filevers=($($parts[0]), $($parts[1]), $($parts[2]), 0),", 
-            "    prodvers=($($parts[0]), $($parts[1]), $($parts[2]), 0),", 
+            'VSVersionInfo(',
+            '  ffi=FixedFileInfo(',
+            "    filevers=($($parts[0]), $($parts[1]), $($parts[2]), $($parts[3])),",
+            "    prodvers=($($parts[0]), $($parts[1]), $($parts[2]), $($parts[3])),", 
             '    mask=0x3f,',
             '    flags=0x0,',
             '    OS=0x4,',
