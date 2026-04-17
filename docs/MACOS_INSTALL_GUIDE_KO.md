@@ -94,8 +94,10 @@ python -m webmail_summary serve
 ```
 ~/Library/Application Support/WebmailSummary/
 ├── db.sqlite3          # 메일 메타데이터 + 설정
-├── models/gguf/        # 다운로드된 AI 모델 파일
+├── models/gguf/        # 다운로드된 GGUF 모델 파일
 └── engines/llama.cpp/  # llama.cpp 바이너리
+
+~/.cache/huggingface/hub/       # MLX 모델 캐시 (Apple Silicon 전용)
 ```
 
 ## 문의

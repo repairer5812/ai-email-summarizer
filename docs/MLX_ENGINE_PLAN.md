@@ -1,9 +1,9 @@
 # MLX Engine Integration Plan
 
-**Branch:** `feat/mlx-engine`
+**Branch:** `main` (merged)
 **Author:** Claude + ckc3705
 **Created:** 2026-04-17
-**Status:** Implemented (Phase 0~5 complete)
+**Status:** Implemented (Phase 0~5 complete, merged to main)
 
 ---
 
