@@ -10,6 +10,7 @@ from webmail_summary.export.obsidian.exporter import (
     MessageExportInput,
     export_daily_note,
     export_email_note,
+    export_topic_note,
 )
 from webmail_summary.index.db import get_conn
 from webmail_summary.index.mail_repo import (
@@ -163,6 +164,7 @@ def resummarize_day_task(
             connp.close()
 
         processed_notes: list[Path] = []
+        all_topics: dict[str, list[Path]] = {}  # topic -> note paths
 
         processed_count = 0
 
@@ -582,6 +584,8 @@ def resummarize_day_task(
                     ),
                 )
                 processed_notes.append(note_path)
+                for t in topics:
+                    all_topics.setdefault(t, []).append(note_path)
             except Exception:
                 # Export failures should not stop resummarize.
                 continue
@@ -620,6 +624,15 @@ def resummarize_day_task(
                 force_refresh=True,
                 job_id=job_id,
             )
+
+            # Rebuild topic notes for all topics referenced by re-summarized messages.
+            for t, notes in all_topics.items():
+                try:
+                    export_topic_note(
+                        vault_root=vault_root, topic=t, message_notes=notes
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
 

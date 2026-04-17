@@ -33,6 +33,7 @@ from webmail_summary.imap_client import ImapSession
 from webmail_summary.index.db import get_conn
 from webmail_summary.index.mail_repo import (
     get_max_uid,
+    get_incomplete_uids,
     replace_attachments,
     replace_external_assets,
     set_analysis,
@@ -499,6 +500,14 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     mailbox=s.imap_folder,
                     uidvalidity=uidvalidity,
                 )
+                # Collect UIDs that were archived but failed mid-pipeline
+                # (summarize/export/mark-seen). These must be retried.
+                retry_uids = get_incomplete_uids(
+                    conn0,
+                    account_id=account_id,
+                    mailbox=s.imap_folder,
+                    uidvalidity=uidvalidity,
+                )
             finally:
                 conn0.close()
 
@@ -506,12 +515,15 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
             import datetime as dt
 
             since = dt.date.today() - dt.timedelta(days=60)
-            uids = imap.search_uids(
+            new_uids = imap.search_uids(
                 s.sender_filter,
                 since,
                 unseen_only=False,
                 min_uid_exclusive=last_uid,
             )
+            # Merge: retry incomplete UIDs first, then new ones.
+            retry_set = set(retry_uids)
+            uids = retry_uids + [u for u in new_uids if u not in retry_set]
 
             connp = get_conn(db_path)
             try:

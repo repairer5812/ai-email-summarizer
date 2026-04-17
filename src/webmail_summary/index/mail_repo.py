@@ -215,6 +215,25 @@ def get_max_uid(
     return int(row[0])
 
 
+def get_incomplete_uids(
+    conn: sqlite3.Connection, *, account_id: str, mailbox: str, uidvalidity: int
+) -> list[int]:
+    """Return UIDs of messages that were archived but not fully processed.
+
+    These are messages present in the DB (upserted during a previous sync)
+    but whose ``seen_marked_at`` is still NULL — meaning summarization,
+    export, or seen-marking failed partway through.
+    """
+    rows = conn.execute(
+        "SELECT uid FROM messages "
+        "WHERE account_id=? AND mailbox=? AND uidvalidity=? "
+        "AND seen_marked_at IS NULL "
+        "ORDER BY uid",
+        (account_id, mailbox, int(uidvalidity)),
+    ).fetchall()
+    return [int(r[0]) for r in rows]
+
+
 def list_messages_by_date(
     conn: sqlite3.Connection, *, date_prefix: str
 ) -> list[sqlite3.Row]:
