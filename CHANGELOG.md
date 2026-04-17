@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.7] - 2026-04-17
+
+### Added
+
+- llama.cpp 엔진 자동 업그레이드 기능을 추가했습니다.
+  - 최소 빌드 번호(b8637, Gemma 4 지원)보다 오래된 엔진은 자동으로 최신 버전으로 교체됩니다.
+  - 새 엔진 설치 후 구 버전 폴더를 자동 정리합니다.
+  - 사용자는 설정에서 "엔진 + 모델 설치"를 다시 누르면 엔진이 업데이트됩니다.
+
+### Fixed
+
+- Gemma 4 E4B 모델 선택 시 "LLM unavailable" 오류를 해결했습니다.
+  - 원인: 설치된 llama.cpp(b8083)가 gemma4 아키텍처를 지원하지 않았습니다.
+
 ## [0.6.5.6] - 2026-04-17
 
 ### Changed

@@ -18,6 +18,17 @@ class EngineInstallError(RuntimeError):
     pass
 
 
+# Minimum llama.cpp build number required.
+# b8637+ is needed for Gemma 4 (gemma4 architecture) support.
+_MIN_BUILD_NUMBER = 8637
+
+
+def _parse_build_number(tag: str) -> int:
+    """Extract the numeric build number from a tag like 'b8083'."""
+    m = re.search(r"b(\d+)", str(tag or ""))
+    return int(m.group(1)) if m else 0
+
+
 @dataclass(frozen=True)
 class LlamaCppInstall:
     version_tag: str
@@ -223,12 +234,29 @@ def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
         if cli is None:
             last_err = f"No llama CLI exe found after extraction ({name})"
             continue
+
+        # Clean up outdated engine directories.
+        _cleanup_old_engines(engines, keep_tag=tag)
+
         return LlamaCppInstall(version_tag=tag, bin_dir=cli.parent, llama_cli_path=cli)
 
     raise EngineInstallError(last_err or "Failed to install llama.cpp")
 
 
-def find_llama_cpp_installed() -> LlamaCppInstall | None:
+def _cleanup_old_engines(engines_dir: Path, *, keep_tag: str) -> None:
+    """Remove old llama.cpp engine directories, keeping only *keep_tag*."""
+    try:
+        for d in engines_dir.iterdir():
+            if not d.is_dir() or d.name == keep_tag:
+                continue
+            import shutil
+
+            shutil.rmtree(d, ignore_errors=True)
+    except Exception:
+        pass
+
+
+def find_llama_cpp_installed(*, min_build: int = _MIN_BUILD_NUMBER) -> LlamaCppInstall | None:
     engines = get_engines_dir() / "llama.cpp"
     if not engines.exists():
         return None
@@ -236,8 +264,12 @@ def find_llama_cpp_installed() -> LlamaCppInstall | None:
     candidates = sorted([p for p in engines.iterdir() if p.is_dir()], reverse=True)
     for c in candidates:
         cli = _find_llama_cli(c)
-        if cli is not None:
-            return LlamaCppInstall(version_tag=c.name, bin_dir=c, llama_cli_path=cli)
+        if cli is None:
+            continue
+        build = _parse_build_number(c.name)
+        if build > 0 and build < min_build:
+            continue  # skip outdated engines
+        return LlamaCppInstall(version_tag=c.name, bin_dir=c, llama_cli_path=cli)
     return None
 
 
