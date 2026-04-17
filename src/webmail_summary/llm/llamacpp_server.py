@@ -236,11 +236,9 @@ class LlamaCppServerProvider(LlmProvider):
                 "Format:\n"
                 '{"summary":["bullet1","bullet2",...],"tags":["tag1"],"backlinks":["topic1"],"personal":false}\n\n'
                 "Rules:\n"
-                "- summary: 6~12 bullet points in Korean. Important points first.\n"
-                "- Use '주체: 내용' format (e.g. '회사명: 무엇을 했는지').\n"
+                "- summary: 6~12 concise bullet points in Korean.\n"
                 "- Ignore footer noise (addresses, unsubscribe, copyright).\n"
-                "- tags: short Korean nouns. backlinks: topic names.\n"
-                "- Output ONLY the JSON object. No markdown fences.\n\n"
+                "- tags: short Korean nouns. backlinks: topic names.\n\n"
                 f"Subject: {subject}\n\n"
                 f"Body:\n{b}\n"
             )
@@ -330,7 +328,9 @@ class LlamaCppServerProvider(LlmProvider):
                 return None
 
         data = None
-        body_limit = 10000
+        # Reserve ~2048 tokens for prompt overhead + output; rest for body.
+        # Rough estimate: 1 Korean char ≈ 1.5 tokens.
+        body_limit = max(3000, int((self._cfg.ctx_size - 2048) / 1.5))
         max_attempts = max(1, int(self._cfg.max_attempts))
         budget_s = max(10.0, float(self._cfg.total_request_budget_s))
         for attempt in range(max_attempts):
