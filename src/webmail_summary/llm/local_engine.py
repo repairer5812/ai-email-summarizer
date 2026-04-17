@@ -140,12 +140,14 @@ def _pick_release_assets(assets: list[dict]) -> list[dict]:
     return [a for a in ranked if score(a) > -10_000]
 
 
-def ensure_llama_cpp_installed(*, timeout_s: int = 180) -> LlamaCppInstall:
+def ensure_llama_cpp_installed(
+    *, timeout_s: int = 180, min_build: int = 0
+) -> LlamaCppInstall:
     # Install under app-data/WebmailSummary/engines/llama.cpp/<tag>/
     engines = get_engines_dir() / "llama.cpp"
     engines.mkdir(parents=True, exist_ok=True)
 
-    existing = find_llama_cpp_installed()
+    existing = find_llama_cpp_installed(min_build=min_build)
     if existing is not None:
         return existing
 
@@ -256,7 +258,12 @@ def _cleanup_old_engines(engines_dir: Path, *, keep_tag: str) -> None:
         pass
 
 
-def find_llama_cpp_installed(*, min_build: int = _MIN_BUILD_NUMBER) -> LlamaCppInstall | None:
+def find_llama_cpp_installed(*, min_build: int = 0) -> LlamaCppInstall | None:
+    """Find an installed llama.cpp engine.
+
+    *min_build* defaults to 0 (accept any version).  Callers that need a
+    newer engine (e.g. for Gemma 4 support) should pass ``_MIN_BUILD_NUMBER``.
+    """
     engines = get_engines_dir() / "llama.cpp"
     if not engines.exists():
         return None
@@ -267,7 +274,7 @@ def find_llama_cpp_installed(*, min_build: int = _MIN_BUILD_NUMBER) -> LlamaCppI
         if cli is None:
             continue
         build = _parse_build_number(c.name)
-        if build > 0 and build < min_build:
+        if min_build > 0 and build > 0 and build < min_build:
             continue  # skip outdated engines
         return LlamaCppInstall(version_tag=c.name, bin_dir=c, llama_cli_path=cli)
     return None
