@@ -251,9 +251,9 @@ class LlamaCppServerProvider(LlmProvider):
             body_len = len(str(body or ""))
             dynamic_max_tokens = int(self._cfg.max_tokens)
             if body_len <= 2500:
-                dynamic_max_tokens = min(dynamic_max_tokens, 320)
+                dynamic_max_tokens = min(dynamic_max_tokens, 768)
             if int(attempt) > 0:
-                dynamic_max_tokens = min(dynamic_max_tokens, 256)
+                dynamic_max_tokens = min(dynamic_max_tokens, 768)
             payload = {
                 "model": self._cfg.alias,
                 "messages": [
@@ -419,6 +419,16 @@ class LlamaCppServerProvider(LlmProvider):
             content = ""
 
         content = content.strip()
+        # Strip markdown code fences that small models often add.
+        if content.startswith("```"):
+            lines = content.split("\n")
+            # Remove first line (```json) and last line (```)
+            if lines[-1].strip() == "```":
+                lines = lines[1:-1]
+            else:
+                lines = lines[1:]
+            content = "\n".join(lines).strip()
+
         obj = None
         try:
             # Prefer strict JSON if possible.
