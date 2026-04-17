@@ -22,7 +22,7 @@ class LlamaCppServerConfig:
     model_path: Path
     host: str = "127.0.0.1"
     port: int = 4891
-    ctx_size: int = 8192
+    ctx_size: int = 4096
     max_tokens: int = 192
     request_timeout_s: float = 40.0
     max_attempts: int = 1
@@ -249,9 +249,9 @@ class LlamaCppServerProvider(LlmProvider):
             body_len = len(str(body or ""))
             dynamic_max_tokens = int(self._cfg.max_tokens)
             if body_len <= 2500:
-                dynamic_max_tokens = min(dynamic_max_tokens, 768)
+                dynamic_max_tokens = min(dynamic_max_tokens, 320)
             if int(attempt) > 0:
-                dynamic_max_tokens = min(dynamic_max_tokens, 768)
+                dynamic_max_tokens = min(dynamic_max_tokens, 256)
             payload = {
                 "model": self._cfg.alias,
                 "messages": [
@@ -328,9 +328,7 @@ class LlamaCppServerProvider(LlmProvider):
                 return None
 
         data = None
-        # Reserve ~2048 tokens for prompt overhead + output; rest for body.
-        # Rough estimate: 1 Korean char ≈ 1.5 tokens.
-        body_limit = max(3000, int((self._cfg.ctx_size - 2048) / 1.5))
+        body_limit = 6000
         max_attempts = max(1, int(self._cfg.max_attempts))
         budget_s = max(10.0, float(self._cfg.total_request_budget_s))
         for attempt in range(max_attempts):
