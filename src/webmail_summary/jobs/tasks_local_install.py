@@ -161,8 +161,25 @@ def local_install_task(*, model_id: str):
         finally:
             conn.close()
 
+        def _engine_progress(downloaded: int, total: int, msg: str) -> None:
+            try:
+                pct = int((downloaded / max(1, total)) * 30)  # engine = 0~30%
+                conn_ep = get_conn(db_path)
+                try:
+                    repo.update_progress(
+                        conn_ep,
+                        job_id=job_id,
+                        current=pct,
+                        total=100,
+                        message=msg,
+                    )
+                finally:
+                    conn_ep.close()
+            except Exception:
+                pass
+
         try:
-            inst = ensure_llama_cpp_installed()
+            inst = ensure_llama_cpp_installed(on_progress=_engine_progress)
         except EngineInstallError as e:
             conn2 = get_conn(db_path)
             try:
