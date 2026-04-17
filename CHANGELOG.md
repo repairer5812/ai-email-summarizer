@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.9] - 2026-04-18
+
+### Changed
+
+- llama.cpp 엔진을 항상 최신 버전으로 자동 유지하도록 개선했습니다.
+  - "엔진 + 모델 설치" 시 GitHub 최신 릴리즈와 비교하여 구 버전이면 자동 업그레이드합니다.
+  - 모델별 `min_engine_build` 수동 관리가 더 이상 필요 없습니다.
+  - 네트워크 불가 시에는 기존 엔진으로 안전하게 동작합니다.
+
 ## [0.6.5.8] - 2026-04-17
 
 ### Fixed
