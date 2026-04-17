@@ -20,6 +20,29 @@ def test_hidden_subprocess_kwargs_empty_on_non_windows(monkeypatch):
     assert proc.detached_subprocess_kwargs() == {}
 
 
+def test_is_apple_silicon_on_darwin_arm64(monkeypatch):
+    monkeypatch.setattr(caps, "is_macos", lambda: True)
+    monkeypatch.setattr(caps.platform, "machine", lambda: "arm64")
+    assert caps.is_apple_silicon() is True
+
+
+def test_is_apple_silicon_on_darwin_x86(monkeypatch):
+    monkeypatch.setattr(caps, "is_macos", lambda: True)
+    monkeypatch.setattr(caps.platform, "machine", lambda: "x86_64")
+    assert caps.is_apple_silicon() is False
+
+
+def test_is_apple_silicon_on_windows(monkeypatch):
+    monkeypatch.setattr(caps, "is_macos", lambda: False)
+    monkeypatch.setattr(caps.platform, "machine", lambda: "arm64")
+    assert caps.is_apple_silicon() is False
+
+
+def test_is_mlx_available_not_apple_silicon(monkeypatch):
+    monkeypatch.setattr(caps, "is_apple_silicon", lambda: False)
+    assert caps.is_mlx_available() is False
+
+
 def test_install_on_logon_task_rejects_non_windows(monkeypatch):
     monkeypatch.setattr(caps, "system_name", lambda: "darwin")
 
