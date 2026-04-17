@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.2] - 2026-04-17
+
+### Fixed
+
+- 4자리 버전(X.Y.Z.W) 사용 시 업데이트가 무한 반복되던 문제를 수정했습니다.
+  - EXE 버전 읽기에서 3자리만 추출하던 정규식을 4자리 지원으로 변경.
+  - 릴리즈 빌드(PyInstaller)에서 4번째 자리를 0으로 고정하던 로직을 실제 값 반영으로 수정.
+
 ## [0.6.5.1] - 2026-04-17
 
 ### Changed

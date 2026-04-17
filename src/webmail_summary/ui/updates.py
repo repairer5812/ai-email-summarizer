@@ -114,10 +114,10 @@ def _get_windows_frozen_exe_version() -> str | None:
             **popen_kwargs,
         )
         raw = _normalize_version(str(out or "").strip())
-        m = re.search(r"(\d+)\.(\d+)\.(\d+)", raw)
+        m = re.search(r"(\d+(?:\.\d+){1,3})", raw)
         if not m:
             return None
-        return f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+        return m.group(1)
     except Exception:
         return None
 
