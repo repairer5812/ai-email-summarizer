@@ -193,6 +193,35 @@
                         {% if local_ready.model_ok %}{{ t(request, 'setup.local.model_ok') }}{% else %}{{ t(request, 'setup.local.model_missing') }}{% endif %}
                       </div>
                     </div>
+
+                    {# ── Installed Models Management ── #}
+                    {% set any_installed = model_installed.values()|select|list|length > 0 %}
+                    {% if any_installed %}
+                    <div class="form-group">
+                      <label>{% if ui_lang(request) == 'ko' %}설치된 모델 관리{% else %}Installed Models{% endif %}</label>
+                      <div class="installed-models-list">
+                        {% for m in recommended_models + legacy_models %}
+                          {% if model_installed.get(m.id) %}
+                          <div class="installed-model-row" id="model-row-{{ m.id }}">
+                            <div class="installed-model-info">
+                              <span class="installed-model-name">{{ m.label }}</span>
+                              <span class="installed-model-size muted">
+                                {% set sz = model_size.get(m.id, 0) %}
+                                {% if sz >= 1073741824 %}{{ "%.1f"|format(sz / 1073741824) }} GB{% elif sz >= 1048576 %}{{ (sz / 1048576)|round|int }} MB{% else %}{{ sz }} B{% endif %}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              class="btn btn--danger btn--sm btn-delete-model"
+                              data-model-id="{{ m.id }}"
+                              data-model-label="{{ m.label|e }}"
+                            >{% if ui_lang(request) == 'ko' %}삭제{% else %}Delete{% endif %}</button>
+                          </div>
+                          {% endif %}
+                        {% endfor %}
+                      </div>
+                    </div>
+                    {% endif %}
                     <div class="form-group">
                       <label>{{ t(request, 'setup.install_local') }}</label>
                       <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap;">
@@ -442,6 +471,14 @@
 .role-btn:hover { border-color: var(--accent); }
 .role-btn.is-checked { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: var(--shadow); }
 .role-btn input { display: none; }
+.installed-models-list { display: flex; flex-direction: column; gap: 8px; }
+.installed-model-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); }
+.installed-model-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.installed-model-name { font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.installed-model-size { font-size: 0.8rem; }
+.btn--danger { background: #dc2626; color: #fff; border: none; }
+.btn--danger:hover { background: #b91c1c; }
+.btn--sm { padding: 5px 14px; font-size: 0.82rem; border-radius: 8px; }
 .wizard__footer { margin-top: 32px; display: flex; justify-content: flex-end; }
 </style>
 
@@ -919,6 +956,41 @@
         }
     });
   }
+
+  // --- Logic: Model Deletion ---
+  document.querySelectorAll('.btn-delete-model').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const modelId = btn.getAttribute('data-model-id');
+      const modelLabel = btn.getAttribute('data-model-label');
+      const confirmMsg = '{% if ui_lang(request) == "ko" %}이 모델을 삭제하시겠습니까?{% else %}Delete this model?{% endif %}';
+      if (!confirm(confirmMsg + '\n' + modelLabel)) return;
+
+      btn.disabled = true;
+      btn.textContent = '{% if ui_lang(request) == "ko" %}삭제 중...{% else %}Deleting...{% endif %}';
+      try {
+        const res = await fetch('/api/local/models/' + encodeURIComponent(modelId), { method: 'DELETE' });
+        const j = await res.json().catch(() => ({}));
+        if (res.ok && j.ok) {
+          const row = document.getElementById('model-row-' + modelId);
+          if (row) row.remove();
+          // If no more installed models, hide the section
+          const list = document.querySelector('.installed-models-list');
+          if (list && !list.children.length) {
+            const fg = list.closest('.form-group');
+            if (fg) fg.remove();
+          }
+        } else {
+          alert((j && j.error) || 'Delete failed');
+          btn.disabled = false;
+          btn.textContent = '{% if ui_lang(request) == "ko" %}삭제{% else %}Delete{% endif %}';
+        }
+      } catch (e) {
+        alert('Delete failed: ' + String(e && e.message ? e.message : e));
+        btn.disabled = false;
+        btn.textContent = '{% if ui_lang(request) == "ko" %}삭제{% else %}Delete{% endif %}';
+      }
+    });
+  });
 
   // --- Init ---
   syncAiMenus();
