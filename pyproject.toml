@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "webmail-summary"
-version = "0.5.59"
+version = "0.6.0"
 description = "IMAP mail summarizer -> Obsidian markdown"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,3 +38,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["%TEMP%", ".venv", "dist", "build"]

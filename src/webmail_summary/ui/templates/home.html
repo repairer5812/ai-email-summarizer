@@ -184,6 +184,68 @@
 </script>
 {% endif %}
 
+{% if show_new_models_popup %}
+<div class="modal" id="new-models-modal" aria-hidden="true">
+  <div class="modal__backdrop"></div>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="new-models-modal-title">
+    <div class="modal__title" id="new-models-modal-title">새로운 AI 모델이 추가되었습니다</div>
+    <div class="modal__body">
+      <div style="margin-bottom: 12px;">더 높은 성능의 최신 모델을 사용할 수 있습니다.</div>
+      <table style="width:100%; font-size: 13px; border-collapse: collapse; margin-bottom: 12px;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border); text-align: left;">
+            <th style="padding: 6px 8px;">티어</th>
+            <th style="padding: 6px 8px;">모델</th>
+            <th style="padding: 6px 8px;">특징</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid var(--border);">
+            <td style="padding: 6px 8px; font-weight: 600;">빠름</td>
+            <td style="padding: 6px 8px;">EXAONE 3.5 2.4B</td>
+            <td style="padding: 6px 8px; color: var(--text-secondary);">한국어 특화, 최고 속도</td>
+          </tr>
+          <tr style="border-bottom: 1px solid var(--border); background: rgba(99,102,241,0.05);">
+            <td style="padding: 6px 8px; font-weight: 600;">표준 <span style="color: var(--accent); font-size: 11px;">NEW</span></td>
+            <td style="padding: 6px 8px;">Gemma 4 E4B</td>
+            <td style="padding: 6px 8px; color: var(--text-secondary);">추론·코딩 대폭 향상</td>
+          </tr>
+          <tr style="background: rgba(99,102,241,0.05);">
+            <td style="padding: 6px 8px; font-weight: 600;">성능 <span style="color: var(--accent); font-size: 11px;">NEW</span></td>
+            <td style="padding: 6px 8px;">Qwen 3.5 4B</td>
+            <td style="padding: 6px 8px; color: var(--text-secondary);">다국어·코딩 우수</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="muted" style="font-size: 12px;">기존 모델(Gemma 3, Qwen 2.5)은 설정에서 계속 선택할 수 있습니다.</div>
+    </div>
+    <div class="modal__actions">
+      <a class="btn" href="/setup?tab=ai">설정에서 변경하기</a>
+      <button class="btn btn--secondary" type="button" id="new-models-modal-close">닫기</button>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const modal = document.getElementById('new-models-modal');
+  if (!modal) return;
+  modal.setAttribute('aria-hidden', 'false');
+  const close = () => {
+    modal.setAttribute('aria-hidden', 'true');
+    fetch('/api/new-models-popup/dismiss', { method: 'POST' }).catch(() => {});
+  };
+  const closeBtn = document.getElementById('new-models-modal-close');
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  const backdrop = modal.querySelector('.modal__backdrop');
+  if (backdrop) backdrop.addEventListener('click', close);
+  const setupLink = modal.querySelector('a.btn');
+  if (setupLink) setupLink.addEventListener('click', () => {
+    fetch('/api/new-models-popup/dismiss', { method: 'POST' }).catch(() => {});
+  });
+})();
+</script>
+{% endif %}
+
 {% if not ai.setup_complete %}
   <div class="card span-4" style="margin-bottom: 24px; text-align: center; border-color: var(--accent);">
     <div class="card__title"><strong>{{ t(request, 'setup.ai.not_ready.title') }}</strong></div>
@@ -207,6 +269,7 @@
       <div id="sync-progress-box">
         <div class="bar"><div class="bar__fill" id="sync-bar" style="width:0%"></div></div>
         <div class="muted" id="sync-text" style="margin-top: 8px;">{% if ui_lang(request) == 'ko' %}대기{% else %}Idle{% endif %}</div>
+        <div class="muted" id="sync-meta" style="margin-top: 6px; display:none; font-size: 0.85rem;"></div>
 
         <div class="stepper" id="sync-stepper" style="display:none; margin-top:16px;">
           <div class="stepper__track" id="sync-track" style="width:0%"></div>
@@ -268,7 +331,7 @@
 <script>
 (() => {
   // --- UI Elements ---
-  const btn = document.getElementById('btn-sync'), bar = document.getElementById('sync-bar'), text = document.getElementById('sync-text');
+  const btn = document.getElementById('btn-sync'), bar = document.getElementById('sync-bar'), text = document.getElementById('sync-text'), meta = document.getElementById('sync-meta');
   const stepperEl = document.getElementById('sync-stepper'), trackEl = document.getElementById('sync-track');
   const resumBox = document.getElementById('resum-progress-box'), resumBar = document.getElementById('resum-bar'), resumText = document.getElementById('resum-text');
   const btnRefresh = document.getElementById('btn-refresh-overviews'), refreshBox = document.getElementById('refresh-progress-box'), refreshBar = document.getElementById('refresh-bar'), refreshText = document.getElementById('refresh-text');
@@ -278,6 +341,7 @@
   const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }}, LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }}, LABEL_REFRESH = {{ t(request, 'home.btn.refresh_overviews')|tojson }}, LABEL_SUMMARIZING = {{ t(request, 'home.btn.refresh_ing')|tojson }};
   const STR_STARTING = {{ ("동기화를 시작합니다" if ui_lang(request) == 'ko' else "Starting sync")|tojson }}, STR_ERROR = {{ ("오류" if ui_lang(request) == 'ko' else "Error")|tojson }}, STR_EVENT_STREAM = {{ ("오류: 이벤트 스트림" if ui_lang(request) == 'ko' else "Error: event stream")|tojson }};
   const STR_PICK_ONE_DAY = {{ t(request, 'home.btn.refresh_pick_one')|tojson }};
+  const STR_META_COUNT = {{ t(request, 'home.progress.meta.count')|tojson }}, STR_META_ETA = {{ t(request, 'home.progress.meta.eta')|tojson }}, STR_META_STOPPING = {{ t(request, 'home.progress.meta.stopping')|tojson }};
 
   let es = null, resumEs = null, refreshEs = null;
   let currentJobId = "", currentResumId = "", currentRefreshId = "";
@@ -416,6 +480,41 @@
     if (text) text.textContent = (msg || '...') + ' (' + p.toFixed(2) + '%)';
   }
 
+  function formatEta(seconds) {
+    const sec = Math.max(0, Math.round(Number(seconds || 0)));
+    if (!sec) return '';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function parseIsoMs(value) {
+    const ts = Date.parse(String(value || ''));
+    return Number.isFinite(ts) ? ts : 0;
+  }
+
+  function renderMeta(cur, total, p) {
+    if (!meta) return;
+    const parts = [];
+    if (total > 0) parts.push(`${STR_META_COUNT} ${Math.floor(cur)}/${Math.floor(total)}`);
+    const startedAtMs = parseIsoMs(p && p.created_at);
+    if (startedAtMs > 0 && total > 0 && cur > 0 && total > cur) {
+      const elapsed = (Date.now() - startedAtMs) / 1000;
+      if (elapsed > 1) {
+        const rate = cur / elapsed;
+        if (rate > 0) {
+          const eta = formatEta((total - cur) / rate);
+          if (eta) parts.push(`${STR_META_ETA} ${eta}`);
+        }
+      }
+    }
+    meta.textContent = parts.join(' · ');
+    meta.style.display = parts.length ? 'block' : 'none';
+  }
+
   function watchResummarize(jobId) {
     if (!jobId || !resumBox) return;
     currentResumId = String(jobId);
@@ -514,15 +613,28 @@
     if (p && p.status === 'cancel_requested') {
       if (bar) bar.style.width = '100%';
       if (text) text.textContent = "{% if ui_lang(request) == 'ko' %}멈추는 중...{% else %}Stopping...{% endif %}";
+      if (meta) { meta.textContent = STR_META_STOPPING; meta.style.display = 'block'; }
       if (btn) btn.disabled = true;
       if (stepperEl) stepperEl.style.display = 'none';
       return;
     }
     const total = Number(p.total || 0), cur = Number(p.current || 0);
-    const pct = Math.max(0, Math.min(100, (cur / (total || 1)) * 100));
     const msg = (p.message || p.status || '...');
+
+    // If message contains an explicit (x/y), prefer it for display.
+    let dispCur = cur, dispTotal = total;
+    try {
+      const m = String(msg || '').match(/\((\d+)\/(\d+)\)\s*$/);
+      if (m) {
+        dispCur = Number(m[1] || dispCur);
+        dispTotal = Number(m[2] || dispTotal);
+      }
+    } catch (e) {}
+
+    const pct = Math.max(0, Math.min(100, (dispCur / (dispTotal || 1)) * 100));
     if (bar) bar.style.width = pct + '%';
-    if (text) text.textContent = msg + ' (' + (total > 0 ? (Math.floor(cur) + '/' + total) : Math.floor(cur)) + ', ' + pct.toFixed(2) + '%)';
+    if (text) text.textContent = msg + ' (' + (dispTotal > 0 ? (Math.floor(dispCur) + '/' + dispTotal) : Math.floor(dispCur)) + ', ' + pct.toFixed(2) + '%)';
+    renderMeta(cur, total, p);
     if (btn) btn.disabled = false;
     if (stepperEl && cur > 0) {
       stepperEl.style.display = 'flex';
@@ -554,6 +666,7 @@
       es = null; currentJobId = "";
       if (btn) btn.textContent = LABEL_START;
       if (stepperEl) stepperEl.style.display = 'none';
+      if (meta) { meta.style.display = 'none'; meta.textContent = ''; }
       if (status === 'succeeded') setTimeout(() => location.reload(), 400);
     };
 
@@ -567,6 +680,8 @@
           current: j.progress_current,
           total: j.progress_total,
           message: j.message,
+          created_at: j.created_at,
+          updated_at: j.updated_at,
         });
         if (j.status === 'running' && !dayRefreshTimer) dayRefreshTimer = setInterval(refreshDayList, 15000);
         if (j.status === 'succeeded' || j.status === 'failed' || j.status === 'cancelled') onTerminal(j.status);

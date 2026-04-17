@@ -525,7 +525,23 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
             finally:
                 connp.close()
 
-            msgs = imap.fetch_messages(uids)
+            msg_total = int(len(uids))
+
+            def _on_fetch_progress(fetched: int, total: int) -> None:
+                if cancel.is_set():
+                    return
+                # Keep the UI alive while fetching large batches.
+                _update_job_progress(
+                    db_path=db_path,
+                    job_id=job_id,
+                    current=0,
+                    total=max(msg_total, 1),
+                    message=f"메일 가져오는 중 ({int(fetched)}/{max(int(total), 1)})",
+                )
+
+            msg_iter = imap.iter_messages(
+                uids, chunk_size=20, on_progress=_on_fetch_progress
+            )
             processed_notes: list[
                 tuple[str, Path, list[str]]
             ] = []  # date_prefix, note_path, topics
@@ -552,7 +568,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     im2.clear_seen(uid)
 
             try:
-                for i, m in enumerate(msgs, start=1):
+                for i, m in enumerate(msg_iter, start=1):
                     if cancel.is_set():
                         break
 
@@ -568,7 +584,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                             db_path=db_path,
                             job_id=job_id,
                             current=i - 0.99,
-                            total=max(len(msgs), 1),
+                            total=max(msg_total, 1),
                             message=_build_stage_message(
                                 stage=stage,
                                 display_date=display_date,
@@ -700,8 +716,8 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                             db_path=db_path,
                             job_id=job_id,
                             current=i - 1 + fraction,
-                            total=max(len(msgs), 1),
-                            message=f"[{display_date}] 요약 중: {display_sub} ({i}/{len(msgs)})",
+                            total=max(msg_total, 1),
+                            message=f"[{display_date}] 요약 중: {display_sub} ({i}/{msg_total})",
                         )
 
                     t1 = time.monotonic()
@@ -729,7 +745,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         user_profile=user_profile,
                         update_sub_progress=update_sub_progress,
                         item_index=i,
-                        item_total=len(msgs),
+                        item_total=msg_total,
                         display_date=display_date,
                         display_sub=display_sub,
                         multimodal_inputs=multimodal_inputs,
@@ -766,19 +782,36 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     email_dt = (
                         m.internaldate.date() if m.internaldate else dt.date.today()
                     )
-                    note_path = export_email_note(
-                        vault_root=vault_root,
-                        inp=MessageExportInput(
-                            message_key=f"{account_id}-{uidvalidity}-{m.uid}",
-                            date=email_dt,
-                            sender=str(hdr.get("from") or s.sender_filter),
-                            subject=str(subject),
-                            summary=llm_res.summary,
-                            tags=llm_res.tags,
-                            topics=topics,
-                            archive_dir=paths.base_dir,
-                        ),
-                    )
+                    note_path: Path | None = None
+                    try:
+                        note_path = export_email_note(
+                            vault_root=vault_root,
+                            inp=MessageExportInput(
+                                message_key=f"{account_id}-{uidvalidity}-{m.uid}",
+                                date=email_dt,
+                                sender=str(hdr.get("from") or "(unknown)"),
+                                subject=str(subject),
+                                summary=llm_res.summary,
+                                tags=llm_res.tags,
+                                topics=topics,
+                                archive_dir=paths.base_dir,
+                            ),
+                        )
+                    except Exception as e:
+                        _add_job_event(
+                            db_path=db_path,
+                            job_id=job_id,
+                            level="error",
+                            text=f"Obsidian export failed (continuing): {e}",
+                        )
+                        _update_job_progress(
+                            db_path=db_path,
+                            job_id=job_id,
+                            current=i,
+                            total=max(msg_total, 1),
+                            message=f"[{display_date}] Obsidian 내보내기 실패 (계속): {display_sub} ({i}/{msg_total})",
+                        )
+                        continue
 
                     conn3 = get_conn(db_path)
                     try:
@@ -821,41 +854,66 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         if m.internaldate
                         else dt.date.today().isoformat()
                     )
-                    processed_notes.append((date_prefix, note_path, topics))
+                    if note_path is not None:
+                        processed_notes.append((date_prefix, note_path, topics))
 
                 # Daily digests + topic notes
                 by_date, by_topic = _group_processed_notes(processed_notes)
 
                 for d, notes in by_date.items():
                     daily_summary = _build_daily_summary(notes)
-                    export_daily_note(
-                        vault_root=vault_root,
-                        date=datetime.fromisoformat(d).date(),
-                        message_notes=notes,
-                        daily_summary=daily_summary,
-                    )
-
-                for t, notes in by_topic.items():
-                    export_topic_note(
-                        vault_root=vault_root, topic=t, message_notes=notes
-                    )
-
-                if by_date:
-                    refreshed_days = refresh_overviews_for_dates(
-                        db_path=db_path,
-                        provider=provider,
-                        settings=s,
-                        date_keys=list(by_date.keys()),
-                        force_refresh=True,
-                        job_id=job_id,
-                    )
-                    if refreshed_days:
+                    try:
+                        export_daily_note(
+                            vault_root=vault_root,
+                            date=datetime.fromisoformat(d).date(),
+                            message_notes=notes,
+                            daily_summary=daily_summary,
+                        )
+                    except Exception as e:
                         _add_job_event(
                             db_path=db_path,
                             job_id=job_id,
-                            level="info",
-                            text="daily_overview refreshed: "
-                            + ", ".join(refreshed_days),
+                            level="warn",
+                            text=f"Obsidian daily export failed: {e}",
+                        )
+
+                for t, notes in by_topic.items():
+                    try:
+                        export_topic_note(
+                            vault_root=vault_root, topic=t, message_notes=notes
+                        )
+                    except Exception as e:
+                        _add_job_event(
+                            db_path=db_path,
+                            job_id=job_id,
+                            level="warn",
+                            text=f"Obsidian topic export failed: {e}",
+                        )
+
+                if by_date:
+                    try:
+                        refreshed_days = refresh_overviews_for_dates(
+                            db_path=db_path,
+                            provider=provider,
+                            settings=s,
+                            date_keys=list(by_date.keys()),
+                            force_refresh=True,
+                            job_id=job_id,
+                        )
+                        if refreshed_days:
+                            _add_job_event(
+                                db_path=db_path,
+                                job_id=job_id,
+                                level="info",
+                                text="daily_overview refreshed: "
+                                + ", ".join(refreshed_days),
+                            )
+                    except Exception as e:
+                        _add_job_event(
+                            db_path=db_path,
+                            job_id=job_id,
+                            level="warn",
+                            text=f"daily_overview refresh failed: {e}",
                         )
 
             finally:
