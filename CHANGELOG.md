@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.5] - 2026-04-17
+
+### Fixed
+
+- 긴 메일 요약 시 llama-server 크래시를 방지했습니다.
+  - body_limit을 ctx_size 기반으로 동적 계산하여 컨텍스트 초과를 예방합니다.
+- 요약 결과에서 "주체:" 패턴이 반복적으로 나타나는 문제를 개선했습니다.
+
 ## [0.6.5.4] - 2026-04-17
 
 ### Fixed
