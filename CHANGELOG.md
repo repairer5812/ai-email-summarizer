@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.8] - 2026-04-17
+
+### Fixed
+
+- 엔진 최소 빌드 체크가 기존 모델(EXAONE 3.5 등)까지 차단하던 문제를 수정했습니다.
+  - 모델별 `min_engine_build` 속성으로 엔진 요구사항을 세분화.
+  - EXAONE 3.5 등 구 모델은 기존 엔진(b8083)으로 즉시 동작합니다.
+  - Gemma 4 등 신규 모델 설치 시에만 최신 엔진이 필요하며, 자동으로 다운로드됩니다.
+
 ## [0.6.5.7] - 2026-04-17
 
 ### Added

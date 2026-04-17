@@ -15,6 +15,7 @@ class LocalModelChoice:
     notes: str
     group: str = "recommended"  # "recommended" | "legacy" | "mlx"
     engine: str = "gguf"  # "gguf" | "mlx"
+    min_engine_build: int = 0  # minimum llama.cpp build number required
 
 
 LOCAL_MODELS: list[LocalModelChoice] = [
@@ -36,6 +37,7 @@ LOCAL_MODELS: list[LocalModelChoice] = [
         hf_filename="EXAONE-4.0-1.2B-Q4_K_M.gguf",
         notes="EXAONE 4.0 1.2B 모델입니다. 매우 빠르지만 요약 품질은 2.4B보다 낮을 수 있습니다.",
         group="recommended",
+        min_engine_build=8637,
     ),
     LocalModelChoice(
         id="gemma4_e4b",
@@ -45,6 +47,7 @@ LOCAL_MODELS: list[LocalModelChoice] = [
         hf_filename="gemma-4-E4B-it-Q4_K_M.gguf",
         notes="Gemma 4 E4B 모델입니다. 추론·코딩 성능이 크게 향상된 최신 모델입니다.",
         group="recommended",
+        min_engine_build=8637,
     ),
     LocalModelChoice(
         id="qwen35_4b",

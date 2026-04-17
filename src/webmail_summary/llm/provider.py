@@ -107,13 +107,16 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
             log.info("MLX provider unavailable; falling back to llama.cpp")
 
         # --- llama.cpp path (original) ---
-        inst = find_llama_cpp_installed()
-        if inst is None:
-            raise LlmNotReady("Local engine not installed")
-
         from webmail_summary.llm.local_models import get_local_model, MIGRATION_FALLBACKS
 
         model_choice = get_local_model(settings.local_model_id)
+        min_build = getattr(model_choice, "min_engine_build", 0)
+        inst = find_llama_cpp_installed(min_build=min_build)
+        if inst is None:
+            # Fall back: try without min_build in case an older model works.
+            inst = find_llama_cpp_installed()
+            if inst is None:
+                raise LlmNotReady("Local engine not installed")
         tier = model_choice.tier if hasattr(model_choice, "tier") else "standard"
 
         # If model is MLX-only but we fell back to llama.cpp, find GGUF counterpart.

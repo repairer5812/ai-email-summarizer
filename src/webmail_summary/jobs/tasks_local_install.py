@@ -162,7 +162,9 @@ def local_install_task(*, model_id: str):
             conn.close()
 
         try:
-            inst = ensure_llama_cpp_installed()
+            model_choice = get_local_model(model_id_norm)
+            min_build = getattr(model_choice, "min_engine_build", 0)
+            inst = ensure_llama_cpp_installed(min_build=min_build)
         except EngineInstallError as e:
             conn2 = get_conn(db_path)
             try:
