@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5.3] - 2026-04-17
+
+### Fixed
+
+- EXAONE 4.0 1.2B에서 긴 메일이 "(no summary)"로 나오던 문제를 개선했습니다.
+  - ctx_size를 8192로 확대하고, 입력·출력 예산을 늘렸습니다.
+  - 프롬프트를 간결하게 재구성하여 1.2B 모델의 지시 준수율을 높였습니다.
+  - fast 티어 청크 설정을 확대(5000자, 6청크)하여 긴 메일 처리 범위를 넓혔습니다.
+
 ## [0.6.5.2] - 2026-04-17
 
 ### Fixed
