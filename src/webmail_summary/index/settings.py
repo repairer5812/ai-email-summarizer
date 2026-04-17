@@ -33,6 +33,7 @@ class Settings:
     update_last_checked_at: str
     update_download_url: str
     update_last_check_status: str
+    new_models_v2_dismissed: bool = False
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -115,6 +116,9 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     update_last_check_status = (
         get_setting(conn, "update_last_check_status") or ""
     ).strip()
+    new_models_v2_dismissed = (
+        get_setting(conn, "new_models_v2_dismissed") or "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
 
     return Settings(
         imap_host=imap_host,
@@ -143,4 +147,5 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         update_last_checked_at=update_last_checked_at,
         update_download_url=update_download_url,
         update_last_check_status=update_last_check_status,
+        new_models_v2_dismissed=new_models_v2_dismissed,
     )

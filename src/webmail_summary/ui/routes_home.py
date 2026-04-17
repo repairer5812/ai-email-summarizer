@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from webmail_summary.index.settings import load_settings
+from webmail_summary.index.settings import load_settings, set_setting
 from webmail_summary.llm.local_status import check_local_ready
 from webmail_summary.ui.settings_gateway import db_path, get_setting
 from webmail_summary.ui.setup_service import (
@@ -107,6 +107,10 @@ def home(request: Request):
                 },
                 "not_ready_reason": ai_not_ready_reason,
             },
+            "show_new_models_popup": (
+                not settings.new_models_v2_dismissed
+                and settings.llm_backend == "local"
+            ),
         },
     )
 
@@ -135,5 +139,18 @@ def api_get_days():
             }
             for r in rows
         ]
+    finally:
+        conn.close()
+
+
+@router.post("/api/new-models-popup/dismiss")
+def dismiss_new_models_popup():
+    from webmail_summary.index.db import get_conn
+
+    conn = get_conn(db_path())
+    try:
+        set_setting(conn, "new_models_v2_dismissed", "1")
+        conn.commit()
+        return {"ok": True}
     finally:
         conn.close()
