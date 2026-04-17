@@ -14,7 +14,7 @@ from webmail_summary.imap_client import (
     parse_mail_search_filter,
 )
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
-from webmail_summary.llm.local_models import LOCAL_MODELS, get_local_model
+from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, get_local_model
 from webmail_summary.llm.local_status import check_local_ready
 from webmail_summary.ui.settings_gateway import db_path, set_setting
 from webmail_summary.ui.setup_service import get_cloud_keys
@@ -186,6 +186,8 @@ def setup_get(request: Request):
                 "cloud_cloud_keys": cloud_keys,
             },
             "local_models": LOCAL_MODELS,
+            "recommended_models": RECOMMENDED_MODELS,
+            "legacy_models": LEGACY_MODELS,
             "local_ready": {
                 "engine_ok": local_ready.engine_ok,
                 "model_ok": local_ready.model_ok,

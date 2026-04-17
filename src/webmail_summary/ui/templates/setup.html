@@ -171,9 +171,16 @@
                     <div class="form-group">
                       <label>{{ t(request, 'setup.local_tier') }}</label>
                       <select name="local_model_id" id="local-model">
-                        {% for m in local_models %}
+                        <optgroup label="추천 모델">
+                        {% for m in recommended_models %}
                           <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
                         {% endfor %}
+                        </optgroup>
+                        <optgroup label="기존 모델">
+                        {% for m in legacy_models %}
+                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                        {% endfor %}
+                        </optgroup>
                       </select>
                       <div class="help" id="model-notes"></div>
                     </div>
