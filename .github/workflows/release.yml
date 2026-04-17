@@ -31,6 +31,11 @@ jobs:
           pip install -e .
           pip install pyinstaller
 
+      - name: Verify pydantic runtime pair
+        run: |
+          python -c "import pydantic, pydantic_core; print('pydantic', pydantic.__version__); print('pydantic_core', pydantic_core.__version__)"
+
+
       - name: Build executable
         shell: pwsh
         run: |
