@@ -673,7 +673,20 @@ try {
 
   Stop-ImageIfRunning 'webmail-summary'
   Stop-ImageIfRunning 'llama-server'
-  Start-Sleep -Milliseconds 500
+  Start-Sleep -Seconds 2
+
+  # Retry kill in case processes respawned or were slow to stop.
+  Stop-ImageIfRunning 'webmail-summary'
+  Stop-ImageIfRunning 'llama-server'
+  Start-Sleep -Seconds 1
+
+  # Clean stale _MEI temp dirs that block PyInstaller bootstrapper.
+  try {
+    $meiDirs = Get-ChildItem -Path $env:TEMP -Directory -Filter '_MEI*' -ErrorAction SilentlyContinue
+    foreach ($d in $meiDirs) {
+      try { Remove-Item -Path $d.FullName -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  } catch {}
 
   Write-UpdateStatus 'installer_launching' 'installer launching'
   $args = @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CLOSEAPPLICATIONS', '/FORCECLOSEAPPLICATIONS', '/LOGCLOSEAPPLICATIONS', ('/LOG=' + $InstallLogPath))
@@ -767,7 +780,7 @@ try {
     path.write_text(script + "\n", encoding="utf-8-sig")
 
 
-def _schedule_app_shutdown(delay_s: float = 1.2) -> None:
+def _schedule_app_shutdown(delay_s: float = 2.0) -> None:
     def _worker() -> None:
         time.sleep(float(delay_s))
         try:

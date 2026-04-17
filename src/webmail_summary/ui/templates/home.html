@@ -246,6 +246,137 @@
 </script>
 {% endif %}
 
+{% if migration and migration.needed %}
+<div class="modal" id="migration-modal" aria-hidden="true">
+  <div class="modal__backdrop"></div>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="migration-modal-title">
+    <div class="modal__title" id="migration-modal-title">더 빠른 AI 모델로 업그레이드</div>
+    <div class="modal__body">
+      <div style="margin-bottom: 12px;">
+        기본 모델이 <strong>{{ migration.new_label }}</strong>로 변경되었습니다.<br>
+        현재는 기존 모델(<strong>{{ migration.old_label }}</strong>)로 동작 중입니다.
+      </div>
+      <div style="margin-bottom: 12px; font-size: 13px; color: var(--text-secondary);">
+        새 모델은 기존보다 더 빠르고 한국어 성능이 향상되었습니다. (812MB 다운로드)
+      </div>
+      <div id="migration-progress" style="display:none; margin-top: 14px;">
+        <div class="bar"><div class="bar__fill" id="migration-bar" style="width:0%"></div></div>
+        <div class="muted" id="migration-text" style="margin-top: 8px; font-size: 13px;">설치 준비 중...</div>
+      </div>
+      <div id="migration-delete-section" style="display:none; margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 10px;">
+        <div style="margin-bottom: 8px;">새 모델 설치가 완료되었습니다.</div>
+        <div style="font-size: 13px; color: var(--text-secondary);">기존 모델(<strong>{{ migration.old_label }}</strong>, {{ migration.old_size_mb }}MB)을 삭제하여 디스크 공간을 확보하시겠습니까?</div>
+        <div style="margin-top: 10px; display: flex; gap: 10px;">
+          <button class="btn btn--danger btn--sm" type="button" id="migration-delete-yes">삭제</button>
+          <button class="btn btn--secondary btn--sm" type="button" id="migration-delete-no">유지</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal__actions" id="migration-actions">
+      <button class="btn" type="button" id="migration-install-btn"
+        data-new-model-id="{{ migration.new_model_id }}"
+        data-old-model-id="{{ migration.old_model_id }}"
+      >새 모델 설치</button>
+      <button class="btn btn--secondary" type="button" id="migration-later-btn">나중에</button>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  const modal = document.getElementById('migration-modal');
+  if (!modal) return;
+  modal.setAttribute('aria-hidden', 'false');
+
+  const installBtn = document.getElementById('migration-install-btn');
+  const laterBtn = document.getElementById('migration-later-btn');
+  const actions = document.getElementById('migration-actions');
+  const progress = document.getElementById('migration-progress');
+  const bar = document.getElementById('migration-bar');
+  const text = document.getElementById('migration-text');
+  const deleteSection = document.getElementById('migration-delete-section');
+  const newModelId = installBtn.getAttribute('data-new-model-id');
+  const oldModelId = installBtn.getAttribute('data-old-model-id');
+
+  function closeModal() {
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  laterBtn.addEventListener('click', closeModal);
+  modal.querySelector('.modal__backdrop').addEventListener('click', closeModal);
+
+  installBtn.addEventListener('click', async () => {
+    installBtn.disabled = true;
+    laterBtn.style.display = 'none';
+    progress.style.display = 'block';
+    text.textContent = '설치 시작 중...';
+
+    try {
+      const res = await fetch('/api/jobs/local-install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: newModelId })
+      });
+      const j = await res.json().catch(() => ({}));
+
+      if (j.already_installed) {
+        bar.style.width = '100%';
+        text.textContent = '이미 설치되어 있습니다.';
+        actions.style.display = 'none';
+        deleteSection.style.display = 'block';
+        return;
+      }
+
+      if (!j.job_id) {
+        text.textContent = '설치 시작 실패: ' + ((j && j.error) || 'unknown');
+        installBtn.disabled = false;
+        laterBtn.style.display = '';
+        return;
+      }
+
+      // Watch install progress via SSE
+      const es = new EventSource('/api/jobs/' + j.job_id + '/events');
+      es.addEventListener('progress', (ev) => {
+        const p = JSON.parse(ev.data);
+        const pct = Math.max(0, Math.min(100, (Number(p.current||0)/Number(p.total||1))*100));
+        bar.style.width = pct + '%';
+        text.textContent = (p.message || '...') + ' (' + pct.toFixed(1) + '%)';
+        if (p.status === 'succeeded') {
+          es.close();
+          bar.style.width = '100%';
+          text.textContent = '설치 완료!';
+          actions.style.display = 'none';
+          deleteSection.style.display = 'block';
+        } else if (p.status === 'failed' || p.status === 'cancelled') {
+          es.close();
+          text.textContent = '설치 실패: ' + (p.message || '');
+          installBtn.disabled = false;
+          laterBtn.style.display = '';
+        }
+      });
+    } catch (e) {
+      text.textContent = '오류: ' + String(e && e.message ? e.message : e);
+      installBtn.disabled = false;
+      laterBtn.style.display = '';
+    }
+  });
+
+  // Delete old model
+  document.getElementById('migration-delete-yes').addEventListener('click', async () => {
+    try {
+      await fetch('/api/local/models/' + encodeURIComponent(oldModelId), { method: 'DELETE' });
+    } catch (e) {}
+    closeModal();
+    location.reload();
+  });
+
+  document.getElementById('migration-delete-no').addEventListener('click', () => {
+    closeModal();
+    location.reload();
+  });
+})();
+</script>
+{% endif %}
+
 {% if not ai.setup_complete %}
   <div class="card span-4" style="margin-bottom: 24px; text-align: center; border-color: var(--accent);">
     <div class="card__title"><strong>{{ t(request, 'setup.ai.not_ready.title') }}</strong></div>
