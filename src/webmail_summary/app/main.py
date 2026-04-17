@@ -70,12 +70,43 @@ def _force_exit_process() -> None:
     os._exit(0)
 
 
+def _cleanup_stale_mei_dirs() -> None:
+    """Remove leftover _MEI* temp dirs from previous PyInstaller runs.
+
+    These directories can hold stale python3xx.dll files that cause
+    "Failed to load Python DLL" errors on the next launch after an update.
+    Only cleans dirs that are NOT owned by the currently running process.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        import tempfile
+
+        temp = Path(tempfile.gettempdir())
+        current_mei = getattr(sys, "_MEIPASS", "")
+        for d in temp.iterdir():
+            if not d.is_dir() or not d.name.startswith("_MEI"):
+                continue
+            if current_mei and str(d) == current_mei:
+                continue  # don't delete our own
+            try:
+                import shutil
+
+                shutil.rmtree(d, ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Webmail Summary", docs_url=None, redoc_url=None)
 
     @app.get("/favicon.ico")
     def favicon():
         return RedirectResponse(url="/static/app-icon.png", status_code=307)
+
+    _cleanup_stale_mei_dirs()
 
     data_dir = get_app_data_dir()
     init_db(data_dir / "db.sqlite3")

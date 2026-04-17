@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.5] - 2026-04-17
+
+### Fixed
+
+- 업데이트 후 "Failed to load Python DLL" 오류를 근본적으로 방지했습니다.
+  - 앱 시작 시 이전 실행에서 남은 `_MEI` 임시 폴더를 자동 정리합니다.
+  - 현재 실행 중인 프로세스의 폴더는 보호하고, 다른 잔류 폴더만 삭제합니다.
+
 ## [0.6.4] - 2026-04-17
 
 ### Fixed
