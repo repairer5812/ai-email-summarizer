@@ -8,6 +8,7 @@ def test_pick_release_assets_for_macos_arm64(monkeypatch):
     monkeypatch.setattr(mod, "_normalized_arch", lambda: "arm64")
 
     assets = [
+        {"name": "llama-b8608-bin-macos-arm64.tar.gz"},
         {"name": "llama-b4052-bin-macos-arm64.zip"},
         {"name": "llama-b4052-bin-win-cpu-x64.zip"},
         {"name": "llama-b4052-bin-linux-x64.zip"},
@@ -16,7 +17,7 @@ def test_pick_release_assets_for_macos_arm64(monkeypatch):
     picked = mod._pick_release_assets(assets)
 
     assert picked
-    assert picked[0]["name"] == "llama-b4052-bin-macos-arm64.zip"
+    assert picked[0]["name"] == "llama-b8608-bin-macos-arm64.tar.gz"
 
 
 def test_pick_release_assets_for_linux_x64(monkeypatch):

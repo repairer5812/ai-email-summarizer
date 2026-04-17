@@ -18,8 +18,8 @@
 - 다운로드할 파일:
   - 현재는 macOS 전용 설치 파일이 없으므로, **GitHub 릴리즈의 `Source code (zip)` 또는 `Source code (tar.gz)`** 를 받아야 합니다.
   - 권장 다운로드:
-    - `https://github.com/repairer5812/ai-email-summarizer/archive/refs/tags/v0.5.59.zip`
-    - `https://github.com/repairer5812/ai-email-summarizer/archive/refs/tags/v0.5.59.tar.gz`
+    - `https://github.com/repairer5812/ai-email-summarizer/archive/refs/tags/v0.6.0.zip`
+    - `https://github.com/repairer5812/ai-email-summarizer/archive/refs/tags/v0.6.0.tar.gz`
   - 또는 git 사용 가능하면:
 
 ```bash

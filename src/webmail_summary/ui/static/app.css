@@ -68,6 +68,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   padding: 16px 24px;
   margin: 16px 16px 0;
   border-radius: calc(var(--card-radius) - 0.4rem);
@@ -83,6 +85,20 @@ body {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex: 1 1 280px;
+  min-width: 240px;
+}
+
+.brand__text {
+  min-width: 0;
+}
+
+.brand__name,
+.brand__sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(48vw, 520px);
 }
 
 .brand__mark {
@@ -112,6 +128,11 @@ body {
   gap: 10px;
   align-items: center;
   position: relative;
+  flex: 1 1 360px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  max-width: 100%;
 }
 
 .nav__menu {
@@ -126,6 +147,7 @@ body {
   font-weight: 700;
   border: 1px solid transparent;
   transition: var(--transition);
+  white-space: nowrap;
 }
 
 .nav__link:hover {

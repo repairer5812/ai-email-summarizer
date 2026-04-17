@@ -31,3 +31,13 @@ def test_default_obsidian_root_prefers_documents_on_macos(monkeypatch, tmp_path:
     p = mod.default_obsidian_root()
 
     assert p == tmp_path / "Documents" / "Tekville_Obsidian"
+
+
+def test_get_app_data_dir_expands_literal_windows_env_var(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(mod, "_platform_key", lambda: "windows")
+    monkeypatch.setenv("TEMP", str(tmp_path / "temp-root"))
+    monkeypatch.setenv("LOCALAPPDATA", "%TEMP%")
+
+    p = mod.get_app_data_dir()
+
+    assert p == tmp_path / "temp-root" / "WebmailSummary"

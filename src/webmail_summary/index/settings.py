@@ -33,6 +33,7 @@ class Settings:
     update_last_checked_at: str
     update_download_url: str
     update_last_check_status: str
+    new_models_v2_dismissed: bool = False
 
 
 def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
@@ -64,7 +65,7 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     imap_port = int(get_setting(conn, "imap_port") or "993")
     imap_user = get_setting(conn, "imap_user") or ""
     imap_folder = get_setting(conn, "imap_folder") or "INBOX"
-    sender_filter = get_setting(conn, "sender_filter") or "hslee@tekville.com"
+    sender_filter = get_setting(conn, "sender_filter") or ""
     obsidian_root = get_setting(conn, "obsidian_root") or ""
     llm_backend = get_setting(conn, "llm_backend") or "local"
     cloud_provider = get_setting(conn, "cloud_provider") or "openai"
@@ -115,6 +116,9 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     update_last_check_status = (
         get_setting(conn, "update_last_check_status") or ""
     ).strip()
+    new_models_v2_dismissed = (
+        get_setting(conn, "new_models_v2_dismissed") or "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
 
     return Settings(
         imap_host=imap_host,
@@ -143,4 +147,5 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         update_last_checked_at=update_last_checked_at,
         update_download_url=update_download_url,
         update_last_check_status=update_last_check_status,
+        new_models_v2_dismissed=new_models_v2_dismissed,
     )

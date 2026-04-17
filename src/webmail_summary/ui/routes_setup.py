@@ -7,9 +7,14 @@ import keyring
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from webmail_summary.imap_client import ImapSession
+from webmail_summary.imap_client import (
+    ImapSession,
+    MailSearchFilter,
+    build_mail_search_filter_value,
+    parse_mail_search_filter,
+)
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
-from webmail_summary.llm.local_models import LOCAL_MODELS, get_local_model
+from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, get_local_model
 from webmail_summary.llm.local_status import check_local_ready
 from webmail_summary.ui.settings_gateway import db_path, set_setting
 from webmail_summary.ui.setup_service import get_cloud_keys
@@ -35,6 +40,72 @@ def _is_auth_error(msg: str) -> bool:
     return any(n in m for n in needles)
 
 
+def _split_csv_input(raw: str) -> tuple[str, ...]:
+    parts: list[str] = []
+    seen: set[str] = set()
+    for chunk in str(raw or "").replace(";", ",").split(","):
+        token = chunk.strip()
+        if not token:
+            continue
+        key = token.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        parts.append(token)
+    return tuple(parts)
+
+
+def _normalize_split_filter_terms(kind: str, terms: tuple[str, ...]) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    prefixes = {
+        "from": ("from:", "sender:"),
+        "domain": ("domain:",),
+        "subject": ("subject:", "title:"),
+    }.get(kind, ())
+    for raw in terms:
+        token = str(raw or "").strip().strip('"').strip("'")
+        low = token.lower()
+        for prefix in prefixes:
+            if low.startswith(prefix):
+                token = token[len(prefix) :].strip()
+                low = token.lower()
+                break
+        if kind == "domain":
+            token = token.lstrip("@")
+            low = token.lower()
+        if not token or low in seen:
+            continue
+        seen.add(low)
+        out.append(token)
+    return tuple(out)
+
+
+def _compose_mail_filter_value(
+    *,
+    sender_from_filter: str,
+    sender_domain_filter: str,
+    sender_subject_filter: str,
+    sender_filter_legacy: str,
+) -> str:
+    from_terms = _split_csv_input(sender_from_filter)
+    domain_terms = _split_csv_input(sender_domain_filter)
+    subject_terms = _split_csv_input(sender_subject_filter)
+    from_terms = _normalize_split_filter_terms("from", from_terms)
+    domain_terms = _normalize_split_filter_terms("domain", domain_terms)
+    subject_terms = _normalize_split_filter_terms("subject", subject_terms)
+
+    if from_terms or domain_terms or subject_terms:
+        return build_mail_search_filter_value(
+            MailSearchFilter(
+                from_terms=from_terms,
+                domain_terms=domain_terms,
+                subject_terms=subject_terms,
+            )
+        )
+    return str(sender_filter_legacy or "").strip()
+
+
 @router.get("/setup", response_class=HTMLResponse)
 def setup_get(request: Request):
     from webmail_summary.index.db import get_conn
@@ -50,6 +121,19 @@ def setup_get(request: Request):
         cloud_keys = get_cloud_keys()
 
         local_ready = check_local_ready(model_id=settings.local_model_id)
+        parsed_mail_filter = parse_mail_search_filter(settings.sender_filter or "")
+        display_from_terms: list[str] = []
+        display_domain_terms: list[str] = list(parsed_mail_filter.domain_terms)
+        for term in parsed_mail_filter.from_terms:
+            t = str(term or "").strip()
+            if t.startswith("@") and len(t) > 1:
+                norm = t[1:]
+                if norm and norm.lower() not in {
+                    x.lower() for x in display_domain_terms
+                }:
+                    display_domain_terms.append(norm)
+                continue
+            display_from_terms.append(t)
         imap_pass_set = False
         if settings.imap_host and settings.imap_user:
             try:
@@ -69,7 +153,10 @@ def setup_get(request: Request):
                 "imap_port": str(settings.imap_port) or "993",
                 "imap_user": settings.imap_user or "",
                 "imap_folder": settings.imap_folder or "INBOX",
-                "sender_filter": settings.sender_filter or "hslee@tekville.com",
+                "sender_filter": settings.sender_filter or "",
+                "sender_from_filter": ", ".join(display_from_terms),
+                "sender_domain_filter": ", ".join(display_domain_terms),
+                "sender_subject_filter": ", ".join(parsed_mail_filter.subject_terms),
                 "obsidian_root": settings.obsidian_root or "",
                 "llm_backend": settings.llm_backend,
                 "cloud_provider": provider_name,
@@ -99,6 +186,8 @@ def setup_get(request: Request):
                 "cloud_cloud_keys": cloud_keys,
             },
             "local_models": LOCAL_MODELS,
+            "recommended_models": RECOMMENDED_MODELS,
+            "legacy_models": LEGACY_MODELS,
             "local_ready": {
                 "engine_ok": local_ready.engine_ok,
                 "model_ok": local_ready.model_ok,
@@ -246,7 +335,10 @@ def setup_save(
     imap_port: str = Form("993"),
     imap_user: str = Form(""),
     imap_folder: str = Form("INBOX"),
-    sender_filter: str = Form("hslee@tekville.com"),
+    sender_filter: str = Form(""),
+    sender_from_filter: str = Form(""),
+    sender_domain_filter: str = Form(""),
+    sender_subject_filter: str = Form(""),
     obsidian_root: str = Form(""),
     llm_backend: str = Form("local"),
     local_model_id: str = Form("fast"),
@@ -277,6 +369,12 @@ def setup_save(
 
     conn = get_conn(db_path())
     try:
+        composed_sender_filter = _compose_mail_filter_value(
+            sender_from_filter=sender_from_filter,
+            sender_domain_filter=sender_domain_filter,
+            sender_subject_filter=sender_subject_filter,
+            sender_filter_legacy=sender_filter,
+        )
         if imap_host:
             set_setting(conn, "imap_host", imap_host)
         if imap_port:
@@ -285,8 +383,7 @@ def setup_save(
             set_setting(conn, "imap_user", imap_user)
         if imap_folder:
             set_setting(conn, "imap_folder", imap_folder)
-        if sender_filter:
-            set_setting(conn, "sender_filter", sender_filter)
+        set_setting(conn, "sender_filter", composed_sender_filter)
         if obsidian_root:
             set_setting(conn, "obsidian_root", obsidian_root)
         if llm_backend:
