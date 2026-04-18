@@ -182,27 +182,37 @@ def export_topic_note(
     vault_root: Path,
     topic: str,
     message_notes: list[Path],
+    replace: bool = False,
 ) -> Path:
+    """Export a topic note.
+
+    When *replace* is True the note is rebuilt from *message_notes* only
+    (no merge with existing links).  Use this when cleaning up stale topics.
+    """
     topic_dir = vault_root / "Topic"
     _ensure_dir(topic_dir)
     name = safe_topic_name(topic)
     out_path = topic_dir / f"{name}.md"
 
-    # Merge: keep existing links and add new ones.
-    existing_links = _extract_existing_links(out_path)
-    new_links = [_wikilink_for(vault_root, p) for p in message_notes]
-    all_links: list[str] = []
-    seen: set[str] = set()
-    for link in sorted(existing_links):
-        target = link.replace("[[", "").replace("]]", "")
-        if target not in seen:
-            seen.add(target)
-            all_links.append(f"[[{target}]]")
-    for link in new_links:
-        target = link.replace("[[", "").replace("]]", "")
-        if target not in seen:
-            seen.add(target)
-            all_links.append(link)
+    if replace:
+        # Replace mode: only use the provided notes (for stale cleanup).
+        all_links = [_wikilink_for(vault_root, p) for p in message_notes]
+    else:
+        # Merge: keep existing links and add new ones.
+        existing_links = _extract_existing_links(out_path)
+        new_links = [_wikilink_for(vault_root, p) for p in message_notes]
+        all_links = []
+        seen: set[str] = set()
+        for link in sorted(existing_links):
+            target = link.replace("[[", "").replace("]]", "")
+            if target not in seen:
+                seen.add(target)
+                all_links.append(f"[[{target}]]")
+        for link in new_links:
+            target = link.replace("[[", "").replace("]]", "")
+            if target not in seen:
+                seen.add(target)
+                all_links.append(link)
 
     front = ["---", f"topic: {name}", "---"]
     body = "\n".join(front) + "\n\n"

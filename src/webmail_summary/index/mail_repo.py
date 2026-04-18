@@ -292,6 +292,26 @@ def list_messages_for_resummarize_by_ids(
     return list(conn.execute(sql, tuple(mids)).fetchall())
 
 
+def get_message_ids_by_topic(
+    conn: sqlite3.Connection, *, topic: str
+) -> list[int]:
+    """Return message IDs whose topics_json contains *topic*."""
+    rows = conn.execute(
+        "SELECT id, topics_json FROM messages WHERE topics_json IS NOT NULL"
+    ).fetchall()
+    import json as _json
+
+    result: list[int] = []
+    for r in rows:
+        try:
+            topics = _json.loads(str(r[1] or "[]"))
+            if topic in topics:
+                result.append(int(r[0]))
+        except Exception:
+            continue
+    return result
+
+
 def get_daily_overview(conn: sqlite3.Connection, day: str) -> str | None:
     row = conn.execute(
         "SELECT overview FROM daily_overviews WHERE day = ?", (day,)
