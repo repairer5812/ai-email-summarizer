@@ -118,6 +118,10 @@ class CloudProvider(LlmProvider):
         if "generativelanguage.googleapis.com" in self._cfg.base_url:
             return self._summarize_gemini(prompt, multimodal_inputs=multimodal_inputs)
 
+        # Handle Anthropic Native API (/v1/messages, not OpenAI-compatible)
+        if "api.anthropic.com" in self._cfg.base_url:
+            return self._summarize_anthropic(prompt, multimodal_inputs=multimodal_inputs)
+
         url = f"{self._cfg.base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self._cfg.api_key}",
@@ -126,8 +130,6 @@ class CloudProvider(LlmProvider):
         # Add headers for specific providers
         if "openrouter.ai" in self._cfg.base_url:
             headers["X-Title"] = "WebmailSummary"
-        if "api.anthropic.com" in self._cfg.base_url:
-            headers["anthropic-version"] = "2023-06-01"
 
         image_parts = self._build_image_parts(multimodal_inputs)
         user_content: str | list[dict]
@@ -233,6 +235,51 @@ class CloudProvider(LlmProvider):
         if last_resp is None:
             raise RuntimeError("request failed before receiving a response")
         return last_resp
+
+    def _summarize_anthropic(
+        self,
+        prompt: str,
+        multimodal_inputs: list[LlmImageInput] | None = None,
+    ) -> LlmResult:
+        """Call Anthropic's native /v1/messages API."""
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": self._cfg.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+
+        user_content: str | list[dict]
+        image_parts = self._build_image_parts(multimodal_inputs)
+        if image_parts:
+            user_content = [{"type": "text", "text": prompt}, *image_parts]
+        else:
+            user_content = prompt
+
+        payload = {
+            "model": self._cfg.model,
+            "max_tokens": 600,
+            "messages": [{"role": "user", "content": user_content}],
+        }
+
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=60)
+            if r.status_code >= 400:
+                return LlmResult(
+                    summary=f"(Anthropic API error {r.status_code})",
+                    tags=[], backlinks=[], personal=False,
+                )
+            data = r.json()
+            content = ""
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    content += block.get("text", "")
+            return self._parse_result(content)
+        except Exception as e:
+            return LlmResult(
+                summary=f"(Anthropic error: {e})",
+                tags=[], backlinks=[], personal=False,
+            )
 
     def _summarize_gemini(
         self,

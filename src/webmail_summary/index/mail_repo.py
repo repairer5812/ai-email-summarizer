@@ -268,9 +268,10 @@ def list_messages_for_resummarize_by_date(
     conn: sqlite3.Connection, *, date_prefix: str
 ) -> list[sqlite3.Row]:
     # Includes fields required for recomputing message_key and reading archived bodies.
+    # topics_json (index 12) is included to detect topic changes during resummarize.
     return list(
         conn.execute(
-            "SELECT id, account_id, mailbox, uidvalidity, uid, subject, from_addr, internal_date, summary, raw_eml_path, body_text_path, body_html_path "
+            "SELECT id, account_id, mailbox, uidvalidity, uid, subject, from_addr, internal_date, summary, raw_eml_path, body_text_path, body_html_path, topics_json "
             "FROM messages WHERE internal_date LIKE ? ORDER BY internal_date ASC",
             (f"{date_prefix}%",),
         ).fetchall()
@@ -285,7 +286,7 @@ def list_messages_for_resummarize_by_ids(
         return []
     qmarks = ",".join(["?"] * len(mids))
     sql = (
-        "SELECT id, account_id, mailbox, uidvalidity, uid, subject, from_addr, internal_date, summary, raw_eml_path, body_text_path, body_html_path "
+        "SELECT id, account_id, mailbox, uidvalidity, uid, subject, from_addr, internal_date, summary, raw_eml_path, body_text_path, body_html_path, topics_json "
         f"FROM messages WHERE id IN ({qmarks}) ORDER BY internal_date ASC"
     )
     return list(conn.execute(sql, tuple(mids)).fetchall())

@@ -116,10 +116,25 @@ def export_email_note(*, vault_root: Path, inp: MessageExportInput) -> Path:
             for p in imgs[:20]:
                 body += f"![[Assets/{inp.message_key}/attachments/{p.name}]]\n"
 
-    fname = f"{inp.date:%Y-%m-%d} - {safe_filename(inp.subject)}.md"
+    # Include message_key suffix to prevent overwrite when date+subject collide.
+    short_key = inp.message_key[-12:].replace("/", "-").replace("\\", "-")
+    fname = f"{inp.date:%Y-%m-%d} - {safe_filename(inp.subject)} ({short_key}).md"
     out_path = mail_dir / fname
     atomic_write_text(out_path, body)
     return out_path
+
+
+def _extract_existing_links(file_path: Path) -> set[str]:
+    """Extract existing wikilinks from a note file."""
+    if not file_path.exists():
+        return set()
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+        import re
+
+        return set(re.findall(r"\[\[([^\]]+)\]\]", text))
+    except Exception:
+        return set()
 
 
 def export_daily_note(
@@ -132,12 +147,32 @@ def export_daily_note(
     daily_dir = vault_root / "Daily"
     _ensure_dir(daily_dir)
     out_path = daily_dir / f"{date:%Y-%m-%d}.md"
+
+    # Merge: keep existing links and add new ones.
+    existing_links = _extract_existing_links(out_path)
+    new_links = [_wikilink_for(vault_root, p) for p in message_notes]
+    # Parse existing link targets for dedup
+    all_links: list[str] = []
+    seen: set[str] = set()
+    # Existing links first
+    for link in sorted(existing_links):
+        target = link.replace("[[", "").replace("]]", "")
+        if target not in seen:
+            seen.add(target)
+            all_links.append(f"[[{target}]]")
+    # New links
+    for link in new_links:
+        target = link.replace("[[", "").replace("]]", "")
+        if target not in seen:
+            seen.add(target)
+            all_links.append(link)
+
     front = ["---", f"date: {date:%Y-%m-%d}", "---"]
     body = "\n".join(front) + "\n\n"
     body += "## Daily Digest\n\n" + (daily_summary.strip() or "(no digest)") + "\n\n"
     body += "## Messages\n\n"
-    for p in message_notes:
-        body += f"- {_wikilink_for(vault_root, p)}\n"
+    for link in all_links:
+        body += f"- {link}\n"
     atomic_write_text(out_path, body)
     return out_path
 
@@ -152,10 +187,27 @@ def export_topic_note(
     _ensure_dir(topic_dir)
     name = safe_topic_name(topic)
     out_path = topic_dir / f"{name}.md"
+
+    # Merge: keep existing links and add new ones.
+    existing_links = _extract_existing_links(out_path)
+    new_links = [_wikilink_for(vault_root, p) for p in message_notes]
+    all_links: list[str] = []
+    seen: set[str] = set()
+    for link in sorted(existing_links):
+        target = link.replace("[[", "").replace("]]", "")
+        if target not in seen:
+            seen.add(target)
+            all_links.append(f"[[{target}]]")
+    for link in new_links:
+        target = link.replace("[[", "").replace("]]", "")
+        if target not in seen:
+            seen.add(target)
+            all_links.append(link)
+
     front = ["---", f"topic: {name}", "---"]
     body = "\n".join(front) + "\n\n"
     body += "## Messages\n\n"
-    for p in message_notes:
-        body += f"- {_wikilink_for(vault_root, p)}\n"
+    for link in all_links:
+        body += f"- {link}\n"
     atomic_write_text(out_path, body)
     return out_path
