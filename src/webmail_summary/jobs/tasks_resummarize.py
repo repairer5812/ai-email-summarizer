@@ -644,30 +644,56 @@ def resummarize_day_task(
             from webmail_summary.index.mail_repo import get_message_ids_by_topic
             from webmail_summary.export.obsidian.naming import safe_topic_name as _stn
 
-            for t, notes in all_topics.items():
+            for t in all_topics:
                 try:
-                    if notes:
-                        # This topic has notes from this batch → merge.
-                        export_topic_note(
-                            vault_root=vault_root, topic=t, message_notes=notes
+                    # Always rebuild from DB: get all messages that
+                    # currently reference this topic, then replace.
+                    conn_topic = get_conn(db_path)
+                    try:
+                        remaining = get_message_ids_by_topic(
+                            conn_topic, topic=t
                         )
+                    finally:
+                        conn_topic.close()
+
+                    if not remaining:
+                        # No messages reference this topic → delete note.
+                        topic_file = (
+                            vault_root / "Topic" / f"{_stn(t)}.md"
+                        )
+                        if topic_file.exists():
+                            topic_file.unlink(missing_ok=True)
                     else:
-                        # Old topic with no notes in this batch.
-                        # Check if any message in DB still references it.
-                        conn_topic = get_conn(db_path)
-                        try:
-                            remaining = get_message_ids_by_topic(
-                                conn_topic, topic=t
-                            )
-                        finally:
-                            conn_topic.close()
-                        if not remaining:
-                            # No messages reference this topic → delete note.
-                            topic_file = (
-                                vault_root / "Topic" / f"{_stn(t)}.md"
-                            )
-                            if topic_file.exists():
-                                topic_file.unlink(missing_ok=True)
+                        # Find existing note files for these messages.
+                        topic_notes: list[Path] = []
+                        mail_dir = vault_root / "Mail"
+                        if mail_dir.exists():
+                            # Index all note files by scanning mail dir.
+                            all_md = list(mail_dir.rglob("*.md"))
+                            # Match by message_key in frontmatter.
+                            conn_notes = get_conn(db_path)
+                            try:
+                                for mid in remaining:
+                                    row = conn_notes.execute(
+                                        "SELECT account_id, uidvalidity, uid "
+                                        "FROM messages WHERE id=?",
+                                        (mid,),
+                                    ).fetchone()
+                                    if not row:
+                                        continue
+                                    key_suffix = f"{row[1]}-{row[2]}"
+                                    for md in all_md:
+                                        if key_suffix in md.name:
+                                            topic_notes.append(md)
+                                            break
+                            finally:
+                                conn_notes.close()
+                        export_topic_note(
+                            vault_root=vault_root,
+                            topic=t,
+                            message_notes=topic_notes,
+                            replace=True,
+                        )
                 except Exception:
                     pass
         except Exception:
