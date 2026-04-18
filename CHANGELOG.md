@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.3] - 2026-04-18
+
+### Fixed
+
+- Windows UI startup now falls back to the browser flow when native `pywebview` fails to initialize the .NET runtime.
+- PyInstaller relaunches now discard stale `_MEI`-scoped TLS certificate environment variables before update checks and post-update restarts.
+
+### Added
+
+- Regression tests for the native-window browser fallback and stale TLS bundle cleanup during restart/update flows.
+
 ## [0.6.6.2] - 2026-04-18
 
 ### Fixed
