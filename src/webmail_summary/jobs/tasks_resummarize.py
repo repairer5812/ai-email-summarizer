@@ -637,12 +637,37 @@ def resummarize_day_task(
                 job_id=job_id,
             )
 
-            # Rebuild topic notes for all topics referenced by re-summarized messages.
+            # Rebuild topic notes. For topics that still have messages in
+            # all_topics, merge new notes. For old topics with no new notes
+            # (topic changed A→B), check DB: if no messages reference
+            # the topic anymore, delete the topic note file.
+            from webmail_summary.index.mail_repo import get_message_ids_by_topic
+            from webmail_summary.export.obsidian.naming import safe_topic_name as _stn
+
             for t, notes in all_topics.items():
                 try:
-                    export_topic_note(
-                        vault_root=vault_root, topic=t, message_notes=notes
-                    )
+                    if notes:
+                        # This topic has notes from this batch → merge.
+                        export_topic_note(
+                            vault_root=vault_root, topic=t, message_notes=notes
+                        )
+                    else:
+                        # Old topic with no notes in this batch.
+                        # Check if any message in DB still references it.
+                        conn_topic = get_conn(db_path)
+                        try:
+                            remaining = get_message_ids_by_topic(
+                                conn_topic, topic=t
+                            )
+                        finally:
+                            conn_topic.close()
+                        if not remaining:
+                            # No messages reference this topic → delete note.
+                            topic_file = (
+                                vault_root / "Topic" / f"{_stn(t)}.md"
+                            )
+                            if topic_file.exists():
+                                topic_file.unlink(missing_ok=True)
                 except Exception:
                     pass
         except Exception:

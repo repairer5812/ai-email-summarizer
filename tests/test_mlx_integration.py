@@ -26,8 +26,10 @@ def test_gguf_models_exist():
 def test_counterpart_mapping():
     assert lm.get_counterpart_model_id("fast") == "mlx_fast"
     assert lm.get_counterpart_model_id("mlx_fast") == "fast"
-    assert lm.get_counterpart_model_id("gemma4_e4b") == "mlx_gemma4_e4b"
-    assert lm.get_counterpart_model_id("mlx_gemma4_e4b") == "gemma4_e4b"
+    assert lm.get_counterpart_model_id("standard") == "mlx_standard"
+    assert lm.get_counterpart_model_id("mlx_standard") == "standard"
+    assert lm.get_counterpart_model_id("qwen35_4b") == "mlx_qwen35_4b"
+    assert lm.get_counterpart_model_id("mlx_qwen35_4b") == "qwen35_4b"
     assert lm.get_counterpart_model_id("unknown") is None
 
 
