@@ -27,26 +27,10 @@ from webmail_summary.ui.settings_gateway import db_path
 from webmail_summary.ui.settings_gateway import get_setting
 from webmail_summary.ui.settings_gateway import set_setting
 from webmail_summary.util.app_data import get_app_data_dir
+from webmail_summary.util.process_control import build_fresh_pyinstaller_env
 from webmail_summary.util.ui_lifecycle import read_ui_pid
 
 router = APIRouter()
-
-
-def _build_pyinstaller_restart_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
-    """Return an environment suitable for restarting a frozen PyInstaller app.
-
-    PyInstaller onefile apps propagate private ``_PYI_*`` state through the
-    process environment. If the updater relaunches the app with those values
-    inherited, the new process can try to reuse the previous instance's
-    temporary extraction directory and fail very early with bootstrap errors
-    such as "Failed to load Python DLL". Reset to a clean top-level process.
-    """
-    env = dict(base_env or os.environ)
-    for key in list(env.keys()):
-        if key.startswith("_PYI_") or key == "_MEIPASS2":
-            env.pop(key, None)
-    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    return env
 
 
 def _normalize_version(value: str) -> str:
@@ -1015,7 +999,7 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
         popen_kwargs: dict = {
             "close_fds": True,
             "creationflags": creationflags,
-            "env": _build_pyinstaller_restart_env(),
+            "env": build_fresh_pyinstaller_env(),
         }
         if os.name == "nt":
             si = subprocess.STARTUPINFO()

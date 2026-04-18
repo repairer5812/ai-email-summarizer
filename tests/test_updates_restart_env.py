@@ -1,12 +1,10 @@
 from pathlib import Path
 
-from webmail_summary.ui.updates import (
-    _build_pyinstaller_restart_env,
-    _write_updater_script,
-)
+from webmail_summary.ui.updates import _write_updater_script
+from webmail_summary.util.process_control import build_fresh_pyinstaller_env
 
 
-def test_build_pyinstaller_restart_env_clears_private_vars(monkeypatch):
+def test_build_fresh_pyinstaller_env_clears_private_vars(monkeypatch):
     monkeypatch.setenv("_PYI_ARCHIVE_FILE", "C:/old/app.exe")
     monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", "C:/Users/User/AppData/Local/Temp/_MEI123")
     monkeypatch.setenv("_PYI_PARENT_PROCESS_LEVEL", "1")
@@ -14,7 +12,7 @@ def test_build_pyinstaller_restart_env_clears_private_vars(monkeypatch):
     monkeypatch.setenv("_MEIPASS2", "C:/Users/User/AppData/Local/Temp/_MEI123")
     monkeypatch.setenv("NORMAL_VAR", "keep-me")
 
-    env = _build_pyinstaller_restart_env()
+    env = build_fresh_pyinstaller_env()
 
     assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
     assert env["NORMAL_VAR"] == "keep-me"

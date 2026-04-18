@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.2] - 2026-04-18
+
+### Fixed
+
+- Windows 설치형 자동 업데이트 뒤 새 앱이 내부에서 `serve` 서브프로세스를 띄울 때도 PyInstaller onefile의 이전 `_MEI` / `_PYI_*` 환경을 재사용하지 않도록 보강했습니다.
+  - 업데이트 재실행뿐 아니라 native window가 띄우는 `serve` 프로세스도 `PYINSTALLER_RESET_ENVIRONMENT=1` 과 fresh env를 사용합니다.
+- 이 경로에서 `_socket` / `python311.dll` 로 이어지던 부트스트랩 실패 가능성을 줄였습니다.
+
+### Added
+
+- fresh PyInstaller env helper에 대한 회귀 테스트 1건을 추가했습니다.
+
 ## [0.6.6.1] - 2026-04-18
 
 ### Fixed

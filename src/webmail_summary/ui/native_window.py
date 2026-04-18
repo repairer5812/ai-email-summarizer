@@ -11,7 +11,10 @@ import requests
 
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.platform_caps import is_windows, ui_platform_caps
-from webmail_summary.util.process_control import detached_subprocess_kwargs
+from webmail_summary.util.process_control import (
+    build_fresh_pyinstaller_env,
+    detached_subprocess_kwargs,
+)
 from webmail_summary.util.single_instance import SingleInstanceLock
 from webmail_summary.util.ui_lifecycle import (
     clear_ui_pid,
@@ -211,9 +214,13 @@ def run_ui(*, port: int | None = None) -> None:
         if not url:
             # Ensure server is running (separate process) and avoid Chrome.
             cmd = _server_command(port)
-            server_proc = subprocess.Popen(
-                cmd, close_fds=True, **detached_subprocess_kwargs()
-            )
+            popen_kwargs: dict[str, object] = {
+                "close_fds": True,
+            }
+            popen_kwargs.update(detached_subprocess_kwargs())
+            if bool(getattr(sys, "frozen", False)):
+                popen_kwargs["env"] = build_fresh_pyinstaller_env()
+            server_proc = subprocess.Popen(cmd, **popen_kwargs)
 
             # Wait for the server to write a fresh URL (avoid stale active_url.txt).
             url = _wait_for_active_url_change(
