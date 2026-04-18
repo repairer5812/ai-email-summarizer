@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "0.6.6.1"
+#define MyAppVersion "0.6.6.2"
 #endif
 
 #define MyAppName "webmail-summary"
