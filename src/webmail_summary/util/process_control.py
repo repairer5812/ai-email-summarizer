@@ -7,6 +7,15 @@ import subprocess
 from webmail_summary.util.platform_caps import is_windows
 
 
+def _should_drop_tls_cert_env(value: str | None) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    if "_MEI" in raw:
+        return True
+    return not os.path.exists(raw)
+
+
 def build_fresh_pyinstaller_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
     """Return an env dict that forces a fresh PyInstaller process instance.
 
@@ -19,6 +28,9 @@ def build_fresh_pyinstaller_env(base_env: dict[str, str] | None = None) -> dict[
     env = dict(base_env or os.environ)
     for key in list(env.keys()):
         if key.startswith("_PYI_") or key == "_MEIPASS2":
+            env.pop(key, None)
+    for key in ("REQUESTS_CA_BUNDLE", "SSL_CERT_FILE"):
+        if _should_drop_tls_cert_env(env.get(key)):
             env.pop(key, None)
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     return env

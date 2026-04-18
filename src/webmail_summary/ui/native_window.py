@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
 import time
-import sqlite3
+import webbrowser
 from typing import Any, Protocol, cast
+
 import requests
 
 from webmail_summary.util.app_data import get_app_data_dir
@@ -104,7 +106,7 @@ def _wait_for_http_ready(
                 break
         try:
             r = requests.get(url, timeout=(0.5, 1.5))
-            if r.status_code >= 200 and r.status_code < 500:
+            if 200 <= r.status_code < 500:
                 return
         except Exception as e:
             last_exc = e
@@ -116,7 +118,7 @@ def _wait_for_http_ready(
 def _is_reachable(url: str) -> bool:
     try:
         r = requests.get(url, timeout=(0.25, 0.75))
-        return r.status_code >= 200 and r.status_code < 500
+        return 200 <= r.status_code < 500
     except Exception:
         return False
 
@@ -156,7 +158,6 @@ def _load_close_behavior(data_dir) -> str:
 
 
 def _load_tray_image() -> object:
-    # Lazy import so non-tray paths don't require these immediately.
     from io import BytesIO
     from importlib import resources as importlib_resources
 
@@ -170,9 +171,194 @@ def _load_tray_image() -> object:
     return Image.open(BytesIO(b))
 
 
+def _open_browser_fallback(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        if webbrowser.open(url):
+            return True
+    except Exception:
+        pass
+    if is_windows():
+        try:
+            os.startfile(url)
+            return True
+        except Exception:
+            pass
+    return False
+
+
+def _run_native_window(
+    url: str,
+    *,
+    data_dir,
+    server_proc: subprocess.Popen | None,
+) -> None:
+    import webview
+
+    class _NativeApi:
+        def __init__(self) -> None:
+            self._prepared = False
+
+        def prepare_update(self):
+            if self._prepared:
+                return True
+            self._prepared = True
+            quitting.set()
+            try:
+                icon = tray_state.get("icon")
+                if icon is not None:
+                    cast(_TrayIconLike, icon).stop()
+            except Exception:
+                pass
+            try:
+                window.destroy()
+            except Exception:
+                pass
+            return True
+
+    api = _NativeApi()
+    window = webview.create_window(
+        "webmail-summary",
+        url,
+        width=1200,
+        height=820,
+        min_size=(980, 680),
+        js_api=api,
+    )
+
+    stop_evt = threading.Event()
+    quitting = threading.Event()
+    tray_state: dict[str, object] = {"icon": None, "thread": None}
+
+    def _ensure_tray_icon() -> None:
+        if tray_state.get("icon") is not None:
+            return
+        try:
+            import pystray
+        except Exception:
+            return
+
+        img = _load_tray_image()
+
+        def _open(_icon=None, _item=None):
+            try:
+                window.show()
+                window.restore()
+            except Exception:
+                pass
+
+        def _exit(_icon=None, _item=None):
+            quitting.set()
+            try:
+                requests.post(
+                    url.rstrip("/") + "/lifecycle/request-exit",
+                    timeout=(0.5, 1.5),
+                )
+            except Exception:
+                pass
+            try:
+                window.destroy()
+            except Exception:
+                pass
+            try:
+                icon = tray_state.get("icon")
+                if icon is not None:
+                    cast(_TrayIconLike, icon).stop()
+            except Exception:
+                pass
+
+        menu = pystray.Menu(
+            pystray.MenuItem("프로그램 열기", _open, default=True),
+            pystray.MenuItem("프로그램 종료", _exit),
+        )
+        icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
+        tray_state["icon"] = icon
+
+        def _run_icon() -> None:
+            try:
+                icon.run()
+            except Exception:
+                pass
+
+        th = threading.Thread(target=_run_icon, daemon=True)
+        tray_state["thread"] = th
+        th.start()
+
+    def _bring_to_front_watcher() -> None:
+        last_ts = read_bring_to_front_ts()
+        while not stop_evt.wait(0.5):
+            ts = read_bring_to_front_ts()
+            if ts > last_ts:
+                last_ts = ts
+                try:
+                    window.restore()
+                    window.show()
+                except Exception:
+                    continue
+
+    threading.Thread(target=_bring_to_front_watcher, daemon=True).start()
+
+    def _on_closing() -> bool:
+        if quitting.is_set():
+            return True
+        mode = _load_close_behavior(data_dir)
+        if mode == "background":
+            _ensure_tray_icon()
+            try:
+                window.hide()
+            except Exception:
+                pass
+            return False
+        return True
+
+    def _on_closed() -> None:
+        stop_evt.set()
+        try:
+            requests.post(
+                url.rstrip("/") + "/lifecycle/request-exit",
+                timeout=(0.5, 1.5),
+            )
+        except Exception:
+            pass
+
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            try:
+                if server_proc is None or server_proc.poll() is not None:
+                    break
+            except Exception:
+                break
+            time.sleep(0.05)
+
+        try:
+            if server_proc is not None and server_proc.poll() is None:
+                server_proc.terminate()
+        except Exception:
+            pass
+
+        deadline = time.time() + 4.0
+        while time.time() < deadline:
+            try:
+                if server_proc is None or server_proc.poll() is not None:
+                    break
+            except Exception:
+                break
+            time.sleep(0.05)
+
+        try:
+            if server_proc is not None and server_proc.poll() is None:
+                server_proc.kill()
+        except Exception:
+            pass
+
+    window.events.closing += _on_closing
+    window.events.closed += _on_closed
+    webview.start()
+
+
 def run_ui(*, port: int | None = None) -> None:
     if not ui_platform_caps().use_native_window:
-        # Non-Windows environments can keep using the browser flow.
         from webmail_summary.app.main import ServeOptions, serve
 
         serve(ServeOptions(port=port, open_browser=True))
@@ -181,7 +367,6 @@ def run_ui(*, port: int | None = None) -> None:
     data_dir = get_app_data_dir()
     ui_lock = SingleInstanceLock(data_dir / "ui.lock")
     if not ui_lock.acquire():
-        # Existing UI instance should bring the window to front.
         signal_bring_to_front()
         return
 
@@ -202,27 +387,19 @@ def run_ui(*, port: int | None = None) -> None:
             old_text = ""
             old_mtime = 0.0
 
-        # If a server is already running, reuse it.
         if old_text.startswith("http://") or old_text.startswith("https://"):
-            if _is_reachable(old_text):
-                url = old_text
-            else:
-                url = ""
+            url = old_text if _is_reachable(old_text) else ""
         else:
             url = ""
 
         if not url:
-            # Ensure server is running (separate process) and avoid Chrome.
             cmd = _server_command(port)
-            popen_kwargs: dict[str, object] = {
-                "close_fds": True,
-            }
+            popen_kwargs: dict[str, object] = {"close_fds": True}
             popen_kwargs.update(detached_subprocess_kwargs())
             if bool(getattr(sys, "frozen", False)):
                 popen_kwargs["env"] = build_fresh_pyinstaller_env()
             server_proc = subprocess.Popen(cmd, **popen_kwargs)
 
-            # Wait for the server to write a fresh URL (avoid stale active_url.txt).
             url = _wait_for_active_url_change(
                 data_dir, old_text=old_text, old_mtime=old_mtime
             )
@@ -233,170 +410,12 @@ def run_ui(*, port: int | None = None) -> None:
 
             _wait_for_http_ready(url, timeout_s=90.0, server_proc=server_proc)
 
-        import webview
-
-        class _NativeApi:
-            def __init__(self) -> None:
-                self._prepared = False
-
-            def prepare_update(self):
-                # Called from JS when installer is launched.
-                if self._prepared:
-                    return True
-                self._prepared = True
-                quitting.set()
-                try:
-                    if tray_state.get("icon") is not None:
-                        icon = tray_state.get("icon")
-                        if icon is not None:
-                            cast(_TrayIconLike, icon).stop()
-                except Exception:
-                    pass
-                try:
-                    window.destroy()
-                except Exception:
-                    pass
-                return True
-
-        api = _NativeApi()
-        window = webview.create_window(
-            "webmail-summary",
-            url,
-            width=1200,
-            height=820,
-            min_size=(980, 680),
-            js_api=api,
-        )
-
-        stop_evt = threading.Event()
-        quitting = threading.Event()
-        tray_state: dict[str, object] = {"icon": None, "thread": None}
-
-        def _ensure_tray_icon() -> None:
-            if tray_state.get("icon") is not None:
+        try:
+            _run_native_window(url, data_dir=data_dir, server_proc=server_proc)
+        except Exception:
+            if _open_browser_fallback(url):
                 return
-            try:
-                import pystray
-            except Exception:
-                return
-
-            img = _load_tray_image()
-
-            def _open(_icon=None, _item=None):
-                try:
-                    window.show()
-                    window.restore()
-                except Exception:
-                    pass
-
-            def _exit(_icon=None, _item=None):
-                quitting.set()
-                try:
-                    req_url = url.rstrip("/") + "/lifecycle/request-exit"
-                    requests.post(req_url, timeout=(0.5, 1.5))
-                except Exception:
-                    pass
-                try:
-                    window.destroy()
-                except Exception:
-                    pass
-                try:
-                    icon = tray_state.get("icon")
-                    if icon is not None:
-                        cast(_TrayIconLike, icon).stop()
-                except Exception:
-                    pass
-
-            menu = pystray.Menu(
-                pystray.MenuItem("프로그램 열기", _open, default=True),
-                pystray.MenuItem("프로그램 종료", _exit),
-            )
-            icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
-            tray_state["icon"] = icon
-
-            def _run_icon() -> None:
-                try:
-                    icon.run()
-                except Exception:
-                    pass
-
-            th = threading.Thread(target=_run_icon, daemon=True)
-            tray_state["thread"] = th
-            th.start()
-
-        def _bring_to_front_watcher() -> None:
-            last_ts = read_bring_to_front_ts()
-            while not stop_evt.wait(0.5):
-                ts = read_bring_to_front_ts()
-                if ts > last_ts:
-                    last_ts = ts
-                    try:
-                        window.restore()
-                        window.show()
-                    except Exception:
-                        continue
-
-        t = threading.Thread(target=_bring_to_front_watcher, daemon=True)
-        t.start()
-
-        def _on_closing() -> bool:
-            if quitting.is_set():
-                return True
-            mode = _load_close_behavior(data_dir)
-            if mode == "background":
-                _ensure_tray_icon()
-                try:
-                    window.hide()
-                except Exception:
-                    pass
-                return False
-            return True
-
-        def _on_closed() -> None:
-            stop_evt.set()
-            try:
-                req_url = url.rstrip("/") + "/lifecycle/request-exit"
-                requests.post(req_url, timeout=(0.5, 1.5))
-            except Exception:
-                pass
-
-            # Prefer graceful shutdown first.
-            deadline = time.time() + 8.0
-            while time.time() < deadline:
-                try:
-                    if server_proc is None or server_proc.poll() is not None:
-                        break
-                except Exception:
-                    break
-                time.sleep(0.05)
-
-            try:
-                if server_proc is not None and server_proc.poll() is None:
-                    server_proc.terminate()
-            except Exception:
-                pass
-
-            # Force kill only as bounded fallback.
-            deadline = time.time() + 4.0
-            while time.time() < deadline:
-                try:
-                    if server_proc is None or server_proc.poll() is not None:
-                        break
-                except Exception:
-                    break
-                time.sleep(0.05)
-
-            try:
-                if server_proc is not None and server_proc.poll() is None:
-                    server_proc.kill()
-            except Exception:
-                pass
-
-        window.events.closing += _on_closing
-        window.events.closed += _on_closed
-
-        # Prefer WebView2 when available; pywebview will fall back if missing.
-        webview.start()
+            raise
     except Exception as e:
         logs_hint = str(get_app_data_dir() / "logs" / "server.log")
         rt_hint = str(get_app_data_dir() / "runtime")

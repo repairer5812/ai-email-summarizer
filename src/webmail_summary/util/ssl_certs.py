@@ -1,15 +1,30 @@
 from __future__ import annotations
 
 import os
+import sys
+
+
+def _is_under_dir(path: str, parent: str) -> bool:
+    try:
+        child_norm = os.path.normcase(os.path.abspath(path))
+        parent_norm = os.path.normcase(os.path.abspath(parent))
+        return os.path.commonpath([child_norm, parent_norm]) == parent_norm
+    except Exception:
+        return False
 
 
 def _is_usable_cert_path(path: str) -> bool:
     p = str(path or "").strip()
     if not p:
         return False
-    if "_MEI" in p and not os.path.exists(p):
+    if not os.path.exists(p):
         return False
-    return os.path.exists(p)
+    if "_MEI" not in p:
+        return True
+    current_meipass = str(getattr(sys, "_MEIPASS", "") or "").strip()
+    if not current_meipass:
+        return False
+    return _is_under_dir(p, current_meipass)
 
 
 def configure_requests_ca_bundle() -> str:
