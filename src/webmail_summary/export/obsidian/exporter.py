@@ -21,6 +21,12 @@ class MessageExportInput:
     archive_dir: Path
 
 
+def email_note_filename(date: dt.date, subject: str, message_key: str) -> str:
+    """Build the canonical filename for an email note."""
+    short_key = message_key[-12:].replace("/", "-").replace("\\", "-")
+    return f"{date:%Y-%m-%d} - {safe_filename(subject)} ({short_key}).md"
+
+
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -116,9 +122,7 @@ def export_email_note(*, vault_root: Path, inp: MessageExportInput) -> Path:
             for p in imgs[:20]:
                 body += f"![[Assets/{inp.message_key}/attachments/{p.name}]]\n"
 
-    # Include message_key suffix to prevent overwrite when date+subject collide.
-    short_key = inp.message_key[-12:].replace("/", "-").replace("\\", "-")
-    fname = f"{inp.date:%Y-%m-%d} - {safe_filename(inp.subject)} ({short_key}).md"
+    fname = email_note_filename(inp.date, inp.subject, inp.message_key)
     out_path = mail_dir / fname
     atomic_write_text(out_path, body)
     return out_path

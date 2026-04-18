@@ -8,6 +8,7 @@ from pathlib import Path
 
 from webmail_summary.export.obsidian.exporter import (
     MessageExportInput,
+    email_note_filename,
     export_daily_note,
     export_email_note,
     export_topic_note,
@@ -664,30 +665,45 @@ def resummarize_day_task(
                         if topic_file.exists():
                             topic_file.unlink(missing_ok=True)
                     else:
-                        # Find existing note files for these messages.
+                        # Compute exact note paths using the same
+                        # filename logic as export_email_note.
                         topic_notes: list[Path] = []
-                        mail_dir = vault_root / "Mail"
-                        if mail_dir.exists():
-                            # Index all note files by scanning mail dir.
-                            all_md = list(mail_dir.rglob("*.md"))
-                            # Match by message_key in frontmatter.
-                            conn_notes = get_conn(db_path)
-                            try:
-                                for mid in remaining:
-                                    row = conn_notes.execute(
-                                        "SELECT account_id, uidvalidity, uid "
-                                        "FROM messages WHERE id=?",
-                                        (mid,),
-                                    ).fetchone()
-                                    if not row:
-                                        continue
-                                    key_suffix = f"{row[1]}-{row[2]}"
-                                    for md in all_md:
-                                        if key_suffix in md.name:
-                                            topic_notes.append(md)
-                                            break
-                            finally:
-                                conn_notes.close()
+                        conn_notes = get_conn(db_path)
+                        try:
+                            for mid in remaining:
+                                row = conn_notes.execute(
+                                    "SELECT account_id, uidvalidity, uid, "
+                                    "subject, internal_date "
+                                    "FROM messages WHERE id=?",
+                                    (mid,),
+                                ).fetchone()
+                                if not row:
+                                    continue
+                                m_account = str(row[0] or "")
+                                m_uidv = int(row[1] or 0)
+                                m_uid = int(row[2] or 0)
+                                m_subj = str(row[3] or "(no subject)")
+                                m_date_s = str(row[4] or "")
+                                try:
+                                    m_date = dt.datetime.fromisoformat(
+                                        m_date_s
+                                    ).date()
+                                except Exception:
+                                    m_date = dt.date.today()
+                                m_key = f"{m_account}-{m_uidv}-{m_uid}"
+                                fname = email_note_filename(
+                                    m_date, m_subj, m_key
+                                )
+                                note_path = (
+                                    vault_root
+                                    / "Mail"
+                                    / f"{m_date:%Y-%m}"
+                                    / fname
+                                )
+                                if note_path.exists():
+                                    topic_notes.append(note_path)
+                        finally:
+                            conn_notes.close()
                         export_topic_note(
                             vault_root=vault_root,
                             topic=t,
