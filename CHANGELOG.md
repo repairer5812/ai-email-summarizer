@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6] - 2026-04-18
+
+### Changed
+
+- 모델 라인업을 정리했습니다.
+  - 빠름(기본): EXAONE 3.5 2.4B, 표준: Gemma 3 4B, 성능: Qwen 3.5 4B
+  - EXAONE 4.0 1.2B(품질 부족)와 Gemma 4 E4B(CPU에서 실용 불가)를 제거했습니다.
+  - MLX 모델도 GGUF와 동일한 라인업으로 통일했습니다.
+- llama.cpp 엔진을 "엔진 + 모델 설치" 시 자동으로 최신 버전으로 업데이트합니다.
+
+### Fixed
+
+- sync에서 중간 UID가 실패하면 영구 누락되던 문제를 수정했습니다.
+- runner에 다른 job이 실행 중일 때 queued sync가 stale로 오판되던 문제를 수정했습니다.
+- Obsidian 메일 노트 파일명 충돌(동일 날짜+제목) 방지를 추가했습니다.
+- Daily/Topic aggregate note가 split sync 시 기존 링크를 잃던 문제를 merge 방식으로 수정했습니다.
+- resummarize 시 topic 변경(A→B)에 따른 stale 링크를 DB 기준으로 정리합니다.
+- Anthropic 직접 연결 시 네이티브 API를 사용하도록 수정했습니다.
+- MLX 모델 readiness 판정을 MLX 엔진 기준으로 분리했습니다.
+- 엔진 다운로드 중 진행률 표시를 추가했습니다.
+
+### Added
+
+- topic note stale 링크 정리 회귀 테스트 5건을 추가했습니다 (67 passed).
+
 ## [0.6.5.11] - 2026-04-18
 
 ### Fixed
