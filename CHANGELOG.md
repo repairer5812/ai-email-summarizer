@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.1] - 2026-04-18
+
+### Fixed
+
+- Windows 설치형 자동 업데이트 직후 PyInstaller onefile 재실행이 이전 `_MEI` / `_PYI_*` 환경을 물고 올라가며 `Failed to load Python DLL` 로 부팅 실패하던 문제를 완화했습니다.
+  - 업데이트 핸드오프 프로세스와 재실행 직전에 PyInstaller 내부 환경변수를 정리하고 `PYINSTALLER_RESET_ENVIRONMENT=1` 을 적용합니다.
+
+### Added
+
+- 자동 업데이트 재실행 환경 정리 회귀 테스트 2건을 추가했습니다.
+
 ## [0.6.6] - 2026-04-18
 
 ### Changed

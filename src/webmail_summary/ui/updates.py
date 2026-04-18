@@ -32,6 +32,23 @@ from webmail_summary.util.ui_lifecycle import read_ui_pid
 router = APIRouter()
 
 
+def _build_pyinstaller_restart_env(base_env: dict[str, str] | None = None) -> dict[str, str]:
+    """Return an environment suitable for restarting a frozen PyInstaller app.
+
+    PyInstaller onefile apps propagate private ``_PYI_*`` state through the
+    process environment. If the updater relaunches the app with those values
+    inherited, the new process can try to reuse the previous instance's
+    temporary extraction directory and fail very early with bootstrap errors
+    such as "Failed to load Python DLL". Reset to a clean top-level process.
+    """
+    env = dict(base_env or os.environ)
+    for key in list(env.keys()):
+        if key.startswith("_PYI_") or key == "_MEIPASS2":
+            env.pop(key, None)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
 def _normalize_version(value: str) -> str:
     v = str(value or "").strip()
     if v.lower().startswith("v"):
@@ -652,6 +669,18 @@ function Stop-ImageIfRunning([string]$ImageName) {
   } catch {}
 }
 
+function Reset-PyInstallerEnv() {
+  try { $env:PYINSTALLER_RESET_ENVIRONMENT = '1' } catch {}
+  try {
+    $vars = Get-ChildItem Env: -ErrorAction SilentlyContinue
+    foreach ($vv in $vars) {
+      if ($vv.Name -like '_PYI_*' -or $vv.Name -eq '_MEIPASS2') {
+        try { Remove-Item -Path ('Env:' + $vv.Name) -ErrorAction SilentlyContinue } catch {}
+      }
+    }
+  } catch {}
+}
+
 Write-UpdateStatus 'script_started' 'update handoff started'
 
 if (!(Test-Path $InstallerPath)) {
@@ -752,6 +781,7 @@ try {
   }
 
   if (Test-Path $targetExe) {
+    Reset-PyInstallerEnv
     $argsList = @()
     if (![string]::IsNullOrWhiteSpace($RelaunchArgsJson)) {
       try {
@@ -982,7 +1012,11 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
             str(expected_version),
         ]
         creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        popen_kwargs: dict = {"close_fds": True, "creationflags": creationflags}
+        popen_kwargs: dict = {
+            "close_fds": True,
+            "creationflags": creationflags,
+            "env": _build_pyinstaller_restart_env(),
+        }
         if os.name == "nt":
             si = subprocess.STARTUPINFO()
             si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
