@@ -55,6 +55,32 @@ def delete_gguf_and_marker(*, hf_repo_id: str, hf_filename: str) -> None:
 
 
 def check_local_ready(*, model_id: str) -> LocalReady:
+    from webmail_summary.llm.local_models import get_local_model
+
+    model_choice = get_local_model(model_id)
+
+    # MLX models: check MLX engine instead of llama.cpp.
+    if getattr(model_choice, "engine", "gguf") == "mlx":
+        try:
+            from webmail_summary.llm.mlx_engine import find_mlx_installed
+            from webmail_summary.llm.mlx_status import check_mlx_model_ready
+
+            mlx_inst = find_mlx_installed()
+            engine_ok = mlx_inst is not None
+            engine_path = str(mlx_inst.mlx_lm_path) if mlx_inst else None
+            model_ok = check_mlx_model_ready(model_choice.hf_repo_id)
+        except Exception:
+            engine_ok = False
+            engine_path = None
+            model_ok = False
+        return LocalReady(
+            engine_ok=engine_ok,
+            model_ok=model_ok,
+            engine_path=engine_path,
+            model_path=None,
+        )
+
+    # GGUF models: check llama.cpp engine.
     try:
         inst = find_llama_cpp_installed()
         engine_ok = bool(inst and inst.llama_cli_path.exists())
@@ -70,7 +96,7 @@ def check_local_ready(*, model_id: str) -> LocalReady:
     # Migration fallback: if the primary model is missing, check the fallback.
     if not model_ok:
         try:
-            from webmail_summary.llm.local_models import MIGRATION_FALLBACKS, get_local_model
+            from webmail_summary.llm.local_models import MIGRATION_FALLBACKS
 
             fallback_id = MIGRATION_FALLBACKS.get(model_id)
             if fallback_id:

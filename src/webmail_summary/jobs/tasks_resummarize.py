@@ -198,6 +198,13 @@ def resummarize_day_task(
             body_text_path = str(r[10] or "")
             body_html_path = str(r[11] or "")
 
+            # Capture previous topics to detect changes (column 12 = topics_json).
+            old_topics: list[str] = []
+            try:
+                old_topics = json.loads(str(r[12] or "[]")) or []
+            except Exception:
+                old_topics = []
+
             display_date = internal_date[:10]
             display_sub = (subject[:30] + "...") if len(subject) > 30 else subject
 
@@ -584,8 +591,13 @@ def resummarize_day_task(
                     ),
                 )
                 processed_notes.append(note_path)
+                # Track new topics for regeneration.
                 for t in topics:
                     all_topics.setdefault(t, []).append(note_path)
+                # Also mark old topics for regeneration (stale link cleanup).
+                for t in old_topics:
+                    if t not in all_topics:
+                        all_topics[t] = []
             except Exception:
                 # Export failures should not stop resummarize.
                 continue
