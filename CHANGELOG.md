@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.4] - 2026-04-19
+
+### Changed
+
+- AI setup now auto-saves backend, provider, engine, and model selections when they change or when the user leaves the AI tab, so model changes no longer depend on clicking "Save & Next".
+- The local install action now saves the current AI selection first and then installs the selected model, keeping install behavior aligned with what the user just picked on screen.
+
+### Fixed
+
+- The local model readiness card now immediately reflects whether the selected model is ready, whether the engine is missing, or whether the chosen model still needs installation.
+
+### Added
+
+- Regression coverage for partial AI setup saves, including local model normalization and readiness payloads returned to the setup UI.
+
 ## [0.6.6.3] - 2026-04-18
 
 ### Fixed

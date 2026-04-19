@@ -530,7 +530,15 @@ def setup_pick_obsidian():
 
 
 @router.post("/setup/save-partial")
-def setup_save_partial(ui_theme: str = Form(None), llm_backend: str = Form(None)):
+def setup_save_partial(
+    ui_theme: str = Form(None),
+    llm_backend: str = Form(None),
+    cloud_provider: str = Form(None),
+    cloud_multimodal_enabled: str = Form(None),
+    local_model_id: str = Form(None),
+    local_engine: str = Form(None),
+    openrouter_model: str = Form(None),
+):
     from webmail_summary.index.db import get_conn
 
     conn = get_conn(db_path())
@@ -538,8 +546,54 @@ def setup_save_partial(ui_theme: str = Form(None), llm_backend: str = Form(None)
         if ui_theme:
             set_setting(conn, "ui_theme", _normalize_ui_theme(ui_theme))
         if llm_backend:
-            set_setting(conn, "llm_backend", llm_backend.strip().lower())
+            backend = llm_backend.strip().lower()
+            if backend in {"local", "cloud", "openrouter"}:
+                set_setting(conn, "llm_backend", backend)
+        if cloud_provider:
+            set_setting(conn, "cloud_provider", cloud_provider.strip().lower())
+        if cloud_multimodal_enabled is not None:
+            set_setting(
+                conn,
+                "cloud_multimodal_enabled",
+                "1"
+                if str(cloud_multimodal_enabled).strip().lower()
+                in {"1", "on", "true", "yes"}
+                else "0",
+            )
+        if local_model_id:
+            set_setting(
+                conn,
+                "local_model_id",
+                get_local_model(local_model_id.strip().lower()).id,
+            )
+        if local_engine is not None:
+            eng = str(local_engine or "auto").strip().lower()
+            if eng not in {"auto", "llamacpp", "mlx"}:
+                eng = "auto"
+            set_setting(conn, "local_engine", eng)
+        if openrouter_model is not None and str(openrouter_model).strip():
+            set_setting(conn, "openrouter_model", str(openrouter_model).strip())
         conn.commit()
+        settings = load_settings(conn)
     finally:
         conn.close()
-    return {"ok": True}
+
+    saved = {
+        "ui_theme": settings.ui_theme,
+        "llm_backend": settings.llm_backend,
+        "cloud_provider": settings.cloud_provider,
+        "cloud_multimodal_enabled": bool(settings.cloud_multimodal_enabled),
+        "local_model_id": settings.local_model_id,
+        "local_engine": getattr(settings, "local_engine", "auto"),
+        "openrouter_model": settings.openrouter_model,
+    }
+    if settings.llm_backend == "local":
+        ready = check_local_ready(model_id=settings.local_model_id)
+        saved["local_ready"] = {
+            "engine_ok": bool(ready.engine_ok),
+            "model_ok": bool(ready.model_ok),
+            "engine_path": ready.engine_path,
+            "model_path": ready.model_path,
+        }
+
+    return {"ok": True, "saved": saved}
