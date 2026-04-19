@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 import keyring
 
 from webmail_summary.index.settings import Settings
@@ -22,6 +23,36 @@ log = logging.getLogger(__name__)
 
 class LlmNotReady(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class LocalTierBudget:
+    max_tokens: int
+    request_timeout_s: float
+    total_request_budget_s: float
+
+
+def _local_tier_budget(tier: str) -> LocalTierBudget:
+    tier_norm = str(tier or "").strip().lower()
+    if tier_norm == "fast":
+        return LocalTierBudget(
+            max_tokens=384,
+            request_timeout_s=120.0,
+            total_request_budget_s=240.0,
+        )
+    if tier_norm == "performance":
+        return LocalTierBudget(
+            max_tokens=512,
+            request_timeout_s=210.0,
+            total_request_budget_s=420.0,
+        )
+    # Standard now points at 4B-class models, so give it more room than fast
+    # while keeping performance as the largest local tier.
+    return LocalTierBudget(
+        max_tokens=448,
+        request_timeout_s=180.0,
+        total_request_budget_s=360.0,
+    )
 
 
 def _find_llama_server_sibling(cli_path):
@@ -81,12 +112,13 @@ def _try_mlx_provider(settings: Settings) -> LlmProvider | None:
                 log.warning("No MLX counterpart for model %s; falling back to llama.cpp", model_choice.id)
                 return None
 
+        budget = _local_tier_budget(tier)
         cfg = MlxServerConfig(
             mlx_install=mlx_inst,
             hf_repo_id=hf_repo,
-            max_tokens=384 if tier == "fast" else 256,
-            request_timeout_s=120.0 if tier == "fast" else 180.0,
-            total_request_budget_s=240.0 if tier == "fast" else 360.0,
+            max_tokens=budget.max_tokens,
+            request_timeout_s=budget.request_timeout_s,
+            total_request_budget_s=budget.total_request_budget_s,
         )
         return MlxServerProvider(cfg, tier=tier)
     except Exception as e:
@@ -154,23 +186,18 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
             try:
                 # Local llama-server can be slow on some machines.
                 # Use generous timeouts and allow a retry (we restart the server on timeout).
-                max_tokens = 256
-                request_timeout_s = 180.0
+                budget = _local_tier_budget(tier)
                 max_attempts = 2
-                total_budget_s = 360.0
-                if tier == "fast":
-                    max_tokens = 384
-                    request_timeout_s = 120.0
-                    max_attempts = 2
-                    total_budget_s = 240.0
                 return LlamaCppServerProvider(
                     LlamaCppServerConfig(
                         server_exe=server_exe,
                         model_path=model_path,
-                        max_tokens=int(max_tokens),
-                        request_timeout_s=float(request_timeout_s),
+                        max_tokens=int(budget.max_tokens),
+                        request_timeout_s=float(budget.request_timeout_s),
                         max_attempts=int(max_attempts),
-                        total_request_budget_s=float(total_budget_s),
+                        total_request_budget_s=float(
+                            budget.total_request_budget_s
+                        ),
                     ),
                     tier=tier,
                 )

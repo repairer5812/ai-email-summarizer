@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.5] - 2026-04-19
+
+### Changed
+
+- Daily resummarize now reconnects to its SSE stream and falls back to job polling when the browser event stream drops, so updated summaries show up on the day view more reliably while a batch is still running.
+- Local model tier budgets now distinguish `fast`, `standard`, and `performance`, giving the larger local tiers more output/time budget than before.
+- The release workflow now uses `softprops/action-gh-release@v3`, and Dependabot now opens scheduled GitHub Actions update PRs.
+
+### Fixed
+
+- Long-summary rebuild now strips placeholder and sentinel bullets such as `(no summary)`, `(LLM timeout)`, `(LLM unavailable)`, and `상세 요약 항목이 부족합니다.` before composing the final sections.
+- Failed-quality summaries that only contain placeholder/sentinel output are now treated as needing resummarization again.
+
+### Added
+
+- Regression coverage for SSE event resume behavior, rebuilt summaries that recover from placeholder/sentinel outputs, and local provider tier budget selection.
+
 ## [0.6.6.4] - 2026-04-19
 
 ### Changed

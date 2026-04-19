@@ -133,7 +133,7 @@
     export: {{ t(request, 'day.stage.exporting')|tojson }},
   };
 
-  let activeJobId = null, es = null, globalEs = null;
+  let activeJobId = null, es = null, globalEs = null, resumPollTimer = null, resumReconnectTimer = null;
 
   // --- Helper Functions ---
   function selectedIds() { return checkboxes.filter(cb => cb.checked).map(cb => Number(cb.value || 0)); }
@@ -220,12 +220,9 @@
       activeJobId = j.job_id;
     }
     if (es) es.close();
-    es = new EventSource('/api/jobs/' + activeJobId + '/events');
-    es.addEventListener('message_updated', (ev) => {
-      const u = JSON.parse(ev.data);
-      const el = document.querySelector('.summary-content[data-message-id="' + u.message_id + '"]');
-      if (el && u.summary) { el.setAttribute('data-raw', u.summary.trim()); el.innerHTML = formatSummary(u.summary.trim()); }
-    });
+    if (resumPollTimer) { clearInterval(resumPollTimer); resumPollTimer = null; }
+    if (resumReconnectTimer) { clearTimeout(resumReconnectTimer); resumReconnectTimer = null; }
+
     let subPctTarget = 0, subPctCurrent = 0, subTimer = null;
     function animate() {
       if (!subBar || !subPct) return;
@@ -233,14 +230,25 @@
       subBar.style.width = subPctCurrent.toFixed(2) + '%'; subPct.textContent = subPctCurrent.toFixed(2) + '%';
       subTimer = requestAnimationFrame(animate);
     }
-    es.addEventListener('detail', (ev) => {
-      const d = JSON.parse(ev.data);
-      if (d.type === 'email' && curEl) { curEl.style.display = 'block'; curEl.textContent = (d.index + '/' + d.total + ' ') + d.subject; subPctCurrent = 0; subPctTarget = 2; if(!subTimer) animate(); }
-      if (d.type === 'stage') { setStage(d.stage, ''); if(d.stage==='synthesis') subPctTarget=95; if(d.stage==='save'||d.stage==='export') subPctTarget=100; }
-      if (d.type === 'chunk') { setStage('llm', 'part '+d.index+'/'+d.total); subPctTarget=(d.index/(d.total+1))*100; if(!subTimer) animate(); }
-    });
-    es.addEventListener('progress', (ev) => {
-      const p = JSON.parse(ev.data);
+
+    const onTerminal = (status, message) => {
+      if (subTimer) cancelAnimationFrame(subTimer);
+      if (es) { try { es.close(); } catch (e) { /* ignore */ } }
+      es = null;
+      if (resumPollTimer) { clearInterval(resumPollTimer); resumPollTimer = null; }
+      if (resumReconnectTimer) { clearTimeout(resumReconnectTimer); resumReconnectTimer = null; }
+
+      if (status === 'failed') {
+        setButtonsIdle();
+        setProgress(0, MSG_ERROR_PREFIX + (message || 'failed'));
+        return;
+      }
+
+      setButtonsIdle();
+      setTimeout(() => location.reload(), 800);
+    };
+
+    const renderProgressPayload = (p) => {
       const pct = (Number(p.current || 0) / Number(p.total || 1)) * 100;
 
       if (p.status === 'cancel_requested') {
@@ -252,19 +260,58 @@
 
       const terminal = (p.status === 'failed' || p.status === 'succeeded' || p.status === 'cancelled');
       if (!terminal) return;
+      onTerminal(p.status, p.message);
+    };
 
-      if (subTimer) cancelAnimationFrame(subTimer);
-      try { es.close(); } catch (e) { /* ignore */ }
+    const pollResummarize = async () => {
+      if (!activeJobId) return;
+      try {
+        const res = await fetch('/api/jobs/' + activeJobId);
+        if (!res.ok) return;
+        const j = await res.json();
+        renderProgressPayload({
+          status: j.status,
+          current: j.progress_current,
+          total: j.progress_total,
+          message: j.message,
+          created_at: j.created_at,
+          updated_at: j.updated_at,
+        });
+      } catch (e) {}
+    };
 
-      if (p.status === 'failed') {
-        setButtonsIdle();
-        setProgress(0, MSG_ERROR_PREFIX + (p.message || 'failed'));
-        return;
-      }
+    const connectResummarizeEvents = () => {
+      if (!activeJobId) return;
+      if (es) { try { es.close(); } catch (e) { /* ignore */ } }
+      es = new EventSource('/api/jobs/' + activeJobId + '/events');
+      es.addEventListener('message_updated', (ev) => {
+        const u = JSON.parse(ev.data);
+        const el = document.querySelector('.summary-content[data-message-id="' + u.message_id + '"]');
+        if (el && u.summary) { el.setAttribute('data-raw', u.summary.trim()); el.innerHTML = formatSummary(u.summary.trim()); }
+      });
+      es.addEventListener('detail', (ev) => {
+        const d = JSON.parse(ev.data);
+        if (d.type === 'email' && curEl) { curEl.style.display = 'block'; curEl.textContent = (d.index + '/' + d.total + ' ') + d.subject; subPctCurrent = 0; subPctTarget = 2; if(!subTimer) animate(); }
+        if (d.type === 'stage') { setStage(d.stage, ''); if(d.stage==='synthesis') subPctTarget=95; if(d.stage==='save'||d.stage==='export') subPctTarget=100; }
+        if (d.type === 'chunk') { setStage('llm', 'part '+d.index+'/'+d.total); subPctTarget=(d.index/(d.total+1))*100; if(!subTimer) animate(); }
+      });
+      es.addEventListener('progress', (ev) => {
+        const p = JSON.parse(ev.data);
+        renderProgressPayload(p);
+      });
+      es.addEventListener('error', () => {
+        pollResummarize();
+        if (!es || es.readyState !== EventSource.CLOSED || resumReconnectTimer) return;
+        resumReconnectTimer = setTimeout(() => {
+          resumReconnectTimer = null;
+          connectResummarizeEvents();
+        }, 1200);
+      });
+    };
 
-      setButtonsIdle();
-      setTimeout(() => location.reload(), 800);
-    });
+    resumPollTimer = setInterval(pollResummarize, 3000);
+    connectResummarizeEvents();
+    pollResummarize();
   }
 
   // --- Execution ---

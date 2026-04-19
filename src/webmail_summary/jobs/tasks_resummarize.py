@@ -45,6 +45,11 @@ def _needs_resummarize(summary: str) -> bool:
     s = (summary or "").strip().lower()
     if not s:
         return True
+    compact = "".join(ch for ch in s if ch.isalnum() or ("\uac00" <= ch <= "\ud7a3"))
+    if "nosummary" in compact or "요약없음" in compact:
+        return True
+    if "상세요약항목이부족합니다" in compact:
+        return True
     if "llm timeout" in s or "(llm timeout)" in s:
         return True
     if "llm unavailable" in s:
