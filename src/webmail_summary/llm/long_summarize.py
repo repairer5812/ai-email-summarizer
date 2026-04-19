@@ -173,6 +173,29 @@ def _dedupe_keep_order(items: list[str]) -> list[str]:
     return out
 
 
+def _is_placeholder_bullet(text: str) -> bool:
+    t = str(text or "").strip()
+    if not t:
+        return True
+
+    low = t.lower()
+    normalized = re.sub(r"[\s\[\]\(\)\{\}<>\-_*#`\"'“”‘’:;,.!?/\\|]+", "", low)
+    if not normalized:
+        return True
+
+    if normalized in {"nosummary", "요약없음"}:
+        return True
+    if "상세요약항목이부족합니다" in normalized:
+        return True
+    if "llmtimeout" in normalized or "llmunavailable" in normalized:
+        return True
+    if "failedtoformatinput" in normalized or "invalidcodepoint" in normalized:
+        return True
+    if "loadingmodel" in normalized or "availablecommands" in normalized:
+        return True
+    return False
+
+
 def _is_newsletter_like(*, subject: str, body: str, bullets: list[str]) -> bool:
     s = str(subject or "").strip().lower()
     if any(x in s for x in ["뉴스레터", "소식지", "newsletter", "q-letter", "qletter"]):
@@ -323,6 +346,8 @@ def _tokenize_for_relevance(text: str) -> set[str]:
 def _is_context_relevant_bullet(*, bullet: str, source_tokens: set[str]) -> bool:
     b = str(bullet or "").strip()
     if not b:
+        return False
+    if _is_placeholder_bullet(b):
         return False
     if _is_noise_bullet(b):
         return False
@@ -886,6 +911,8 @@ def _ensure_core_detail_sections(text: str) -> str:
         t = str(b or "").strip()
         if not t:
             continue
+        if _is_placeholder_bullet(t):
+            continue
         n = t.lower().replace(" ", "").strip("[]").strip()
         if n in skip_headers:
             continue
@@ -896,6 +923,8 @@ def _ensure_core_detail_sections(text: str) -> str:
             t = re.sub(r"^#{1,6}\s*", "", raw).strip()
             t = re.sub(r"^[-*•·]\s*", "", t).strip()
             if not t:
+                continue
+            if _is_placeholder_bullet(t):
                 continue
             n = t.lower().replace(" ", "").strip("[]").strip()
             if n in skip_headers:
@@ -985,6 +1014,7 @@ def summarize_email_long_aware(
                 for b in _extract_bullets(res.summary)
                 if b
                 and ("\ufffd" not in b)
+                and (not _is_placeholder_bullet(b))
                 and (not _is_header_line(b))
                 and (not _is_noise_bullet(b))
             ]
@@ -1007,7 +1037,10 @@ def summarize_email_long_aware(
             [
                 b
                 for b in _extract_bullets(summary_text)
-                if b and ("\ufffd" not in b) and (not _is_noise_bullet(b))
+                if b
+                and ("\ufffd" not in b)
+                and (not _is_placeholder_bullet(b))
+                and (not _is_noise_bullet(b))
             ]
         )
         if _is_newsletter_like(subject=subject, body=body_s, bullets=bullets2):
@@ -1045,6 +1078,7 @@ def summarize_email_long_aware(
                 for b in _extract_bullets(res.summary)
                 if b
                 and ("\ufffd" not in b)
+                and (not _is_placeholder_bullet(b))
                 and (not _is_header_line(b))
                 and (not _is_noise_bullet(b))
             ]
@@ -1102,6 +1136,7 @@ def summarize_email_long_aware(
             for b in _extract_bullets(res.summary)
             if b
             and ("\ufffd" not in b)
+            and (not _is_placeholder_bullet(b))
             and (not _is_header_line(b))
             and (not _is_noise_bullet(b))
         ]
@@ -1201,7 +1236,10 @@ def summarize_email_long_aware(
                 [
                     b
                     for b in _extract_bullets(final_summary_text)
-                    if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
+                    if b
+                    and (not _is_placeholder_bullet(b))
+                    and (not _is_header_line(b))
+                    and (not _is_noise_bullet(b))
                 ]
             )
             target_min = _target_min_bullets(
@@ -1213,7 +1251,10 @@ def summarize_email_long_aware(
                 [
                     b
                     for b in all_bullets
-                    if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
+                    if b
+                    and (not _is_placeholder_bullet(b))
+                    and (not _is_header_line(b))
+                    and (not _is_noise_bullet(b))
                 ]
             )
             if (
@@ -1241,7 +1282,10 @@ def summarize_email_long_aware(
             [
                 b
                 for b in all_bullets
-                if b and (not _is_header_line(b)) and (not _is_noise_bullet(b))
+                if b
+                and (not _is_placeholder_bullet(b))
+                and (not _is_header_line(b))
+                and (not _is_noise_bullet(b))
             ]
         )
         min_keep = _target_min_bullets(
@@ -1261,7 +1305,10 @@ def summarize_email_long_aware(
         [
             b
             for b in _extract_bullets(final_summary_text)
-            if b and ("\ufffd" not in b) and (not _is_noise_bullet(b))
+            if b
+            and ("\ufffd" not in b)
+            and (not _is_placeholder_bullet(b))
+            and (not _is_noise_bullet(b))
         ]
     )
     min_keep = _target_min_bullets(subject=subject, body=body_s, bullets=final_bullets)
@@ -1272,12 +1319,27 @@ def summarize_email_long_aware(
         min_keep=min_keep,
         max_keep=active_cfg.max_bullets,
     )
+    display_bullets = _dedupe_keep_order(
+        [
+            b
+            for b in _extract_bullets(final_summary_text)
+            if b
+            and ("\ufffd" not in b)
+            and (not _is_placeholder_bullet(b))
+            and (not _is_header_line(b))
+            and (not _is_noise_bullet(b))
+        ]
+        + list(final_bullets)
+    )[: active_cfg.max_bullets]
+    rebuilt_summary_text = "\n".join(["- " + b for b in display_bullets if b]).strip()
     if _is_newsletter_like(subject=subject, body=body_s, bullets=final_bullets):
         final_summary_text = _structure_newsletter_summary(
             subject=subject, body=body_s, bullets=final_bullets
         )
     else:
-        final_summary_text = _ensure_core_detail_sections(final_summary_text)
+        final_summary_text = _ensure_core_detail_sections(
+            rebuilt_summary_text or final_summary_text
+        )
 
     tags = _dedupe_keep_order([str(x) for x in tags])[: active_cfg.max_tags]
     backlinks = _dedupe_keep_order([str(x) for x in backlinks])[

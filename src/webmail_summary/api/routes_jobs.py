@@ -35,6 +35,14 @@ def _db_path():
     return get_app_data_dir() / "db.sqlite3"
 
 
+def _parse_last_event_id(value: str | None) -> int:
+    try:
+        parsed = int(str(value or "0").strip())
+    except Exception:
+        return 0
+    return max(0, parsed)
+
+
 def _job_age_seconds(updated_at: str) -> float:
     try:
         ts = datetime.fromisoformat(str(updated_at))
@@ -380,9 +388,9 @@ def get_job(job_id: str):
 
 
 @router.get("/jobs/{job_id}/events")
-def stream_events(job_id: str):
+def stream_events(job_id: str, request: Request):
     def gen():
-        last_id = 0
+        last_id = _parse_last_event_id(request.headers.get("last-event-id"))
         while True:
             conn = get_conn(_db_path())
             try:
@@ -396,24 +404,28 @@ def stream_events(job_id: str):
                 return
 
             for r in evs:
-                last_id = int(r[0])
+                event_id = int(r[0])
+                last_id = event_id
                 level = str(r[2])
                 text = str(r[3])
                 if level == "message_updated":
                     # text is expected to be a JSON object string.
-                    yield f"event: message_updated\ndata: {text}\n\n"
+                    yield f"id: {event_id}\nevent: message_updated\ndata: {text}\n\n"
                     continue
                 if level == "detail":
                     # text is expected to be a JSON object string.
-                    yield f"event: detail\ndata: {text}\n\n"
+                    yield f"id: {event_id}\nevent: detail\ndata: {text}\n\n"
                     continue
                 payload = {
-                    "id": int(r[0]),
+                    "id": event_id,
                     "ts": str(r[1]),
                     "level": level,
                     "text": text,
                 }
-                yield f"event: log\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n"
+                yield (
+                    f"id: {event_id}\nevent: log\n"
+                    f"data: {json.dumps(payload, ensure_ascii=True)}\n\n"
+                )
 
             # Extract date_key if it exists in message for UI mapping
             date_key = ""
@@ -459,7 +471,14 @@ def stream_events(job_id: str):
                 return
             time.sleep(0.5)
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/local/models")
