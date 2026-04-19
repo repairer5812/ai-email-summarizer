@@ -265,6 +265,11 @@
                         data-engine-ok="{% if local_ready.engine_ok %}1{% else %}0{% endif %}"
                         data-model-ok="{% if local_ready.model_ok %}1{% else %}0{% endif %}"
                         data-default-model-id="{{ defaults.local_model_id }}"
+                        data-msg-saving-settings="{{ t(request, 'setup.install.saving_settings')|e }}"
+                        data-msg-save-failed="{{ t(request, 'setup.install.save_failed')|e }}"
+                        data-msg-ready="{{ t(request, 'setup.install.ready_selected')|e }}"
+                        data-msg-engine-required="{{ t(request, 'setup.install.engine_required')|e }}"
+                        data-msg-model-required="{{ t(request, 'setup.install.model_required')|e }}"
                         style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.02);"
                       >
                         <div class="bar" style="margin-top: 0;"><div class="bar__fill" id="local-bar" style="width:0%"></div></div>
@@ -532,6 +537,8 @@
   const modelSelect = document.getElementById('local-model');
   const notesEl = document.getElementById('model-notes');
   const roleCheckboxes = document.querySelectorAll('.role-btn input[type="checkbox"]');
+  const localEngineField = form ? form.querySelector('[name="local_engine"]') : null;
+  const cloudMultimodalCheckbox = form ? form.querySelector('input[name="cloud_multimodal_enabled"]') : null;
 
   const CLOUD_MODELS = {
     openai: [
@@ -588,9 +595,20 @@
   let openrouterModels = null;
   let openrouterLoading = false;
   let openrouterLastError = '';
+  let savedCloudModelId = "{{ defaults.openrouter_model }}";
+  let aiSaveQueue = Promise.resolve();
 
   // --- Logic: Tabs ---
-  window.switchTab = (tabName) => {
+  window.switchTab = async (tabName) => {
+    const activeTab = document.querySelector('.wizard__tab.active')?.getAttribute('data-tab') || '';
+    if (activeTab === tabName) return;
+    if (activeTab === 'ai') {
+      try {
+        await queueAiPartialSave({ showSaving: backendSelect && backendSelect.value === 'local' });
+      } catch (e) {
+        return;
+      }
+    }
     tabs.forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === tabName));
     panels.forEach(p => p.classList.toggle('active', p.id === `panel-${tabName}`));
     
@@ -637,7 +655,7 @@
 
   function _populateCloudSelect(models, selectedId) {
     if (!cloudModelSelect) return;
-    const prev = String(selectedId || cloudModelSelect.value || '');
+    const prev = String(cloudModelSelect.value || selectedId || savedCloudModelId || '');
     cloudModelSelect.innerHTML = '';
     const list = Array.isArray(models) ? models : [];
     list.forEach(m => {
@@ -648,7 +666,7 @@
       cloudModelSelect.appendChild(opt);
     });
 
-    const want = prev || "{{ defaults.openrouter_model }}";
+    const want = prev || savedCloudModelId;
     if (want) cloudModelSelect.value = want;
     if (cloudModelSelect.value !== want && want) {
       const opt = document.createElement('option');
@@ -780,6 +798,82 @@
     });
   }
 
+  function setLocalStatusMessage(message, color) {
+    if (!localText) return;
+    localText.textContent = message || '';
+    localText.style.color = color || 'var(--text-secondary)';
+  }
+
+  function renderLocalReadyState(ready, modelId) {
+    if (!localStatusBox) return;
+    const selectedModelId = String(modelId || (modelSelect ? modelSelect.value : '') || '');
+    const engineOk = !!(ready && ready.engine_ok);
+    const modelOk = !!(ready && ready.model_ok);
+
+    if (selectedModelId) localStatusBox.setAttribute('data-default-model-id', selectedModelId);
+    localStatusBox.setAttribute('data-engine-ok', engineOk ? '1' : '0');
+    localStatusBox.setAttribute('data-model-ok', modelOk ? '1' : '0');
+
+    if (localBar && !installEs) localBar.style.width = engineOk && modelOk ? '100%' : '0%';
+    if (installEs) return;
+
+    if (engineOk && modelOk) {
+      setLocalStatusMessage(localStatusBox.getAttribute('data-msg-ready') || '', '#16a34a');
+      return;
+    }
+    if (!engineOk) {
+      setLocalStatusMessage(localStatusBox.getAttribute('data-msg-engine-required') || '', 'var(--text-secondary)');
+      return;
+    }
+    setLocalStatusMessage(localStatusBox.getAttribute('data-msg-model-required') || '', 'var(--text-secondary)');
+  }
+
+  function buildAiPartialFormData() {
+    const fd = new FormData();
+    if (backendSelect) fd.append('llm_backend', backendSelect.value || 'local');
+    if (cloudProvider) fd.append('cloud_provider', cloudProvider.value || 'openai');
+    if (cloudMultimodalCheckbox) fd.append('cloud_multimodal_enabled', cloudMultimodalCheckbox.checked ? '1' : '0');
+    if (modelSelect) fd.append('local_model_id', modelSelect.value || '');
+    if (localEngineField) fd.append('local_engine', localEngineField.value || 'auto');
+    if (cloudModelSelect) fd.append('openrouter_model', cloudModelSelect.value || '');
+    return fd;
+  }
+
+  async function saveAiPartialNow(options = {}) {
+    const showSaving = !!options.showSaving;
+    if (showSaving && backendSelect && backendSelect.value === 'local' && localStatusBox && !installEs) {
+      setLocalStatusMessage(localStatusBox.getAttribute('data-msg-saving-settings') || '', 'var(--text-secondary)');
+    }
+
+    const res = await fetch('/setup/save-partial', {
+      method: 'POST',
+      body: buildAiPartialFormData(),
+    });
+    const j = await res.json().catch(() => ({}));
+
+    if (!res.ok || !j.ok) {
+      if (backendSelect && backendSelect.value === 'local' && localStatusBox && !installEs) {
+        setLocalStatusMessage(localStatusBox.getAttribute('data-msg-save-failed') || '', '#dc2626');
+      }
+      throw new Error((j && j.message) ? j.message : ('HTTP ' + res.status));
+    }
+
+    if (j && j.saved && j.saved.openrouter_model) {
+      savedCloudModelId = String(j.saved.openrouter_model);
+    }
+    if (j && j.saved && j.saved.local_ready) {
+      renderLocalReadyState(j.saved.local_ready, j.saved.local_model_id);
+    }
+    return j;
+  }
+
+  function queueAiPartialSave(options = {}) {
+    aiSaveQueue = aiSaveQueue
+      .catch(() => null)
+      .then(() => saveAiPartialNow(options));
+    return aiSaveQueue;
+  }
+
   // --- Logic: Workers & Actions ---
   const btnInstall = document.getElementById('btn-local-install');
   const localBar = document.getElementById('local-bar');
@@ -806,9 +900,18 @@
   }
 
   // --- Event Listeners ---
-  if (backendSelect) backendSelect.addEventListener('change', syncAiMenus);
-  if (cloudProvider) cloudProvider.addEventListener('change', syncCloudModelList);
-  if (cloudModelSelect) cloudModelSelect.addEventListener('change', renderVisionGuide);
+  if (backendSelect) backendSelect.addEventListener('change', () => {
+    syncAiMenus();
+    queueAiPartialSave({ showSaving: backendSelect.value === 'local' }).catch(() => {});
+  });
+  if (cloudProvider) cloudProvider.addEventListener('change', () => {
+    syncCloudModelList();
+    queueAiPartialSave({ showSaving: false }).catch(() => {});
+  });
+  if (cloudModelSelect) cloudModelSelect.addEventListener('change', () => {
+    renderVisionGuide();
+    queueAiPartialSave({ showSaving: false }).catch(() => {});
+  });
   if (cloudModelSearch) cloudModelSearch.addEventListener('input', () => {
     if (cloudProvider && cloudProvider.value === 'openrouter') _renderOpenRouterModels();
   });
@@ -818,7 +921,16 @@
   if (btnRefreshOpenrouterInline) btnRefreshOpenrouterInline.addEventListener('click', () => {
     if (cloudProvider && cloudProvider.value === 'openrouter') _ensureOpenRouterModelsLoaded(true);
   });
-  if (modelSelect) modelSelect.addEventListener('change', syncModelNotes);
+  if (modelSelect) modelSelect.addEventListener('change', () => {
+    syncModelNotes();
+    queueAiPartialSave({ showSaving: backendSelect && backendSelect.value === 'local' }).catch(() => {});
+  });
+  if (localEngineField) localEngineField.addEventListener('change', () => {
+    queueAiPartialSave({ showSaving: backendSelect && backendSelect.value === 'local' }).catch(() => {});
+  });
+  if (cloudMultimodalCheckbox) cloudMultimodalCheckbox.addEventListener('change', () => {
+    queueAiPartialSave({ showSaving: false }).catch(() => {});
+  });
   roleCheckboxes.forEach((cb) => cb.addEventListener('change', syncRoleButtons));
 
   if (btnInstall) {
@@ -829,9 +941,21 @@
       const msgErrPrefix = btnInstall.getAttribute('data-msg-error-prefix') || 'Install error: ';
 
       btnInstall.disabled = true;
+      let savedState = null;
+      try {
+        savedState = await queueAiPartialSave({ showSaving: true });
+      } catch (e) {
+        btnInstall.disabled = false;
+        return;
+      }
       if (localBar) localBar.style.width = '0%';
-      if (localText) localText.textContent = msgChecking;
-      const modelId = modelSelect ? modelSelect.value : '';
+      if (localText) {
+        localText.textContent = msgChecking;
+        localText.style.color = 'var(--text-secondary)';
+      }
+      const modelId = (savedState && savedState.saved && savedState.saved.local_model_id)
+        ? String(savedState.saved.local_model_id)
+        : (modelSelect ? modelSelect.value : '');
       if (!modelId) {
         if (localText) localText.textContent = msgErrPrefix + 'model_id missing.';
         btnInstall.disabled = false;
@@ -1019,6 +1143,15 @@
   syncModelNotes();
   syncRoleButtons();
   renderVisionGuide();
+  if (localStatusBox) {
+    renderLocalReadyState(
+      {
+        engine_ok: String(localStatusBox.getAttribute('data-engine-ok') || '0') === '1',
+        model_ok: String(localStatusBox.getAttribute('data-model-ok') || '0') === '1',
+      },
+      localStatusBox.getAttribute('data-default-model-id') || "{{ defaults.local_model_id }}"
+    );
+  }
   const ACTIVE_INSTALL = "{{ (active.local_install.id if active and active.local_install else '') }}";
   if (ACTIVE_INSTALL) watchInstall(ACTIVE_INSTALL);
 
