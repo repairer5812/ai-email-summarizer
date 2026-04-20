@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.9] - 2026-04-20
+
+### Fixed
+
+- Windows native UI startup now searches multiple PyInstaller extraction roots, including `_MEIPASS`, PyInstaller environment hints, and recent `_MEI*` temp folders, before loading `_cffi_backend`. This fixes in-app update cases where the latest installed app still fell back to the browser because the frozen extraction path could not be resolved reliably enough on first launch.
+
 ## [0.6.6.8] - 2026-04-20
 
 ### Fixed

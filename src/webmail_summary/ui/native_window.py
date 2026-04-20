@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -276,17 +277,46 @@ def _open_browser_fallback(url: str) -> bool:
     return False
 
 
-def _ensure_frozen_extension_alias(module_name: str) -> Path | None:
-    if not bool(getattr(sys, "frozen", False)):
-        return None
-    mei = str(getattr(sys, "_MEIPASS", "") or "").strip()
-    if not mei:
-        return None
-    base = Path(mei)
-    if not base.is_dir():
-        return None
+def _extension_search_roots() -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
 
-    base_text = str(base)
+    def _add_dir(path_text: str) -> None:
+        text = str(path_text or "").strip()
+        if not text:
+            return
+        p = Path(text)
+        key = str(p).lower()
+        if key in seen or not p.is_dir():
+            return
+        seen.add(key)
+        roots.append(p)
+
+    _add_dir(str(getattr(sys, "_MEIPASS", "") or ""))
+    _add_dir(os.environ.get("_PYI_APPLICATION_HOME_DIR", ""))
+    _add_dir(os.environ.get("_MEIPASS2", ""))
+
+    try:
+        temp_root = Path(tempfile.gettempdir())
+        mei_dirs = sorted(
+            [
+                d
+                for d in temp_root.glob("_MEI*")
+                if d.is_dir()
+            ],
+            key=lambda d: d.stat().st_mtime,
+            reverse=True,
+        )
+        for d in mei_dirs[:8]:
+            _add_dir(str(d))
+    except Exception:
+        pass
+
+    return roots
+
+
+def _prepare_extension_dir(path: Path) -> None:
+    base_text = str(path)
     if base_text not in sys.path:
         sys.path.insert(0, base_text)
     add_dir = getattr(os, "add_dll_directory", None)
@@ -296,37 +326,55 @@ def _ensure_frozen_extension_alias(module_name: str) -> Path | None:
         except Exception:
             pass
 
-    plain = base / f"{module_name}.pyd"
-    if plain.is_file():
-        return plain
 
-    candidates: list[Path] = []
-    seen: set[str] = set()
+def _find_frozen_extension(module_name: str) -> Path | None:
+    candidates_seen: set[str] = set()
+    for base in _extension_search_roots():
+        _prepare_extension_dir(base)
 
-    for suffix in importlib.machinery.EXTENSION_SUFFIXES:
-        cand = base / f"{module_name}{suffix}"
-        key = str(cand).lower()
-        if key in seen or not cand.is_file():
-            continue
-        seen.add(key)
-        candidates.append(cand)
-
-    for cand in base.glob(f"{module_name}*.pyd"):
-        key = str(cand).lower()
-        if key in seen or not cand.is_file():
-            continue
-        seen.add(key)
-        candidates.append(cand)
-
-    for cand in candidates:
-        if cand.name.lower() == plain.name.lower():
-            return cand
-        try:
-            shutil.copyfile(cand, plain)
+        plain = base / f"{module_name}.pyd"
+        if plain.is_file():
             return plain
-        except Exception:
+
+        for suffix in importlib.machinery.EXTENSION_SUFFIXES:
+            cand = base / f"{module_name}{suffix}"
+            key = str(cand).lower()
+            if key in candidates_seen or not cand.is_file():
+                continue
+            candidates_seen.add(key)
+            return cand
+
+        for cand in base.glob(f"{module_name}*.pyd"):
+            key = str(cand).lower()
+            if key in candidates_seen or not cand.is_file():
+                continue
+            candidates_seen.add(key)
+            return cand
+
+        for cand in base.rglob(f"{module_name}*.pyd"):
+            key = str(cand).lower()
+            if key in candidates_seen or not cand.is_file():
+                continue
+            candidates_seen.add(key)
+            _prepare_extension_dir(cand.parent)
             return cand
     return None
+
+
+def _ensure_frozen_extension_alias(module_name: str) -> Path | None:
+    found = _find_frozen_extension(module_name)
+    if found is None:
+        return None
+    plain = found.parent / f"{module_name}.pyd"
+    if plain.is_file():
+        return plain
+    if found.name.lower() == plain.name.lower():
+        return found
+    try:
+        shutil.copyfile(found, plain)
+        return plain
+    except Exception:
+        return found
 
 
 def _preload_frozen_cffi_backend() -> None:
