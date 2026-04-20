@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import os
+from pathlib import Path
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -272,12 +276,95 @@ def _open_browser_fallback(url: str) -> bool:
     return False
 
 
+def _ensure_frozen_extension_alias(module_name: str) -> Path | None:
+    if not bool(getattr(sys, "frozen", False)):
+        return None
+    mei = str(getattr(sys, "_MEIPASS", "") or "").strip()
+    if not mei:
+        return None
+    base = Path(mei)
+    if not base.is_dir():
+        return None
+
+    base_text = str(base)
+    if base_text not in sys.path:
+        sys.path.insert(0, base_text)
+    add_dir = getattr(os, "add_dll_directory", None)
+    if callable(add_dir):
+        try:
+            add_dir(base_text)
+        except Exception:
+            pass
+
+    plain = base / f"{module_name}.pyd"
+    if plain.is_file():
+        return plain
+
+    candidates: list[Path] = []
+    seen: set[str] = set()
+
+    for suffix in importlib.machinery.EXTENSION_SUFFIXES:
+        cand = base / f"{module_name}{suffix}"
+        key = str(cand).lower()
+        if key in seen or not cand.is_file():
+            continue
+        seen.add(key)
+        candidates.append(cand)
+
+    for cand in base.glob(f"{module_name}*.pyd"):
+        key = str(cand).lower()
+        if key in seen or not cand.is_file():
+            continue
+        seen.add(key)
+        candidates.append(cand)
+
+    for cand in candidates:
+        if cand.name.lower() == plain.name.lower():
+            return cand
+        try:
+            shutil.copyfile(cand, plain)
+            return plain
+        except Exception:
+            return cand
+    return None
+
+
+def _preload_frozen_cffi_backend() -> None:
+    try:
+        importlib.import_module("_cffi_backend")
+        return
+    except ModuleNotFoundError as first_error:
+        alias = _ensure_frozen_extension_alias("_cffi_backend")
+        if alias is None:
+            raise first_error
+
+        importlib.invalidate_caches()
+        try:
+            importlib.import_module("_cffi_backend")
+            return
+        except ModuleNotFoundError:
+            pass
+
+        spec = importlib.util.spec_from_file_location("_cffi_backend", str(alias))
+        if spec is None or spec.loader is None:
+            raise first_error
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["_cffi_backend"] = module
+        try:
+            spec.loader.exec_module(module)
+            return
+        except Exception:
+            sys.modules.pop("_cffi_backend", None)
+            raise
+
+
 def _run_native_window(
     url: str,
     *,
     data_dir,
     server_proc: subprocess.Popen | None,
 ) -> None:
+    _preload_frozen_cffi_backend()
     import webview
 
     class _NativeApi:
