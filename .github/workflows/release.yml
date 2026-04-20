@@ -81,7 +81,7 @@ jobs:
             ')'
           )
           Set-Content -Path version_info.txt -Value $versionInfoLines -Encoding utf8
-          pyinstaller --noconfirm --clean --onefile --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --hidden-import webview --hidden-import pystray --hidden-import PIL --hidden-import _cffi_backend src/webmail_summary/cli.py
+          pyinstaller --noconfirm --clean --onefile --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import PIL --hidden-import _cffi_backend src/webmail_summary/cli.py
 
       - name: Install Inno Setup
         shell: pwsh

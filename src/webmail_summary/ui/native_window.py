@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import importlib
-import importlib.util
 import os
 from pathlib import Path
-import shutil
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import traceback
@@ -31,6 +27,7 @@ from webmail_summary.util.ui_lifecycle import (
     signal_bring_to_front,
     write_ui_pid,
 )
+from webmail_summary.ui import frozen_extensions
 
 
 class _TrayIconLike(Protocol):
@@ -201,26 +198,36 @@ def _append_ui_start_log(
     return str(log_path)
 
 
+def _merge_url_query(url: str, params: dict[str, str]) -> str:
+    try:
+        parsed = urlsplit(str(url or ""))
+        keep = {str(k): str(v) for k, v in params.items() if str(v or "").strip()}
+        qs = [
+            (k, v)
+            for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+            if k not in keep
+        ]
+        for key, value in keep.items():
+            qs.append((key, value))
+        return urlunsplit(parsed._replace(query=urlencode(qs)))
+    except Exception:
+        return url
+
+
 def _build_browser_fallback_url(
     url: str,
     *,
     reason: str,
     retry_count: int,
 ) -> str:
-    try:
-        parsed = urlsplit(str(url or ""))
-        qs = [
-            (k, v)
-            for k, v in parse_qsl(parsed.query, keep_blank_values=True)
-            if k not in {"ui_notice", "ui_reason", "ui_retries"}
-        ]
-        qs.append(("ui_notice", "native_fallback"))
-        if reason:
-            qs.append(("ui_reason", str(reason)[:220]))
-        qs.append(("ui_retries", str(max(0, int(retry_count)))))
-        return urlunsplit(parsed._replace(query=urlencode(qs)))
-    except Exception:
-        return url
+    return _merge_url_query(
+        url,
+        {
+            "ui_notice": "native_fallback",
+            "ui_reason": str(reason)[:220] if reason else "",
+            "ui_retries": str(max(0, int(retry_count))),
+        },
+    )
 
 
 def _load_close_behavior(data_dir) -> str:
@@ -260,150 +267,89 @@ def _load_tray_image() -> object:
     return Image.open(BytesIO(b))
 
 
-def _open_browser_fallback(url: str) -> bool:
+def _windows_app_mode_browsers() -> list[Path]:
+    paths: list[Path] = []
+    seen: set[str] = set()
+
+    def _add(candidate: str | Path | None) -> None:
+        if not candidate:
+            return
+        p = Path(str(candidate))
+        key = str(p).lower()
+        if key in seen or not p.is_file():
+            return
+        seen.add(key)
+        paths.append(p)
+
+    if is_windows():
+        try:
+            import winreg
+
+            for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                for name in ("msedge.exe", "chrome.exe"):
+                    try:
+                        with winreg.OpenKey(
+                            hive,
+                            rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{name}",
+                        ) as key:
+                            value, _ = winreg.QueryValueEx(key, None)
+                            _add(value)
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+    env = os.environ
+    common = [
+        Path(env.get("ProgramFiles(x86)", "")) / "Microsoft/Edge/Application/msedge.exe",
+        Path(env.get("ProgramFiles", "")) / "Microsoft/Edge/Application/msedge.exe",
+        Path(env.get("LocalAppData", "")) / "Microsoft/Edge/Application/msedge.exe",
+        Path(env.get("ProgramFiles", "")) / "Google/Chrome/Application/chrome.exe",
+        Path(env.get("ProgramFiles(x86)", "")) / "Google/Chrome/Application/chrome.exe",
+        Path(env.get("LocalAppData", "")) / "Google/Chrome/Application/chrome.exe",
+    ]
+    for candidate in common:
+        _add(candidate)
+    return paths
+
+
+def _open_browser_fallback(url: str) -> str:
     if not url:
-        return False
+        return ""
+
+    if is_windows():
+        app_url = _merge_url_query(url, {"ui_window": "app"})
+        for browser_path in _windows_app_mode_browsers():
+            try:
+                subprocess.Popen(
+                    [str(browser_path), f"--app={app_url}", "--new-window"],
+                    close_fds=True,
+                )
+                return "app"
+            except Exception:
+                continue
+
+    browser_url = _merge_url_query(url, {"ui_window": "browser"})
     try:
-        if webbrowser.open(url):
-            return True
+        if webbrowser.open(browser_url):
+            return "browser"
     except Exception:
         pass
     if is_windows():
         try:
-            os.startfile(url)
-            return True
+            os.startfile(browser_url)
+            return "browser"
         except Exception:
             pass
-    return False
-
-
-def _extension_search_roots() -> list[Path]:
-    roots: list[Path] = []
-    seen: set[str] = set()
-
-    def _add_dir(path_text: str) -> None:
-        text = str(path_text or "").strip()
-        if not text:
-            return
-        p = Path(text)
-        key = str(p).lower()
-        if key in seen or not p.is_dir():
-            return
-        seen.add(key)
-        roots.append(p)
-
-    _add_dir(str(getattr(sys, "_MEIPASS", "") or ""))
-    _add_dir(os.environ.get("_PYI_APPLICATION_HOME_DIR", ""))
-    _add_dir(os.environ.get("_MEIPASS2", ""))
-
-    try:
-        temp_root = Path(tempfile.gettempdir())
-        mei_dirs = sorted(
-            [
-                d
-                for d in temp_root.glob("_MEI*")
-                if d.is_dir()
-            ],
-            key=lambda d: d.stat().st_mtime,
-            reverse=True,
-        )
-        for d in mei_dirs[:8]:
-            _add_dir(str(d))
-    except Exception:
-        pass
-
-    return roots
-
-
-def _prepare_extension_dir(path: Path) -> None:
-    base_text = str(path)
-    if base_text not in sys.path:
-        sys.path.insert(0, base_text)
-    add_dir = getattr(os, "add_dll_directory", None)
-    if callable(add_dir):
-        try:
-            add_dir(base_text)
-        except Exception:
-            pass
-
-
-def _find_frozen_extension(module_name: str) -> Path | None:
-    candidates_seen: set[str] = set()
-    for base in _extension_search_roots():
-        _prepare_extension_dir(base)
-
-        plain = base / f"{module_name}.pyd"
-        if plain.is_file():
-            return plain
-
-        for suffix in importlib.machinery.EXTENSION_SUFFIXES:
-            cand = base / f"{module_name}{suffix}"
-            key = str(cand).lower()
-            if key in candidates_seen or not cand.is_file():
-                continue
-            candidates_seen.add(key)
-            return cand
-
-        for cand in base.glob(f"{module_name}*.pyd"):
-            key = str(cand).lower()
-            if key in candidates_seen or not cand.is_file():
-                continue
-            candidates_seen.add(key)
-            return cand
-
-        for cand in base.rglob(f"{module_name}*.pyd"):
-            key = str(cand).lower()
-            if key in candidates_seen or not cand.is_file():
-                continue
-            candidates_seen.add(key)
-            _prepare_extension_dir(cand.parent)
-            return cand
-    return None
+    return ""
 
 
 def _ensure_frozen_extension_alias(module_name: str) -> Path | None:
-    found = _find_frozen_extension(module_name)
-    if found is None:
-        return None
-    plain = found.parent / f"{module_name}.pyd"
-    if plain.is_file():
-        return plain
-    if found.name.lower() == plain.name.lower():
-        return found
-    try:
-        shutil.copyfile(found, plain)
-        return plain
-    except Exception:
-        return found
+    return frozen_extensions.ensure_frozen_extension_alias(module_name)
 
 
 def _preload_frozen_cffi_backend() -> None:
-    try:
-        importlib.import_module("_cffi_backend")
-        return
-    except ModuleNotFoundError as first_error:
-        alias = _ensure_frozen_extension_alias("_cffi_backend")
-        if alias is None:
-            raise first_error
-
-        importlib.invalidate_caches()
-        try:
-            importlib.import_module("_cffi_backend")
-            return
-        except ModuleNotFoundError:
-            pass
-
-        spec = importlib.util.spec_from_file_location("_cffi_backend", str(alias))
-        if spec is None or spec.loader is None:
-            raise first_error
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["_cffi_backend"] = module
-        try:
-            spec.loader.exec_module(module)
-            return
-        except Exception:
-            sys.modules.pop("_cffi_backend", None)
-            raise
+    frozen_extensions.preload_cffi_backend()
 
 
 def _run_native_window(
