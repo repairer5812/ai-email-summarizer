@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.8] - 2026-04-20
+
+### Fixed
+
+- Windows native UI startup now preloads `_cffi_backend` from the PyInstaller extraction directory and creates a plain `_cffi_backend.pyd` alias when only a tagged file is present, fixing browser fallback cases where the module existed in `_MEI` but still failed to import.
+
+### Added
+
+- Regression coverage for the frozen `_cffi_backend` alias/preload path so this startup fix stays protected in future releases.
+
 ## [0.6.6.7] - 2026-04-20
 
 ### Fixed

@@ -150,3 +150,45 @@ def test_short_error_reason_prefers_nested_import_failure():
     text = native_window._short_error_reason(outer)
 
     assert text == "ModuleNotFoundError: No module named '_cffi_backend'"
+
+
+def test_ensure_frozen_extension_alias_creates_plain_pyd_copy(monkeypatch, tmp_path):
+    mei = tmp_path / "_MEI123"
+    mei.mkdir()
+    tagged = mei / "_cffi_backend.cp311-win_amd64.pyd"
+    tagged.write_bytes(b"stub")
+
+    monkeypatch.setattr(native_window.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(native_window.sys, "_MEIPASS", str(mei), raising=False)
+
+    aliased = native_window._ensure_frozen_extension_alias("_cffi_backend")
+
+    assert aliased == mei / "_cffi_backend.pyd"
+    assert aliased.read_bytes() == b"stub"
+
+
+def test_preload_frozen_cffi_backend_retries_after_creating_alias(
+    monkeypatch, tmp_path
+):
+    mei = tmp_path / "_MEI123"
+    mei.mkdir()
+    (mei / "_cffi_backend.cp311-win_amd64.pyd").write_bytes(b"stub")
+
+    monkeypatch.setattr(native_window.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(native_window.sys, "_MEIPASS", str(mei), raising=False)
+
+    imported = {"count": 0}
+
+    def _fake_import(name):
+        assert name == "_cffi_backend"
+        imported["count"] += 1
+        if imported["count"] == 1:
+            raise ModuleNotFoundError("No module named '_cffi_backend'")
+        return object()
+
+    monkeypatch.setattr(native_window.importlib, "import_module", _fake_import)
+
+    native_window._preload_frozen_cffi_backend()
+
+    assert imported["count"] == 2
+    assert (mei / "_cffi_backend.pyd").is_file()
