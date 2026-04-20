@@ -10,8 +10,6 @@
       <div class="day-actions" style="display:flex; flex-direction: row; flex-wrap: nowrap; gap: 8px; align-items: center; justify-content: flex-end; overflow-x: auto; width: max-content; min-width: max-content; max-width: 100%;">
       {% if not setup_complete %}
         <a class="btn" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
-      {% elif active_resum %}
-        {# Progress is already visible #}
       {% else %}
         <button id="btn-resummarize" class="btn" style="white-space: nowrap;">{{ t(request, 'day.btn.retry_failed') }}</button>
         <button id="btn-resummarize-all" class="btn" style="white-space: nowrap;">{{ t(request, 'day.btn.retry_all') }}</button>
@@ -88,6 +86,9 @@
           </div>
         </div>
         <div class="day-item-actions" style="flex: 0 0 auto; margin-left: 20px;">
+          {% if it.needs_resummarize %}
+            <button class="btn btn--secondary btn-retry-single" data-message-id="{{ it.id }}" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'day.item.retry_single') }}</button>
+          {% endif %}
           {% if it.has_rendered %}
             <a class="btn btn--secondary" href="/message/{{ it.id }}/original?return_to={{ day }}" style="padding: 6px 12px; font-size: 0.8rem;">{{ t(request, 'detail.original') }}</a>
           {% endif %}
@@ -95,7 +96,7 @@
         </div>
       </div>
       <div class="card__body" style="padding: 20px;">
-        <div class="summary-content" data-message-id="{{ it.id }}" style="font-size: 0.95rem; line-height: 1.6;" data-raw='{{ it.summary|tojson }}'>
+        <div class="summary-content" data-message-id="{{ it.id }}" data-needs-resummarize="{{ 1 if it.needs_resummarize else 0 }}" style="font-size: 0.95rem; line-height: 1.6;" data-raw='{{ it.summary|tojson }}'>
           <pre class="mono" style="margin:0; white-space: pre-wrap;">{{ it.summary }}</pre>
         </div>
       </div>
@@ -117,6 +118,7 @@
   const stepperEl = document.getElementById('resum-stepper'), trackEl = document.getElementById('resum-track');
   const subWrap = document.getElementById('resum-sub-wrap'), subBar = document.getElementById('resum-sub-bar'), subPct = document.getElementById('resum-sub-pct');
   const checkboxes = Array.from(document.querySelectorAll('input.msg-select'));
+  const singleRetryButtons = Array.from(document.querySelectorAll('.btn-retry-single'));
   const globalWrap = document.getElementById('global-job-wrap'), globalBar = document.getElementById('global-bar'), globalText = document.getElementById('global-text');
 
   const LABEL_FAILED = {{ t(request, 'day.btn.retry_failed')|tojson }};
@@ -139,8 +141,14 @@
   function selectedIds() { return checkboxes.filter(cb => cb.checked).map(cb => Number(cb.value || 0)); }
   function syncSelectedUi() {
     const ids = selectedIds();
-    if (activeJobId) { if(btnSel) btnSel.disabled = true; checkboxes.forEach(cb => cb.disabled = true); return; }
+    if (activeJobId) {
+      if(btnSel) btnSel.disabled = true;
+      checkboxes.forEach(cb => cb.disabled = true);
+      singleRetryButtons.forEach(btnSingle => { btnSingle.disabled = true; });
+      return;
+    }
     checkboxes.forEach(cb => cb.disabled = false);
+    singleRetryButtons.forEach(btnSingle => { btnSingle.disabled = false; });
     if(btnSel) { 
       btnSel.disabled = ids.length === 0; 
       btnSel.textContent = LABEL_SELECTED + " (" + ids.length + ")"; 
@@ -173,6 +181,7 @@
     activeJobId = null; 
     if(btn) { btn.textContent = LABEL_FAILED; btn.disabled = false; }
     if(btnAll) { btnAll.textContent = LABEL_ALL; btnAll.disabled = false; }
+    singleRetryButtons.forEach(btnSingle => { btnSingle.disabled = false; });
     syncSelectedUi();
   }
 
@@ -181,11 +190,12 @@
     else if (starter === 'all' && btnAll) { btnAll.textContent = LABEL_STOP; btn.disabled = true; btnSel.disabled = true; }
     else if (btnSel) { btnSel.textContent = LABEL_STOP; btn.disabled = true; btnAll.disabled = true; }
     checkboxes.forEach(cb => cb.disabled = true);
+    singleRetryButtons.forEach(btnSingle => { btnSingle.disabled = true; });
   }
 
   async function requestCancel() {
     if (!activeJobId) return;
-    [btn, btnAll, btnSel].forEach(b => { if(b) b.disabled = true; });
+    [btn, btnAll, btnSel, ...singleRetryButtons].forEach(b => { if(b) b.disabled = true; });
     setProgress(100, MSG_CANCELLING);
     try { await fetch('/api/jobs/' + activeJobId + '/cancel', { method: 'POST' }); } catch(e) { /* ignore */ }
   }
@@ -335,7 +345,7 @@
   } else if (GLOBAL_ACTIVE_RESUM) {
     const jobDay = GLOBAL_ACTIVE_RESUM.date_key;
     if (jobDay && jobDay !== "{{ day }}") {
-        [btn, btnAll, btnSel].forEach(b => { if(b) b.disabled = true; });
+        [btn, btnAll, btnSel, ...singleRetryButtons].forEach(b => { if(b) b.disabled = true; });
         setProgress(0, "{% if ui_lang(request) == 'ko' %}다른 날짜의 요약 작업이 진행 중입니다.{% else %}Another day's summarization is in progress.{% endif %} (" + jobDay + ")");
     }
   }
@@ -343,6 +353,17 @@
   if (btn) btn.addEventListener('click', () => activeJobId ? requestCancel() : startResummarize(true, 'failed', null));
   if (btnAll) btnAll.addEventListener('click', () => activeJobId ? requestCancel() : (confirm("전체 다시 요약하시겠습니까?") && startResummarize(false, 'all', null)));
   if (btnSel) btnSel.addEventListener('click', () => activeJobId ? requestCancel() : startResummarize(false, 'selected', selectedIds()));
+  singleRetryButtons.forEach(btnSingle => {
+    btnSingle.addEventListener('click', () => {
+      const messageId = Number(btnSingle.getAttribute('data-message-id') || 0);
+      if (!messageId) return;
+      if (activeJobId) {
+        requestCancel();
+        return;
+      }
+      startResummarize(false, 'selected', [messageId]);
+    });
+  });
 })();
 
 </script>

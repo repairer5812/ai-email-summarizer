@@ -30,11 +30,13 @@ class _DummyProc:
 def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_path):
     opened: list[str] = []
     shown_errors: list[tuple[str, str]] = []
+    native_attempts: list[str] = []
 
     monkeypatch.setattr(native_window, "get_app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(native_window, "SingleInstanceLock", lambda path: _DummyLock())
     monkeypatch.setattr(native_window, "write_ui_pid", lambda pid: None)
     monkeypatch.setattr(native_window, "clear_ui_pid", lambda: None)
+    monkeypatch.setattr(native_window.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(native_window, "_is_reachable", lambda url: False)
     monkeypatch.setattr(native_window, "_server_command", lambda port: ["fake-app"])
     monkeypatch.setattr(
@@ -55,7 +57,8 @@ def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_
     monkeypatch.setattr(
         native_window,
         "_run_native_window",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("coreclr missing")),
+        lambda *args, **kwargs: native_attempts.append("try")
+        or (_ for _ in ()).throw(RuntimeError("coreclr missing")),
     )
     monkeypatch.setattr(
         native_window,
@@ -70,5 +73,70 @@ def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_
 
     native_window.run_ui(port=0)
 
-    assert opened == ["http://127.0.0.1:9999/"]
+    assert native_attempts == ["try", "try"]
+    assert len(opened) == 1
+    assert "http://127.0.0.1:9999/" in opened[0]
+    assert "ui_notice=native_fallback" in opened[0]
+    assert "ui_reason=RuntimeError%3A+coreclr+missing" in opened[0]
     assert shown_errors == []
+    log_text = (tmp_path / "logs" / "ui_start.log").read_text(encoding="utf-8")
+    assert "native_window attempt=1 next_action=retry" in log_text
+    assert "native_window attempt=2 next_action=browser_fallback" in log_text
+
+
+def test_run_ui_retries_native_window_once_before_browser_fallback(
+    monkeypatch, tmp_path
+):
+    opened: list[str] = []
+    shown_errors: list[tuple[str, str]] = []
+    native_attempts: list[str] = []
+
+    monkeypatch.setattr(native_window, "get_app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(native_window, "SingleInstanceLock", lambda path: _DummyLock())
+    monkeypatch.setattr(native_window, "write_ui_pid", lambda pid: None)
+    monkeypatch.setattr(native_window, "clear_ui_pid", lambda: None)
+    monkeypatch.setattr(native_window.time, "sleep", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(native_window, "_is_reachable", lambda url: False)
+    monkeypatch.setattr(native_window, "_server_command", lambda port: ["fake-app"])
+    monkeypatch.setattr(
+        native_window.subprocess,
+        "Popen",
+        lambda *args, **kwargs: _DummyProc(),
+    )
+    monkeypatch.setattr(
+        native_window,
+        "_wait_for_active_url_change",
+        lambda *args, **kwargs: "http://127.0.0.1:9999/",
+    )
+    monkeypatch.setattr(
+        native_window,
+        "_wait_for_http_ready",
+        lambda *args, **kwargs: None,
+    )
+
+    def _run_once_then_succeed(*args, **kwargs):
+        native_attempts.append("try")
+        if len(native_attempts) == 1:
+            raise RuntimeError("temporary webview init failure")
+        return None
+
+    monkeypatch.setattr(native_window, "_run_native_window", _run_once_then_succeed)
+    monkeypatch.setattr(
+        native_window,
+        "_open_browser_fallback",
+        lambda url: opened.append(url) or True,
+    )
+    monkeypatch.setattr(
+        native_window,
+        "_show_error",
+        lambda title, message: shown_errors.append((title, message)),
+    )
+
+    native_window.run_ui(port=0)
+
+    assert native_attempts == ["try", "try"]
+    assert opened == []
+    assert shown_errors == []
+    log_text = (tmp_path / "logs" / "ui_start.log").read_text(encoding="utf-8")
+    assert "native_window attempt=1 next_action=retry" in log_text
+    assert "browser_fallback" not in log_text

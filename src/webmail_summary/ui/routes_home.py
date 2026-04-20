@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from webmail_summary.index.mail_repo import get_daily_overview
 from webmail_summary.index.settings import load_settings, set_setting
+from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.ui.settings_gateway import db_path, get_setting
 from webmail_summary.ui.setup_service import (
@@ -16,6 +18,45 @@ from webmail_summary.ui.updates import _build_update_state, _check_github_releas
 from webmail_summary.ui.web_shared import get_active_jobs, templates
 
 router = APIRouter()
+
+
+def _build_day_cards(conn, *, limit: int = 90) -> list[dict]:
+    rows_days = list(
+        conn.execute(
+            "SELECT substr(internal_date, 1, 10) AS day, COUNT(*) "
+            "FROM messages "
+            "WHERE internal_date IS NOT NULL AND length(internal_date) >= 10 "
+            "GROUP BY day ORDER BY day DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+    )
+    day_keys = [str(r[0] or "") for r in rows_days if str(r[0] or "").strip()]
+    failed_by_day: dict[str, int] = {}
+    if day_keys:
+        qmarks = ",".join(["?"] * len(day_keys))
+        rows_summaries = conn.execute(
+            "SELECT substr(internal_date, 1, 10) AS day, summary "
+            "FROM messages "
+            "WHERE internal_date IS NOT NULL "
+            f"AND substr(internal_date, 1, 10) IN ({qmarks})",
+            tuple(day_keys),
+        ).fetchall()
+        for r in rows_summaries:
+            day = str(r[0] or "")
+            if day and _needs_resummarize(str(r[1] or "")):
+                failed_by_day[day] = int(failed_by_day.get(day, 0)) + 1
+
+    return [
+        {
+            "day": day,
+            "day_display": format_date_with_weekday_ko(day),
+            "count": int(r[1] or 0),
+            "overview": get_daily_overview(conn, day),
+            "failed_count": int(failed_by_day.get(day, 0)),
+        }
+        for r in rows_days
+        for day in [str(r[0] or "")]
+    ]
 
 
 def _check_model_migration(settings) -> dict | None:
@@ -64,7 +105,6 @@ def _check_model_migration(settings) -> dict | None:
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
     from webmail_summary.index.db import get_conn
-    from webmail_summary.index.mail_repo import get_daily_overview
 
     conn = get_conn(db_path())
     try:
@@ -99,23 +139,7 @@ def home(request: Request):
         settings = load_settings(conn)
         update_state = _build_update_state(settings)
 
-        rows_days = list(
-            conn.execute(
-                "SELECT substr(internal_date, 1, 10) AS day, COUNT(*) "
-                "FROM messages "
-                "WHERE internal_date IS NOT NULL AND length(internal_date) >= 10 "
-                "GROUP BY day ORDER BY day DESC LIMIT 90"
-            ).fetchall()
-        )
-        day_cards = [
-            {
-                "day": str(r[0] or ""),
-                "day_display": format_date_with_weekday_ko(str(r[0] or "")),
-                "count": int(r[1] or 0),
-                "overview": get_daily_overview(conn, str(r[0] or "")),
-            }
-            for r in rows_days
-        ]
+        day_cards = _build_day_cards(conn, limit=90)
     finally:
         conn.close()
 
@@ -125,6 +149,17 @@ def home(request: Request):
     )
     if update_checked not in {"latest", "available", "error"}:
         update_checked = ""
+    ui_notice = str(request.query_params.get("ui_notice") or "").strip().lower()
+    ui_reason = str(request.query_params.get("ui_reason") or "").strip()
+    startup_notice = None
+    if ui_notice == "native_fallback":
+        from webmail_summary.util.app_data import get_app_data_dir
+
+        startup_notice = {
+            "kind": "warn",
+            "reason": ui_reason,
+            "log_path": str(get_app_data_dir() / "logs" / "ui_start.log"),
+        }
 
     return templates.TemplateResponse(
         request=request,
@@ -133,7 +168,11 @@ def home(request: Request):
             "request": request,
             "theme": settings.ui_theme,
             "days": day_cards,
-            "flash": {"saved": saved, "update_checked": update_checked},
+            "flash": {
+                "saved": saved,
+                "update_checked": update_checked,
+                "startup_notice": startup_notice,
+            },
             "active": active_jobs,
             "update": update_state,
             "ai": {
@@ -163,27 +202,10 @@ def home(request: Request):
 @router.get("/api/ui/days")
 def api_get_days():
     from webmail_summary.index.db import get_conn
-    from webmail_summary.index.mail_repo import get_daily_overview
 
     conn = get_conn(db_path())
     try:
-        rows = list(
-            conn.execute(
-                "SELECT substr(internal_date, 1, 10) AS day, COUNT(*) "
-                "FROM messages "
-                "WHERE internal_date IS NOT NULL AND length(internal_date) >= 10 "
-                "GROUP BY day ORDER BY day DESC LIMIT 90"
-            ).fetchall()
-        )
-        return [
-            {
-                "day": str(r[0] or ""),
-                "day_display": format_date_with_weekday_ko(str(r[0] or "")),
-                "count": int(r[1] or 0),
-                "overview": get_daily_overview(conn, str(r[0] or "")),
-            }
-            for r in rows
-        ]
+        return _build_day_cards(conn, limit=90)
     finally:
         conn.close()
 
