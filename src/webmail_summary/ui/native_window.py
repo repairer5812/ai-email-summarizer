@@ -623,6 +623,47 @@ def _run_native_window(
     webview.start()
 
 
+def _kill_stale_webmail_processes() -> None:
+    """Terminate any other webmail-summary processes left over from a
+    previous version (e.g. after an update where the old UI didn't close).
+
+    Only runs on Windows. Skips the current process and any process
+    whose exe path we can't determine.
+    """
+    if not is_windows():
+        return
+    if not bool(getattr(sys, "frozen", False)):
+        return  # dev mode — don't touch other pythons
+    try:
+        import psutil
+    except Exception:
+        return
+    my_pid = os.getpid()
+    my_exe_name = "webmail-summary.exe"
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            if proc.info["pid"] == my_pid:
+                continue
+            pname = str(proc.info.get("name") or "").lower()
+            if pname != my_exe_name:
+                continue
+            proc.terminate()
+        except Exception:
+            continue
+    # Give them a moment, then force kill stragglers.
+    time.sleep(0.5)
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            if proc.info["pid"] == my_pid:
+                continue
+            pname = str(proc.info.get("name") or "").lower()
+            if pname != my_exe_name:
+                continue
+            proc.kill()
+        except Exception:
+            continue
+
+
 def run_ui(*, port: int | None = None) -> None:
     if not ui_platform_caps().use_native_window:
         from webmail_summary.app.main import ServeOptions, serve
@@ -631,6 +672,11 @@ def run_ui(*, port: int | None = None) -> None:
         return
 
     data_dir = get_app_data_dir()
+
+    # Clean up stale webmail-summary processes from a previous version
+    # (can happen if the old UI didn't close during an update handoff).
+    _kill_stale_webmail_processes()
+
     ui_lock = SingleInstanceLock(data_dir / "ui.lock")
     if not ui_lock.acquire():
         signal_bring_to_front()
