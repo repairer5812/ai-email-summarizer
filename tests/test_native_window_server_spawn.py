@@ -140,3 +140,13 @@ def test_run_ui_retries_native_window_once_before_browser_fallback(
     log_text = (tmp_path / "logs" / "ui_start.log").read_text(encoding="utf-8")
     assert "native_window attempt=1 next_action=retry" in log_text
     assert "browser_fallback" not in log_text
+
+
+def test_short_error_reason_prefers_nested_import_failure():
+    root = ModuleNotFoundError("No module named '_cffi_backend'")
+    outer = RuntimeError("Failed to create a .NET runtime (coreclr) using the parameters {}.")
+    outer.__cause__ = root
+
+    text = native_window._short_error_reason(outer)
+
+    assert text == "ModuleNotFoundError: No module named '_cffi_backend'"

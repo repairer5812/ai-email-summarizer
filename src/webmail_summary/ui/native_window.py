@@ -145,8 +145,29 @@ def _ui_start_log_path(data_dir):
     return log_dir / "ui_start.log"
 
 
+def _iter_exception_chain(error: Exception):
+    seen: set[int] = set()
+    cur: BaseException | None = error
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        yield cur
+        cur = cur.__cause__ or cur.__context__
+
+
 def _short_error_reason(error: Exception) -> str:
-    text = f"{type(error).__name__}: {str(error or '').strip()}".strip()
+    preferred: str | None = None
+    fallback: str | None = None
+    for cur in _iter_exception_chain(error):
+        msg = " ".join(str(cur or "").strip().split())
+        if not msg:
+            continue
+        text = f"{type(cur).__name__}: {msg}".strip()
+        if fallback is None:
+            fallback = text
+        if isinstance(cur, (ModuleNotFoundError, ImportError, FileNotFoundError)):
+            preferred = text
+            break
+    text = preferred or fallback or f"{type(error).__name__}: {str(error or '').strip()}".strip()
     text = " ".join(text.split())
     return text[:220]
 

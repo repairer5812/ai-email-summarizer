@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.7] - 2026-04-20
+
+### Fixed
+
+- Windows release builds now explicitly bundle `_cffi_backend`, fixing native app-window startup failures that could appear right after an in-app update and force the UI into browser fallback mode.
+- Native UI startup notices now prefer the deepest import/runtime cause in the browser fallback message and `ui_start.log`, so packaging failures are reported more clearly than the outer `.NET runtime` wrapper error.
+
+### Added
+
+- Regression coverage that locks the release workflow to keep `_cffi_backend` in the Windows PyInstaller command, plus a test for nested startup-error reporting.
+
 ## [0.6.6.6] - 2026-04-20
 
 ### Changed
