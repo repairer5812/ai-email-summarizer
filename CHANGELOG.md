@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.12] - 2026-04-20
+
+### Fixed
+
+- 대시보드 날짜별 "요약의 요약"에 `(no summary)` / `(LLM timeout)` 같은
+  에러 문자열이 그대로 섞여 나오던 문제를 수정했습니다.
+  - daily overview 생성 시 실패한 개별 요약은 입력에서 제외합니다.
+  - "해당 날짜 전체 다시 요약"을 실행하면 기존에 잘못 생성된
+    overview도 다시 정상으로 재생성됩니다.
+
 ## [0.6.6.11] - 2026-04-20
 
 ### Fixed

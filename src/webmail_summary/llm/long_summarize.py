@@ -1372,6 +1372,14 @@ def synthesize_daily_overview(
     max_item_chars = 220
     max_total_chars = 8000
 
+    # Placeholder/error strings that must never reach the daily digest.
+    _bad_markers = (
+        "(no summary)",
+        "(llm timeout)",
+        "(llm unavailable)",
+        "요약없음",
+    )
+
     compact_summaries: list[str] = []
     seen: set[str] = set()
     total_chars = 0
@@ -1385,6 +1393,9 @@ def synthesize_daily_overview(
         if key in seen:
             continue
         seen.add(key)
+        # Skip summaries that are just placeholder/error strings.
+        if any(marker in key for marker in _bad_markers):
+            continue
 
         clipped = s[:max_item_chars]
         next_total = total_chars + len(clipped)

@@ -182,7 +182,15 @@ def refresh_overviews_for_dates(
                     "ORDER BY internal_date ASC",
                     (f"{d}%",),
                 ).fetchall()
-                all_sums = [str(r[0] or "") for r in rows if r[0]]
+                # Exclude failed/placeholder summaries from the overview
+                # input — otherwise the daily digest inherits those strings.
+                from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
+
+                all_sums = [
+                    str(r[0] or "")
+                    for r in rows
+                    if r[0] and not _needs_resummarize(str(r[0] or ""))
+                ]
 
                 if not all_sums:
                     if job_id:
