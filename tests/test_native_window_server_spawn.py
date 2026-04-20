@@ -1,5 +1,7 @@
+from pathlib import Path
+
 from webmail_summary.util.process_control import build_fresh_pyinstaller_env
-from webmail_summary.ui import native_window
+from webmail_summary.ui import frozen_extensions, native_window
 
 
 def test_fresh_pyinstaller_env_resets_to_new_top_level_process(monkeypatch):
@@ -84,6 +86,31 @@ def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_
     assert "native_window attempt=2 next_action=browser_fallback" in log_text
 
 
+def test_open_browser_fallback_prefers_windows_app_mode(monkeypatch):
+    launched: list[tuple[list[str], dict[str, object]]] = []
+
+    monkeypatch.setattr(native_window, "is_windows", lambda: True)
+    monkeypatch.setattr(
+        native_window,
+        "_windows_app_mode_browsers",
+        lambda: [Path("C:/Program Files/Google/Chrome/Application/chrome.exe")],
+    )
+    monkeypatch.setattr(
+        native_window.subprocess,
+        "Popen",
+        lambda args, **kwargs: launched.append((list(args), kwargs)) or object(),
+    )
+    monkeypatch.setattr(native_window.webbrowser, "open", lambda url: False)
+
+    mode = native_window._open_browser_fallback("http://127.0.0.1:9999/")
+
+    assert mode == "app"
+    assert launched
+    assert launched[0][0][0].endswith("chrome.exe")
+    assert launched[0][0][1].startswith("--app=http://127.0.0.1:9999/")
+    assert "ui_window=app" in launched[0][0][1]
+
+
 def test_run_ui_retries_native_window_once_before_browser_fallback(
     monkeypatch, tmp_path
 ):
@@ -158,8 +185,8 @@ def test_ensure_frozen_extension_alias_creates_plain_pyd_copy(monkeypatch, tmp_p
     tagged = mei / "_cffi_backend.cp311-win_amd64.pyd"
     tagged.write_bytes(b"stub")
 
-    monkeypatch.setattr(native_window.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(native_window.sys, "_MEIPASS", str(mei), raising=False)
+    monkeypatch.setattr(frozen_extensions.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(frozen_extensions.sys, "_MEIPASS", str(mei), raising=False)
 
     aliased = native_window._ensure_frozen_extension_alias("_cffi_backend")
 
@@ -174,8 +201,8 @@ def test_preload_frozen_cffi_backend_retries_after_creating_alias(
     mei.mkdir()
     (mei / "_cffi_backend.cp311-win_amd64.pyd").write_bytes(b"stub")
 
-    monkeypatch.setattr(native_window.sys, "frozen", True, raising=False)
-    monkeypatch.setattr(native_window.sys, "_MEIPASS", str(mei), raising=False)
+    monkeypatch.setattr(frozen_extensions.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(frozen_extensions.sys, "_MEIPASS", str(mei), raising=False)
 
     imported = {"count": 0}
 
@@ -186,7 +213,7 @@ def test_preload_frozen_cffi_backend_retries_after_creating_alias(
             raise ModuleNotFoundError("No module named '_cffi_backend'")
         return object()
 
-    monkeypatch.setattr(native_window.importlib, "import_module", _fake_import)
+    monkeypatch.setattr(frozen_extensions.importlib, "import_module", _fake_import)
 
     native_window._preload_frozen_cffi_backend()
 

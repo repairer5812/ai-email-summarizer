@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.10] - 2026-04-20
+
+### Fixed
+
+- Windows native UI startup now shares a dedicated frozen-extension loader between the app and the PyInstaller runtime hook, so `_cffi_backend` is preloaded earlier and more reliably after in-app updates.
+- Windows browser fallback now prefers Edge or Chrome app-mode windows before opening a normal browser tab, keeping the fallback experience closer to an installed app when the native window still cannot boot.
+
+### Added
+
+- Release builds now include a PyInstaller runtime hook for `_cffi_backend`, with regression coverage that keeps the hook wired into the Windows packaging workflow.
+
 ## [0.6.6.9] - 2026-04-20
 
 ### Fixed
