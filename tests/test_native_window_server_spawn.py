@@ -60,12 +60,21 @@ def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_
         native_window,
         "_run_native_window",
         lambda *args, **kwargs: native_attempts.append("try")
-        or (_ for _ in ()).throw(RuntimeError("coreclr missing")),
+        or (_ for _ in ()).throw(RuntimeError("generic transient webview failure")),
     )
+
+    def _fake_open(url, *, app_url_builder=None, browser_url_builder=None):
+        # Simulate browser (non-app) fallback so ui_notice is expected.
+        target = browser_url_builder(url) if browser_url_builder else url
+        opened.append(target)
+        return "browser"
+
+    monkeypatch.setattr(native_window, "_open_browser_fallback", _fake_open)
+    monkeypatch.setattr(native_window, "is_windows", lambda: False)
     monkeypatch.setattr(
         native_window,
-        "_open_browser_fallback",
-        lambda url: opened.append(url) or True,
+        "_run_fallback_tray",
+        lambda **kwargs: None,  # Skip actual tray loop in tests.
     )
     monkeypatch.setattr(
         native_window,
@@ -75,15 +84,66 @@ def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_
 
     native_window.run_ui(port=0)
 
+    # Generic transient error: retries once, then falls back.
     assert native_attempts == ["try", "try"]
     assert len(opened) == 1
     assert "http://127.0.0.1:9999/" in opened[0]
     assert "ui_notice=native_fallback" in opened[0]
-    assert "ui_reason=RuntimeError%3A+coreclr+missing" in opened[0]
     assert shown_errors == []
     log_text = (tmp_path / "logs" / "ui_start.log").read_text(encoding="utf-8")
     assert "native_window attempt=1 next_action=retry" in log_text
     assert "native_window attempt=2 next_action=browser_fallback" in log_text
+
+
+def test_run_ui_persistent_coreclr_error_skips_retry(monkeypatch, tmp_path):
+    """.NET runtime errors are persistent; no point retrying."""
+    opened: list[str] = []
+    native_attempts: list[str] = []
+
+    monkeypatch.setattr(native_window, "get_app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(native_window, "SingleInstanceLock", lambda path: _DummyLock())
+    monkeypatch.setattr(native_window, "write_ui_pid", lambda pid: None)
+    monkeypatch.setattr(native_window, "clear_ui_pid", lambda: None)
+    monkeypatch.setattr(native_window.time, "sleep", lambda *a, **k: None)
+    monkeypatch.setattr(native_window, "_is_reachable", lambda url: False)
+    monkeypatch.setattr(native_window, "_server_command", lambda port: ["fake-app"])
+    monkeypatch.setattr(
+        native_window.subprocess,
+        "Popen",
+        lambda *args, **kwargs: _DummyProc(),
+    )
+    monkeypatch.setattr(
+        native_window,
+        "_wait_for_active_url_change",
+        lambda *a, **k: "http://127.0.0.1:9999/",
+    )
+    monkeypatch.setattr(native_window, "_wait_for_http_ready", lambda *a, **k: None)
+    monkeypatch.setattr(
+        native_window,
+        "_run_native_window",
+        lambda *a, **k: native_attempts.append("try")
+        or (_ for _ in ()).throw(
+            RuntimeError("Failed to create a .NET runtime (coreclr) using the parameters {}.")
+        ),
+    )
+
+    def _fake_open(url, *, app_url_builder=None, browser_url_builder=None):
+        target = app_url_builder(url) if app_url_builder else url
+        opened.append(target)
+        return "app"
+
+    monkeypatch.setattr(native_window, "_open_browser_fallback", _fake_open)
+    monkeypatch.setattr(native_window, "is_windows", lambda: True)
+    monkeypatch.setattr(native_window, "_run_fallback_tray", lambda **k: None)
+    monkeypatch.setattr(native_window, "_show_error", lambda *a, **k: None)
+
+    native_window.run_ui(port=0)
+
+    # Persistent error: only one attempt.
+    assert native_attempts == ["try"]
+    # App-mode fallback: no ui_notice to avoid confusing the user.
+    assert len(opened) == 1
+    assert "ui_notice" not in opened[0]
 
 
 def test_open_browser_fallback_prefers_windows_app_mode(monkeypatch):

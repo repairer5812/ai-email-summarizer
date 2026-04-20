@@ -219,15 +219,27 @@ def _build_browser_fallback_url(
     *,
     reason: str,
     retry_count: int,
+    include_notice: bool = True,
 ) -> str:
-    return _merge_url_query(
-        url,
-        {
-            "ui_notice": "native_fallback",
-            "ui_reason": str(reason)[:220] if reason else "",
-            "ui_retries": str(max(0, int(retry_count))),
-        },
-    )
+    params: dict[str, str] = {}
+    if include_notice:
+        params["ui_notice"] = "native_fallback"
+        params["ui_reason"] = str(reason)[:220] if reason else ""
+        params["ui_retries"] = str(max(0, int(retry_count)))
+    return _merge_url_query(url, params) if params else url
+
+
+def _is_persistent_native_error(error: Exception) -> bool:
+    """True if this error will recur on retry (no point retrying)."""
+    for cur in _iter_exception_chain(error):
+        text = " ".join(str(cur or "").lower().split())
+        if "failed to create a .net runtime" in text:
+            return True
+        if "coreclr" in text and "failed" in text:
+            return True
+        if isinstance(cur, (ModuleNotFoundError, ImportError, FileNotFoundError)):
+            return True
+    return False
 
 
 def _load_close_behavior(data_dir) -> str:
@@ -313,12 +325,101 @@ def _windows_app_mode_browsers() -> list[Path]:
     return paths
 
 
-def _open_browser_fallback(url: str) -> str:
+def _run_fallback_tray(
+    *, url: str, server_proc: subprocess.Popen | None
+) -> None:
+    """Run a tray icon loop so the user can exit when native window failed.
+
+    Blocks until the user picks 'exit' (or pystray loop ends).  Cleans up
+    the server process on exit.
+    """
+    try:
+        import pystray
+    except Exception:
+        # No pystray available: nothing we can do.
+        return
+
+    try:
+        img = _load_tray_image()
+    except Exception:
+        return
+
+    stopped = threading.Event()
+    icon_box: dict[str, object] = {"icon": None}
+
+    def _open(_icon=None, _item=None):
+        try:
+            if is_windows():
+                os.startfile(url)  # noqa: S606
+            else:
+                webbrowser.open(url)
+        except Exception:
+            pass
+
+    def _exit(_icon=None, _item=None):
+        stopped.set()
+        try:
+            requests.post(
+                url.rstrip("/") + "/lifecycle/request-exit",
+                timeout=(0.5, 1.5),
+            )
+        except Exception:
+            pass
+        try:
+            icon = icon_box.get("icon")
+            if icon is not None:
+                cast(_TrayIconLike, icon).stop()
+        except Exception:
+            pass
+
+    menu = pystray.Menu(
+        pystray.MenuItem("프로그램 열기", _open, default=True),
+        pystray.MenuItem("프로그램 종료", _exit),
+    )
+    icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
+    icon_box["icon"] = icon
+
+    try:
+        icon.run()  # Blocks until icon.stop().
+    except Exception:
+        pass
+
+    # User requested exit → clean up server.
+    try:
+        if server_proc is not None and server_proc.poll() is None:
+            deadline = time.time() + 8.0
+            while time.time() < deadline and server_proc.poll() is None:
+                time.sleep(0.05)
+            if server_proc.poll() is None:
+                server_proc.terminate()
+            deadline = time.time() + 4.0
+            while time.time() < deadline and server_proc.poll() is None:
+                time.sleep(0.05)
+            if server_proc.poll() is None:
+                server_proc.kill()
+    except Exception:
+        pass
+
+
+def _open_browser_fallback(
+    url: str,
+    *,
+    app_url_builder=None,
+    browser_url_builder=None,
+) -> str:
     if not url:
         return ""
 
+    def _app_url() -> str:
+        base = app_url_builder(url) if app_url_builder else url
+        return _merge_url_query(base, {"ui_window": "app"})
+
+    def _browser_url() -> str:
+        base = browser_url_builder(url) if browser_url_builder else url
+        return _merge_url_query(base, {"ui_window": "browser"})
+
     if is_windows():
-        app_url = _merge_url_query(url, {"ui_window": "app"})
+        app_url = _app_url()
         for browser_path in _windows_app_mode_browsers():
             try:
                 subprocess.Popen(
@@ -329,7 +430,7 @@ def _open_browser_fallback(url: str) -> str:
             except Exception:
                 continue
 
-    browser_url = _merge_url_query(url, {"ui_window": "browser"})
+    browser_url = _browser_url()
     try:
         if webbrowser.open(browser_url):
             return "browser"
@@ -584,7 +685,12 @@ def run_ui(*, port: int | None = None) -> None:
                 return
             except Exception as e:
                 native_error = e
-                next_action = "retry" if attempt == 1 else "browser_fallback"
+                persistent = _is_persistent_native_error(e)
+                next_action = (
+                    "browser_fallback"
+                    if persistent or attempt == 2
+                    else "retry"
+                )
                 _append_ui_start_log(
                     data_dir,
                     url=url,
@@ -592,6 +698,9 @@ def run_ui(*, port: int | None = None) -> None:
                     attempt=attempt,
                     next_action=next_action,
                 )
+                if persistent:
+                    # Retry won't help (e.g. .NET runtime missing); bail now.
+                    break
                 if attempt == 1:
                     time.sleep(0.9)
                     try:
@@ -611,12 +720,27 @@ def run_ui(*, port: int | None = None) -> None:
                     continue
 
         if native_error is not None:
-            fallback_url = _build_browser_fallback_url(
-                url,
-                reason=_short_error_reason(native_error),
+            reason = _short_error_reason(native_error)
+            # App-mode browser fallback: user sees an app-like window, so
+            # no "opened in browser mode" notice. Regular browser fallback
+            # keeps the notice so the user understands the downgrade.
+            app_url_builder = lambda u: u  # no notice for app mode
+            browser_url_builder = lambda u: _build_browser_fallback_url(
+                u,
+                reason=reason,
                 retry_count=max(0, native_attempts - 1),
+                include_notice=True,
             )
-            if _open_browser_fallback(fallback_url):
+            mode = _open_browser_fallback(
+                url,
+                app_url_builder=app_url_builder,
+                browser_url_builder=browser_url_builder,
+            )
+            if mode:
+                # Keep a tray icon alive so the user can quit the server.
+                # Without this, closing the Edge/Chrome window leaves the
+                # server process running with no way to stop it.
+                _run_fallback_tray(url=url, server_proc=server_proc)
                 return
             raise native_error
     except Exception as e:
