@@ -686,6 +686,11 @@ label {
   background: #f0fdf4;
 }
 
+.notice--warn {
+  border-color: #fdba74;
+  background: #fffbeb;
+}
+
 .update-mini {
   min-width: 320px;
   max-width: 520px;

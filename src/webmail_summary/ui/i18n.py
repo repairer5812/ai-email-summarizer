@@ -356,6 +356,32 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     },
 }
 
+TRANSLATIONS["en"].update(
+    {
+        "home.btn.retry_failed_day": "Retry failed summaries for selected day",
+        "home.day.failed_label": "Needs retry",
+        "home.notice.native_fallback.title": "Opened in browser mode instead of an app window.",
+        "home.notice.native_fallback.body": "The app window was retried once and then switched to the browser fallback.",
+        "home.notice.native_fallback.reason": "Reason:",
+        "home.notice.native_fallback.log": "UI log:",
+        "day.item.retry_single": "Retry this summary",
+        "day.item.needs_retry": "Needs retry",
+    }
+)
+
+TRANSLATIONS["ko"].update(
+    {
+        "home.btn.retry_failed_day": "선택 날짜 오류만 다시 요약",
+        "home.day.failed_label": "오류 요약",
+        "home.notice.native_fallback.title": "앱 창 대신 브라우저 모드로 열렸습니다.",
+        "home.notice.native_fallback.body": "앱 창을 한 번 더 재시도했지만 시작하지 못해 브라우저로 전환했습니다.",
+        "home.notice.native_fallback.reason": "원인:",
+        "home.notice.native_fallback.log": "UI 로그:",
+        "day.item.retry_single": "이 항목 다시 요약",
+        "day.item.needs_retry": "요약 점검 필요",
+    }
+)
+
 
 def ui_lang(request: Any | None) -> str:
     try:

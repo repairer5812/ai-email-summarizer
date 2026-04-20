@@ -6,8 +6,10 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import webbrowser
 from typing import Any, Protocol, cast
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -132,6 +134,67 @@ def _show_error(title: str, message: str) -> None:
         ctypes.windll.user32.MessageBoxW(0, str(message), str(title), 0x10)
     except Exception:
         return
+
+
+def _ui_start_log_path(data_dir):
+    log_dir = data_dir / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return log_dir / "ui_start.log"
+
+
+def _short_error_reason(error: Exception) -> str:
+    text = f"{type(error).__name__}: {str(error or '').strip()}".strip()
+    text = " ".join(text.split())
+    return text[:220]
+
+
+def _append_ui_start_log(
+    data_dir,
+    *,
+    url: str,
+    error: Exception,
+    attempt: int,
+    next_action: str,
+) -> str:
+    log_path = _ui_start_log_path(data_dir)
+    try:
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
+                f"native_window attempt={int(attempt)} next_action={next_action} "
+                f"url={url}\n"
+            )
+            fh.write(_short_error_reason(error) + "\n")
+            fh.write("".join(traceback.format_exception(type(error), error, error.__traceback__)))
+            fh.write("\n")
+    except Exception:
+        pass
+    return str(log_path)
+
+
+def _build_browser_fallback_url(
+    url: str,
+    *,
+    reason: str,
+    retry_count: int,
+) -> str:
+    try:
+        parsed = urlsplit(str(url or ""))
+        qs = [
+            (k, v)
+            for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+            if k not in {"ui_notice", "ui_reason", "ui_retries"}
+        ]
+        qs.append(("ui_notice", "native_fallback"))
+        if reason:
+            qs.append(("ui_reason", str(reason)[:220]))
+        qs.append(("ui_retries", str(max(0, int(retry_count)))))
+        return urlunsplit(parsed._replace(query=urlencode(qs)))
+    except Exception:
+        return url
 
 
 def _load_close_behavior(data_dir) -> str:
@@ -410,14 +473,53 @@ def run_ui(*, port: int | None = None) -> None:
 
             _wait_for_http_ready(url, timeout_s=90.0, server_proc=server_proc)
 
-        try:
-            _run_native_window(url, data_dir=data_dir, server_proc=server_proc)
-        except Exception:
-            if _open_browser_fallback(url):
+        native_error: Exception | None = None
+        native_attempts = 0
+        for attempt in range(1, 3):
+            native_attempts = attempt
+            try:
+                _run_native_window(url, data_dir=data_dir, server_proc=server_proc)
                 return
-            raise
+            except Exception as e:
+                native_error = e
+                next_action = "retry" if attempt == 1 else "browser_fallback"
+                _append_ui_start_log(
+                    data_dir,
+                    url=url,
+                    error=e,
+                    attempt=attempt,
+                    next_action=next_action,
+                )
+                if attempt == 1:
+                    time.sleep(0.9)
+                    try:
+                        _wait_for_http_ready(
+                            url,
+                            timeout_s=5.0,
+                            server_proc=server_proc,
+                        )
+                    except Exception as ready_error:
+                        _append_ui_start_log(
+                            data_dir,
+                            url=url,
+                            error=ready_error,
+                            attempt=attempt,
+                            next_action="retry_after_healthcheck_failed",
+                        )
+                    continue
+
+        if native_error is not None:
+            fallback_url = _build_browser_fallback_url(
+                url,
+                reason=_short_error_reason(native_error),
+                retry_count=max(0, native_attempts - 1),
+            )
+            if _open_browser_fallback(fallback_url):
+                return
+            raise native_error
     except Exception as e:
         logs_hint = str(get_app_data_dir() / "logs" / "server.log")
+        ui_logs_hint = str(get_app_data_dir() / "logs" / "ui_start.log")
         rt_hint = str(get_app_data_dir() / "runtime")
         _show_error(
             "webmail-summary",
@@ -425,6 +527,7 @@ def run_ui(*, port: int | None = None) -> None:
             f"Reason: {type(e).__name__}: {str(e)[:200]}\n\n"
             f"Try: wait a few seconds and run again.\n"
             f"Logs: {logs_hint}\n"
+            f"UI Logs: {ui_logs_hint}\n"
             f"Runtime: {rt_hint}",
         )
         return

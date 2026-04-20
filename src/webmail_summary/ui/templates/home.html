@@ -16,6 +16,28 @@
     })();
     </script>
   {% endif %}
+  {% if flash and flash.startup_notice %}
+    <div class="notice notice--warn" id="flash-startup-notice" style="margin-bottom: 14px;">
+      <div><strong>{{ t(request, 'home.notice.native_fallback.title') }}</strong> {{ t(request, 'home.notice.native_fallback.body') }}</div>
+      {% if flash.startup_notice.reason %}
+        <div class="muted" style="margin-top: 8px; font-size: 0.9rem;">{{ t(request, 'home.notice.native_fallback.reason') }} {{ flash.startup_notice.reason }}</div>
+      {% endif %}
+      {% if flash.startup_notice.log_path %}
+        <div class="muted" style="margin-top: 6px; font-size: 0.85rem;">{{ t(request, 'home.notice.native_fallback.log') }} {{ flash.startup_notice.log_path }}</div>
+      {% endif %}
+    </div>
+    <script>
+    (() => {
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete('ui_notice');
+        u.searchParams.delete('ui_reason');
+        u.searchParams.delete('ui_retries');
+        history.replaceState(null, '', u.toString());
+      } catch (e) {}
+    })();
+    </script>
+  {% endif %}
   <div class="hero__row">
     <div>
       <h1>{{ t(request, 'home.hero.title') }}</h1>
@@ -44,6 +66,7 @@
       {% endif %}
       <div class="hero__btnrow">
         <button id="btn-sync" class="btn" {% if not ai.ready %}disabled{% endif %}>{{ t(request, 'home.btn.sync') }}</button>
+        <button id="btn-retry-failed-day" class="btn btn--secondary">{{ t(request, 'home.btn.retry_failed_day') }}</button>
         <button id="btn-refresh-overviews" class="btn btn--secondary">{{ t(request, 'home.btn.refresh_overviews') }}</button>
         <a class="btn btn--secondary" href="/setup">{{ t(request, 'home.btn.setup') }}</a>
       </div>
@@ -449,8 +472,12 @@
       <a href="/day/{{ d.day }}" style="text-decoration:none; color:inherit; display: flex; flex-direction: column; height: 100%; padding: 20px 20px;">
         <div class="card__title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-left: 28px;">
           <span style="font-size: 1.1rem; font-weight: 800;">{{ d.day_display }}</span>
-
-          <span class="muted" style="font-size: 0.75rem;">{{ d.count }} {{ t(request, 'home.day.mails') }}</span>
+          <div class="day-card-stats" style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+            <span class="muted day-card-count" style="font-size: 0.75rem;">{{ d.count }} {{ t(request, 'home.day.mails') }}</span>
+            {% if d.failed_count %}
+              <span class="day-card-issues" style="font-size: 0.72rem; font-weight: 700; color: #b45309; background: #fff7ed; border: 1px solid #fdba74; border-radius: 999px; padding: 3px 8px;">{{ t(request, 'home.day.failed_label') }} {{ d.failed_count }}{{ t(request, 'home.day.mails') }}</span>
+            {% endif %}
+          </div>
         </div>
         <div class="card__body">
           {% if d.overview %}
@@ -470,11 +497,12 @@
   const btn = document.getElementById('btn-sync'), bar = document.getElementById('sync-bar'), text = document.getElementById('sync-text'), meta = document.getElementById('sync-meta');
   const stepperEl = document.getElementById('sync-stepper'), trackEl = document.getElementById('sync-track');
   const resumBox = document.getElementById('resum-progress-box'), resumBar = document.getElementById('resum-bar'), resumText = document.getElementById('resum-text');
+  const btnRetryFailedDay = document.getElementById('btn-retry-failed-day');
   const btnRefresh = document.getElementById('btn-refresh-overviews'), refreshBox = document.getElementById('refresh-progress-box'), refreshBar = document.getElementById('refresh-bar'), refreshText = document.getElementById('refresh-text');
   const grid = document.querySelector('.bento-grid');
 
-  const STR_MAILS = "{{ t(request, 'home.day.mails') }}", STR_OPEN_HINT = "{{ t(request, 'home.day.open_hint') }}";
-  const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }}, LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }}, LABEL_REFRESH = {{ t(request, 'home.btn.refresh_overviews')|tojson }}, LABEL_SUMMARIZING = {{ t(request, 'home.btn.refresh_ing')|tojson }};
+  const STR_MAILS = "{{ t(request, 'home.day.mails') }}", STR_OPEN_HINT = "{{ t(request, 'home.day.open_hint') }}", STR_FAILED_LABEL = "{{ t(request, 'home.day.failed_label') }}";
+  const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }}, LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }}, LABEL_REFRESH = {{ t(request, 'home.btn.refresh_overviews')|tojson }}, LABEL_RETRY_FAILED_DAY = {{ t(request, 'home.btn.retry_failed_day')|tojson }}, LABEL_RESUM_STOP = {{ t(request, 'day.btn.stop')|tojson }}, LABEL_SUMMARIZING = {{ t(request, 'home.btn.refresh_ing')|tojson }};
   const STR_STARTING = {{ ("동기화를 시작합니다" if ui_lang(request) == 'ko' else "Starting sync")|tojson }}, STR_ERROR = {{ ("오류" if ui_lang(request) == 'ko' else "Error")|tojson }}, STR_EVENT_STREAM = {{ ("오류: 이벤트 스트림" if ui_lang(request) == 'ko' else "Error: event stream")|tojson }};
   const STR_PICK_ONE_DAY = {{ t(request, 'home.btn.refresh_pick_one')|tojson }};
   const STR_META_COUNT = {{ t(request, 'home.progress.meta.count')|tojson }}, STR_META_ETA = {{ t(request, 'home.progress.meta.eta')|tojson }}, STR_META_STOPPING = {{ t(request, 'home.progress.meta.stopping')|tojson }};
@@ -548,6 +576,28 @@
     return Array.from(document.querySelectorAll('input.day-select:checked')).map(cb => cb.value).filter(Boolean);
   }
 
+  function setResummarizeButtonsIdle() {
+    if (btnRetryFailedDay) {
+      btnRetryFailedDay.disabled = false;
+      btnRetryFailedDay.textContent = LABEL_RETRY_FAILED_DAY;
+    }
+    if (btnRefresh) {
+      btnRefresh.disabled = false;
+      btnRefresh.textContent = LABEL_REFRESH;
+    }
+  }
+
+  function setResummarizeButtonsRunning() {
+    if (btnRetryFailedDay) {
+      btnRetryFailedDay.disabled = false;
+      btnRetryFailedDay.textContent = LABEL_RESUM_STOP;
+    }
+    if (btnRefresh) {
+      btnRefresh.disabled = false;
+      btnRefresh.textContent = LABEL_RESUM_STOP;
+    }
+  }
+
   // --- Logic Functions ---
   async function refreshDayList() {
     if (!grid) return;
@@ -574,8 +624,27 @@
             
             const existing = existingDays[d.day];
             if (existing) {
-              const countEl = existing.querySelector('.muted');
+              const countEl = existing.querySelector('.day-card-count');
               if (countEl) countEl.textContent = `${d.count} ${STR_MAILS}`;
+              const statsEl = existing.querySelector('.day-card-stats');
+              let issueEl = existing.querySelector('.day-card-issues');
+              if (Number(d.failed_count || 0) > 0) {
+                if (!issueEl && statsEl) {
+                  issueEl = document.createElement('span');
+                  issueEl.className = 'day-card-issues';
+                  issueEl.style.fontSize = '0.72rem';
+                  issueEl.style.fontWeight = '700';
+                  issueEl.style.color = '#b45309';
+                  issueEl.style.background = '#fff7ed';
+                  issueEl.style.border = '1px solid #fdba74';
+                  issueEl.style.borderRadius = '999px';
+                  issueEl.style.padding = '3px 8px';
+                  statsEl.appendChild(issueEl);
+                }
+                if (issueEl) issueEl.textContent = `${STR_FAILED_LABEL} ${Number(d.failed_count || 0)}${STR_MAILS}`;
+              } else if (issueEl) {
+                issueEl.remove();
+              }
               
               const body = existing.querySelector('.card__body');
               const currentRaw = body.querySelector('.day__overview')?.getAttribute('data-raw');
@@ -594,7 +663,10 @@
                 <a href="/day/${d.day}" style="text-decoration:none; color:inherit; display: flex; flex-direction: column; height: 100%; padding: 20px 20px;">
                   <div class="card__title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-left: 28px;">
                     <span style="font-size: 1.1rem; font-weight: 800;">${d.day_display}</span>
-                    <span class="muted" style="font-size: 0.75rem;">${d.count} ${STR_MAILS}</span>
+                    <div class="day-card-stats" style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                      <span class="muted day-card-count" style="font-size: 0.75rem;">${d.count} ${STR_MAILS}</span>
+                      ${Number(d.failed_count || 0) > 0 ? `<span class="day-card-issues" style="font-size: 0.72rem; font-weight: 700; color: #b45309; background: #fff7ed; border: 1px solid #fdba74; border-radius: 999px; padding: 3px 8px;">${STR_FAILED_LABEL} ${Number(d.failed_count || 0)}${STR_MAILS}</span>` : ''}
+                    </div>
                   </div>
                   <div class="card__body">${contentHtml}</div>
                 </a>`;
@@ -655,6 +727,7 @@
     if (!jobId || !resumBox) return;
     currentResumId = String(jobId);
     resumBox.style.display = 'block';
+    setResummarizeButtonsRunning();
     if (resumEs) resumEs.close();
     resumEs = new EventSource('/api/jobs/' + jobId + '/events');
     resumEs.addEventListener('progress', (ev) => {
@@ -664,9 +737,26 @@
       if (resumText) resumText.textContent = (p.message || '...') + ' (' + pct.toFixed(2) + '%)';
       if (p.status === 'succeeded' || p.status === 'failed' || p.status === 'cancelled') {
         resumEs.close(); resumEs = null; currentResumId = "";
+        setResummarizeButtonsIdle();
         setTimeout(() => { if (resumBox) resumBox.style.display = 'none'; }, 2000);
       }
     });
+  }
+
+  async function startHomeResummarize(dateKey, onlyFailed) {
+    setResummarizeButtonsRunning();
+    const res = await fetch('/api/jobs/resummarize-day', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date_key: dateKey, only_failed: !!onlyFailed })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setResummarizeButtonsIdle();
+      alert((j && (j.message || j.error)) ? String(j.message || j.error) : 'failed');
+      return;
+    }
+    watchResummarize(j.job_id);
   }
 
   function watchRefresh(jobId) {
@@ -864,27 +954,40 @@
     watch(j.job_id);
   });
 
-  if (btnRefresh) btnRefresh.addEventListener('click', async () => {
-    if (currentResumId) { btnRefresh.disabled = true; await fetch('/api/jobs/' + currentResumId + '/cancel', { method: 'POST' }); return; }
+  if (btnRetryFailedDay) btnRetryFailedDay.addEventListener('click', async () => {
+    if (currentResumId) {
+      if (btnRetryFailedDay) btnRetryFailedDay.disabled = true;
+      if (btnRefresh) btnRefresh.disabled = true;
+      await fetch('/api/jobs/' + currentResumId + '/cancel', { method: 'POST' });
+      return;
+    }
     const selectedDays = getSelectedDays();
     if (selectedDays.length !== 1) {
       alert(STR_PICK_ONE_DAY);
       return;
     }
-    btnRefresh.disabled = true;
-    btnRefresh.textContent = LABEL_SUMMARIZING;
-    const res = await fetch('/api/jobs/resummarize-day', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date_key: selectedDays[0], only_failed: false })
-    });
-    const j = await res.json();
-    if (res.ok) watchResummarize(j.job_id); else { btnRefresh.disabled = false; btnRefresh.textContent = LABEL_REFRESH; }
+    await startHomeResummarize(selectedDays[0], true);
+  });
+
+  if (btnRefresh) btnRefresh.addEventListener('click', async () => {
+    if (currentResumId) {
+      if (btnRetryFailedDay) btnRetryFailedDay.disabled = true;
+      btnRefresh.disabled = true;
+      await fetch('/api/jobs/' + currentResumId + '/cancel', { method: 'POST' });
+      return;
+    }
+    const selectedDays = getSelectedDays();
+    if (selectedDays.length !== 1) {
+      alert(STR_PICK_ONE_DAY);
+      return;
+    }
+    await startHomeResummarize(selectedDays[0], false);
   });
 
   const ACTIVE_SYNC = "{{ (active.sync.id if active and active.sync else '') }}";
   const ACTIVE_RESUM = "{{ (active.resummarize.id if active and active.resummarize else '') }}";
   const ACTIVE_REFRESH = "{{ (active.refresh_overviews.id if active and active.refresh_overviews else '') }}";
+  setResummarizeButtonsIdle();
   if (ACTIVE_SYNC) watch(ACTIVE_SYNC);
   if (ACTIVE_RESUM) watchResummarize(ACTIVE_RESUM);
   if (ACTIVE_REFRESH) watchRefresh(ACTIVE_REFRESH);

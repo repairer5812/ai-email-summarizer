@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.6] - 2026-04-20
+
+### Changed
+
+- The dashboard now shows how many summaries on each day still need a retry, and it adds a `Retry failed summaries for selected day` action for the selected date.
+- Windows native UI startup now retries the app window once before falling back to the browser, and the home screen now explains when browser fallback was used.
+
+### Fixed
+
+- The day view now exposes a per-message retry button only for summaries that are currently classified as failed or incomplete.
+- Native window startup failures now write a dedicated `ui_start.log`, and the fatal popup includes the UI log path to make first-launch troubleshooting clearer.
+
+### Added
+
+- Regression coverage for dashboard/day resummarize UI state and for native-window retry plus browser-fallback logging behavior.
+
 ## [0.6.6.5] - 2026-04-19
 
 ### Changed
