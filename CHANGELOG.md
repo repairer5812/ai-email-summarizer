@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.13] - 2026-04-20
+
+### Fixed
+
+- 업데이트 후 구버전 창이 닫히지 않고 신버전과 함께 두 개의 창이 열리던 문제를 수정했습니다.
+  - 앱 시작 시 자신이 아닌 다른 webmail-summary 프로세스(업데이트 핸드오프 잔여물 등)를 자동으로 종료합니다.
+  - Windows 설치본에서만 동작하며, 개발 모드에서는 영향이 없습니다.
+
 ## [0.6.6.12] - 2026-04-20
 
 ### Fixed
