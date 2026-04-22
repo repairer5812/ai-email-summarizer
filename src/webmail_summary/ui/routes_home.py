@@ -151,6 +151,7 @@ def home(request: Request):
         update_checked = ""
     ui_notice = str(request.query_params.get("ui_notice") or "").strip().lower()
     ui_reason = str(request.query_params.get("ui_reason") or "").strip()
+    ui_report = str(request.query_params.get("ui_report") or "").strip()
     startup_notice = None
     if ui_notice == "native_fallback":
         from webmail_summary.util.app_data import get_app_data_dir
@@ -159,6 +160,7 @@ def home(request: Request):
             "kind": "warn",
             "reason": ui_reason,
             "log_path": str(get_app_data_dir() / "logs" / "ui_start.log"),
+            "report_path": ui_report,
         }
 
     return templates.TemplateResponse(
