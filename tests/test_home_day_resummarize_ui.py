@@ -83,7 +83,7 @@ def _seed_ui_data(tmp_path):
         set_analysis(
             conn,
             message_fk=good_id,
-            summary="핵심 요약\n- 정상 동작 중입니다.",
+            summary="핵심 요약\n- 정상 요약 결과입니다.",
             tags=[],
             topics=[],
             personal=False,
@@ -109,7 +109,7 @@ def _seed_ui_data(tmp_path):
         set_analysis(
             conn,
             message_fk=next_day_id,
-            summary="핵심 요약\n- 다음 날 메일입니다.",
+            summary="핵심 요약\n- 다음 날 정상 요약입니다.",
             tags=[],
             topics=[],
             personal=False,
@@ -140,9 +140,9 @@ def test_home_days_api_reports_failed_counts_and_fallback_notice(tmp_path, monke
 
     assert home.status_code == 200
     assert 'id="btn-retry-failed-day"' in home.text
-    assert "앱 창 대신 브라우저 모드로 열렸습니다." in home.text
-    assert "오류 요약" in home.text
     assert "RuntimeError" in home.text
+    assert "flash-startup-notice" in home.text
+    assert "ui_start.log" in home.text
 
 
 def test_day_view_shows_single_retry_only_for_failed_summary(tmp_path, monkeypatch):
@@ -157,4 +157,18 @@ def test_day_view_shows_single_retry_only_for_failed_summary(tmp_path, monkeypat
     assert html.count('class="btn btn--secondary btn-retry-single"') == 1
     assert f'data-message-id="{bad_id}" data-needs-resummarize="1"' in html
     assert f'data-message-id="{good_id}" data-needs-resummarize="0"' in html
-    assert "이 항목 다시 요약" in html
+    assert "btn-retry-single" in html
+
+
+def test_home_retry_failed_button_allows_multi_day_selection(tmp_path, monkeypatch):
+    app = _mk_app(tmp_path, monkeypatch)
+    _seed_ui_data(tmp_path)
+    client = TestClient(app)
+
+    home = client.get("/")
+
+    assert home.status_code == 200
+    html = home.text
+    assert "selectedDays.length < 1" in html
+    assert html.count("selectedDays.length !== 1") == 1
+    assert "date_keys" in html

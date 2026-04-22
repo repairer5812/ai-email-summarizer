@@ -344,10 +344,20 @@
     startResummarize(false, starter, null, ACTIVE_RESUM.id);
   } else if (GLOBAL_ACTIVE_RESUM) {
     const jobDay = GLOBAL_ACTIVE_RESUM.date_key;
-    if (jobDay && jobDay !== "{{ day }}") {
+    const isLocalDayJob = jobDay && jobDay === "{{ day }}";
+    if (!isLocalDayJob) {
         [btn, btnAll, btnSel, ...singleRetryButtons].forEach(b => { if(b) b.disabled = true; });
+        if (!jobDay) {
+          setProgress(0, "{% if ui_lang(request) == 'ko' %}?좏깮 ?좎쭨 ?ㅼ떆 ?붿빟 ?묒뾽??吏꾪뻾 以묒엯?덈떎.{% else %}A multi-day re-summarize job is in progress.{% endif %}");
+        } else {
+        }
         setProgress(0, "{% if ui_lang(request) == 'ko' %}다른 날짜의 요약 작업이 진행 중입니다.{% else %}Another day's summarization is in progress.{% endif %} (" + jobDay + ")");
     }
+  }
+
+  if (!ACTIVE_RESUM && GLOBAL_ACTIVE_RESUM && !GLOBAL_ACTIVE_RESUM.date_key) {
+    [btn, btnAll, btnSel, ...singleRetryButtons].forEach(b => { if (b) b.disabled = true; });
+    setProgress(0, "{% if ui_lang(request) == 'ko' %}\uc120\ud0dd\ud55c \uc5ec\ub7ec \ub0a0\uc9dc\uc758 \uc7ac\uc694\uc57d \uc791\uc5c5\uc774 \uc9c4\ud589 \uc911\uc785\ub2c8\ub2e4.{% else %}A multi-day re-summarize job is in progress.{% endif %}");
   }
 
   if (btn) btn.addEventListener('click', () => activeJobId ? requestCancel() : startResummarize(true, 'failed', null));
