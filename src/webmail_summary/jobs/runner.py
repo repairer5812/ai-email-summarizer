@@ -13,6 +13,7 @@ from webmail_summary.index.db import get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.worker_probe import kill_sync_worker
 from webmail_summary.util.app_data import get_app_data_dir
+from webmail_summary.util.error_reports import write_error_report
 from webmail_summary.util.process_control import hidden_subprocess_kwargs
 from webmail_summary.util.process_control import terminate_process_tree
 
@@ -292,9 +293,26 @@ class JobRunner:
                 else:
                     job.fn(job.id, cancel)
             except Exception as e:
+                report_path = write_error_report(
+                    category=f"job-{job.kind}",
+                    title=f"Background job failed: {job.kind}",
+                    summary=str(e),
+                    exception=e,
+                    details={
+                        "job_id": job.id,
+                        "job_kind": job.kind,
+                    },
+                    related_paths=[get_app_data_dir() / "logs" / "server.log"],
+                )
                 conn2 = get_conn(db_path)
                 try:
                     repo.add_event(conn2, job_id=job.id, level="error", text=str(e))
+                    repo.add_event(
+                        conn2,
+                        job_id=job.id,
+                        level="error",
+                        text=f"error report saved: {report_path}",
+                    )
                     cur = repo.get_job(conn2, job.id)
                     if cancel.is_set() or (
                         cur is not None and cur.status in {"cancelled"}

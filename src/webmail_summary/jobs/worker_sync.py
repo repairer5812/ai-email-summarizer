@@ -9,6 +9,7 @@ from webmail_summary.index.db import get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
 from webmail_summary.util.app_data import get_app_data_dir
+from webmail_summary.util.error_reports import write_error_report
 
 
 def run_worker(job_id: str) -> None:
@@ -26,9 +27,23 @@ def run_worker(job_id: str) -> None:
     try:
         sync_mailbox_task()(job_id, cancel)
     except Exception as e:
+        report_path = write_error_report(
+            category="job-sync",
+            title="Sync worker failed",
+            summary=str(e),
+            exception=e,
+            details={"job_id": job_id, "job_kind": "sync"},
+            related_paths=[get_app_data_dir() / "logs" / "server.log"],
+        )
         conn2 = get_conn(db_path)
         try:
             repo.add_event(conn2, job_id=job_id, level="error", text=str(e))
+            repo.add_event(
+                conn2,
+                job_id=job_id,
+                level="error",
+                text=f"error report saved: {report_path}",
+            )
             # Only mark failed if not already cancelled.
             job = repo.get_job(conn2, job_id)
             if job is not None and job.status not in {"cancelled"}:
