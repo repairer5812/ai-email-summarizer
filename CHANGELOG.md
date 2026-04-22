@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.14] - 2026-04-22
+
+### Added
+
+- Home dashboard now supports retrying failed summaries across multiple selected dates in one run.
+- Added regression coverage for the multi-day retry flow from API through worker and home/day UI behavior.
+
+### Fixed
+
+- Re-summarize target detection now treats placeholder summaries such as "summary items are insufficient" as retryable failures.
+- Home startup fallback notices now include the local error report path when one is available.
+
 ## [0.6.6.13] - 2026-04-20
 
 ### Fixed
