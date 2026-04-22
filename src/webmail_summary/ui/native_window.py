@@ -15,6 +15,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import requests
 
 from webmail_summary.util.app_data import get_app_data_dir
+from webmail_summary.util.error_reports import write_error_report
 from webmail_summary.util.platform_caps import is_windows, ui_platform_caps
 from webmail_summary.util.process_control import (
     build_fresh_pyinstaller_env,
@@ -220,12 +221,14 @@ def _build_browser_fallback_url(
     reason: str,
     retry_count: int,
     include_notice: bool = True,
+    report_path: str = "",
 ) -> str:
     params: dict[str, str] = {}
     if include_notice:
         params["ui_notice"] = "native_fallback"
         params["ui_reason"] = str(reason)[:220] if reason else ""
         params["ui_retries"] = str(max(0, int(retry_count)))
+        params["ui_report"] = str(report_path or "").strip()
     return _merge_url_query(url, params) if params else url
 
 
@@ -767,6 +770,20 @@ def run_ui(*, port: int | None = None) -> None:
 
         if native_error is not None:
             reason = _short_error_reason(native_error)
+            report_path = write_error_report(
+                category="ui-startup",
+                title="App window failed to start",
+                summary=reason,
+                exception=native_error,
+                details={
+                    "native_attempts": native_attempts,
+                    "fallback_target": url,
+                },
+                related_paths=[
+                    _ui_start_log_path(data_dir),
+                    get_app_data_dir() / "logs" / "server.log",
+                ],
+            )
             # App-mode browser fallback: user sees an app-like window, so
             # no "opened in browser mode" notice. Regular browser fallback
             # keeps the notice so the user understands the downgrade.
@@ -776,6 +793,7 @@ def run_ui(*, port: int | None = None) -> None:
                 reason=reason,
                 retry_count=max(0, native_attempts - 1),
                 include_notice=True,
+                report_path=str(report_path),
             )
             mode = _open_browser_fallback(
                 url,
@@ -793,6 +811,16 @@ def run_ui(*, port: int | None = None) -> None:
         logs_hint = str(get_app_data_dir() / "logs" / "server.log")
         ui_logs_hint = str(get_app_data_dir() / "logs" / "ui_start.log")
         rt_hint = str(get_app_data_dir() / "runtime")
+        report_path = write_error_report(
+            category="ui-startup-fatal",
+            title="UI start failed",
+            summary=_short_error_reason(e),
+            exception=e,
+            related_paths=[
+                get_app_data_dir() / "logs" / "ui_start.log",
+                get_app_data_dir() / "logs" / "server.log",
+            ],
+        )
         _show_error(
             "webmail-summary",
             "UI start failed.\n\n"
@@ -800,6 +828,7 @@ def run_ui(*, port: int | None = None) -> None:
             f"Try: wait a few seconds and run again.\n"
             f"Logs: {logs_hint}\n"
             f"UI Logs: {ui_logs_hint}\n"
+            f"Error Report: {report_path}\n"
             f"Runtime: {rt_hint}",
         )
         return

@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from webmail_summary.util.process_control import build_fresh_pyinstaller_env
 from webmail_summary.ui import frozen_extensions, native_window
@@ -33,11 +34,13 @@ def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_
     opened: list[str] = []
     shown_errors: list[tuple[str, str]] = []
     native_attempts: list[str] = []
+    report_path = tmp_path / "reports" / "ui-start.txt"
 
     monkeypatch.setattr(native_window, "get_app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(native_window, "SingleInstanceLock", lambda path: _DummyLock())
     monkeypatch.setattr(native_window, "write_ui_pid", lambda pid: None)
     monkeypatch.setattr(native_window, "clear_ui_pid", lambda: None)
+    monkeypatch.setattr(native_window, "write_error_report", lambda **kwargs: report_path)
     monkeypatch.setattr(native_window.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(native_window, "_is_reachable", lambda url: False)
     monkeypatch.setattr(native_window, "_server_command", lambda port: ["fake-app"])
@@ -89,6 +92,8 @@ def test_run_ui_falls_back_to_browser_when_native_window_fails(monkeypatch, tmp_
     assert len(opened) == 1
     assert "http://127.0.0.1:9999/" in opened[0]
     assert "ui_notice=native_fallback" in opened[0]
+    params = parse_qs(urlparse(opened[0]).query)
+    assert params["ui_report"] == [str(report_path)]
     assert shown_errors == []
     log_text = (tmp_path / "logs" / "ui_start.log").read_text(encoding="utf-8")
     assert "native_window attempt=1 next_action=retry" in log_text
@@ -99,11 +104,13 @@ def test_run_ui_persistent_coreclr_error_skips_retry(monkeypatch, tmp_path):
     """.NET runtime errors are persistent; no point retrying."""
     opened: list[str] = []
     native_attempts: list[str] = []
+    report_path = tmp_path / "reports" / "ui-start.txt"
 
     monkeypatch.setattr(native_window, "get_app_data_dir", lambda: tmp_path)
     monkeypatch.setattr(native_window, "SingleInstanceLock", lambda path: _DummyLock())
     monkeypatch.setattr(native_window, "write_ui_pid", lambda pid: None)
     monkeypatch.setattr(native_window, "clear_ui_pid", lambda: None)
+    monkeypatch.setattr(native_window, "write_error_report", lambda **kwargs: report_path)
     monkeypatch.setattr(native_window.time, "sleep", lambda *a, **k: None)
     monkeypatch.setattr(native_window, "_is_reachable", lambda url: False)
     monkeypatch.setattr(native_window, "_server_command", lambda port: ["fake-app"])

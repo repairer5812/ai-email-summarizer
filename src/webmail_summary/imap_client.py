@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import ssl
 import re
 from dataclasses import dataclass
 from collections.abc import Callable, Iterator
@@ -22,6 +23,87 @@ class MailSearchFilter:
     from_terms: tuple[str, ...] = ()
     domain_terms: tuple[str, ...] = ()
     subject_terms: tuple[str, ...] = ()
+
+
+_TLS_EOF_NEEDLES = (
+    "eof occurred in violation of protocol",
+    "unexpected eof while reading",
+    "tlsv1 alert",
+    "wrong version number",
+    "unknown protocol",
+    "sslv3 alert handshake failure",
+    "handshake failure",
+)
+
+
+def _exception_text(exc: BaseException) -> str:
+    return " ".join(str(exc or "").strip().split()).lower()
+
+
+def is_imap_tls_error(exc: BaseException) -> bool:
+    if isinstance(exc, ssl.SSLError):
+        return True
+    msg = _exception_text(exc)
+    if not msg:
+        return False
+    if "certificate verify failed" in msg:
+        return True
+    if any(needle in msg for needle in _TLS_EOF_NEEDLES):
+        return True
+    name = type(exc).__name__.lower()
+    return "ssl" in name or "tls" in name
+
+
+def describe_imap_connection_error(exc: BaseException) -> str:
+    raw = " ".join(str(exc or "").strip().split())
+    msg = _exception_text(exc)
+
+    if "certificate verify failed" in msg:
+        detail = (
+            "TLS certificate verification failed. A corporate SSL inspection root "
+            "certificate may be missing on this PC, or the IMAP server certificate "
+            "chain is not trusted here."
+        )
+    elif any(needle in msg for needle in _TLS_EOF_NEEDLES):
+        detail = (
+            "TLS handshake was closed unexpectedly. This often points to SSL inspection, "
+            "endpoint security, or a TLS version/cipher policy interrupting the IMAPS "
+            "connection on this PC."
+        )
+    elif is_imap_tls_error(exc):
+        detail = (
+            "TLS handshake to the IMAP server failed. A security product, proxy, or local "
+            "certificate trust difference on this PC may be interfering with IMAPS."
+        )
+    else:
+        detail = raw or type(exc).__name__
+
+    if raw and raw.lower() not in detail.lower():
+        return f"{detail} Raw error: {raw[:180]}"
+    return detail
+
+
+def _load_extra_ca_bundle(ctx: ssl.SSLContext) -> None:
+    try:
+        import certifi
+
+        ca_path = str(certifi.where() or "").strip()
+        if ca_path:
+            ctx.load_verify_locations(cafile=ca_path)
+    except Exception:
+        return
+
+
+def _build_imap_ssl_context(*, compatibility: bool) -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    _load_extra_ca_bundle(ctx)
+    if compatibility and hasattr(ssl, "TLSVersion"):
+        try:
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+            ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+        except Exception:
+            pass
+    return ctx
 
 
 def build_mail_search_filter_value(mail_filter: MailSearchFilter) -> str:
@@ -101,12 +183,44 @@ class ImapSession:
         self._user = user
         self._password = password
         self._client: IMAPClient | None = None
+        self._tls_mode = "default"
 
     def __enter__(self) -> "ImapSession":
-        client = IMAPClient(self._host, port=self._port, ssl=True)
-        client.login(self._user, self._password)
-        self._client = client
-        return self
+        first_error: Exception | None = None
+        for compatibility in (False, True):
+            if compatibility and first_error is None:
+                continue
+            client: IMAPClient | None = None
+            try:
+                client = IMAPClient(
+                    self._host,
+                    port=self._port,
+                    ssl=True,
+                    ssl_context=_build_imap_ssl_context(compatibility=compatibility),
+                    timeout=20,
+                )
+                client.login(self._user, self._password)
+                self._client = client
+                self._tls_mode = "tls12_compat" if compatibility else "default"
+                return self
+            except Exception as exc:
+                if client is not None:
+                    try:
+                        client.logout()
+                    except Exception:
+                        pass
+                if not compatibility and is_imap_tls_error(exc):
+                    first_error = exc
+                    continue
+                if compatibility and first_error is not None and is_imap_tls_error(exc):
+                    raise RuntimeError(
+                        describe_imap_connection_error(exc)
+                        + " Default TLS and TLS 1.2 compatibility retry both failed."
+                    ) from exc
+                raise
+        if first_error is not None:
+            raise RuntimeError(describe_imap_connection_error(first_error)) from first_error
+        raise RuntimeError("IMAP client not connected")
 
     def __exit__(self, exc_type, exc, tb) -> None:
         if self._client is not None:

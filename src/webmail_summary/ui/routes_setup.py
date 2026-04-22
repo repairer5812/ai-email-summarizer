@@ -11,12 +11,15 @@ from webmail_summary.imap_client import (
     ImapSession,
     MailSearchFilter,
     build_mail_search_filter_value,
+    describe_imap_connection_error,
+    is_imap_tls_error,
     parse_mail_search_filter,
 )
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
 from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, MLX_MODELS, get_local_model
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.llm.local_engine import find_llama_cpp_installed
+from webmail_summary.util.error_reports import mask_email_address, write_error_report
 from webmail_summary.util.platform_caps import is_apple_silicon as _is_apple_silicon
 from webmail_summary.ui.settings_gateway import db_path, set_setting
 from webmail_summary.ui.setup_service import get_cloud_keys
@@ -49,6 +52,23 @@ def _is_auth_error(msg: str) -> bool:
         "invalid login",
     ]
     return any(n in m for n in needles)
+
+
+def _friendly_imap_tls_message(exc: Exception) -> str:
+    raw = describe_imap_connection_error(exc)
+    return (
+        "TLS 연결 실패: IMAP 서버와의 보안 연결이 중간에서 종료되었거나 인증서 검증에 실패했습니다. "
+        "같은 보안 솔루션을 쓰더라도 PC별 루트 인증서, SSL inspection 정책, TLS 버전 정책 차이 때문에 "
+        "한 사람은 되고 다른 사람은 안 될 수 있습니다. "
+        f"{raw}"
+    )
+
+
+def _friendly_report_suffix(report_path: str) -> str:
+    path = " ".join(str(report_path or "").split())
+    if not path:
+        return ""
+    return f" 오류 리포트: {path}"
 
 
 def _split_csv_input(raw: str) -> tuple[str, ...]:
@@ -301,11 +321,32 @@ def setup_test_imap(
                     "message": "비밀번호가 틀렸거나 로그인이 거부되었습니다. 아이디/비밀번호를 다시 확인해주세요.",
                 }
             )
+        report_path = write_error_report(
+            category="imap-connection-test",
+            title="IMAP connection test failed",
+            summary=msg,
+            exception=e,
+            details={
+                "imap_host": host,
+                "imap_port": port,
+                "imap_user": mask_email_address(user),
+            },
+        )
+        if is_imap_tls_error(e):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "kind": "tls",
+                    "message": _friendly_imap_tls_message(e)
+                    + _friendly_report_suffix(str(report_path)),
+                }
+            )
         return JSONResponse(
             {
                 "ok": False,
                 "kind": "network",
-                "message": f"연결 실패: {msg[:160]}",
+                "message": f"연결 실패: {msg[:160]}"
+                + _friendly_report_suffix(str(report_path)),
             }
         )
 
