@@ -358,12 +358,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 
 TRANSLATIONS["en"].update(
     {
-        "home.btn.retry_failed_day": "Retry failed summaries for selected day",
+        "home.btn.retry_failed_day": "Retry failed summaries for selected dates",
+        "home.btn.retry_failed_pick_any": "Select at least one day to retry failed summaries.",
         "home.day.failed_label": "Needs retry",
         "home.notice.native_fallback.title": "Opened in browser mode instead of an app window.",
         "home.notice.native_fallback.body": "The app window was retried once and then switched to the browser fallback.",
         "home.notice.native_fallback.reason": "Reason:",
         "home.notice.native_fallback.log": "UI log:",
+        "home.notice.native_fallback.report": "Error report:",
         "day.item.retry_single": "Retry this summary",
         "day.item.needs_retry": "Needs retry",
     }
@@ -381,7 +383,23 @@ TRANSLATIONS["ko"].update(
         "day.item.needs_retry": "요약 점검 필요",
     }
 )
+TRANSLATIONS["ko"]["home.notice.native_fallback.report"] = "오류 리포트:"
 
+TRANSLATIONS["ko"]["home.btn.retry_failed_pick_any"] = (
+    "?ㅻ쪟留??ㅼ떆 ?붿빟?섎젮硫??좎쭨瑜?1媛???좏깮?섏꽭??"
+)
+
+
+TRANSLATIONS["ko"]["home.btn.retry_failed_pick_any"] = (
+    "\uc624\ub958 \uc694\uc57d \uc7ac\uc2dc\ub3c4\ub97c \uc704\ud574 \ub0a0\uc9dc\ub97c \ud558\ub098 \uc774\uc0c1 \uc120\ud0dd\ud558\uc138\uc694."
+)
+TRANSLATIONS["ko"]["home.notice.native_fallback.report"] = "오류 리포트:"
+TRANSLATIONS["ko"]["home.btn.retry_failed_pick_any"] = "최소 한 개 날짜를 선택해 주세요."
+
+
+TRANSLATIONS["ko"]["home.btn.retry_failed_pick_any"] = (
+    "\uc624\ub958 \uc694\uc57d \uc7ac\uc2dc\ub3c4\ub97c \uc704\ud574 \ub0a0\uc9dc\ub97c \ud558\ub098 \uc774\uc0c1 \uc120\ud0dd\ud558\uc138\uc694."
+)
 
 def ui_lang(request: Any | None) -> str:
     try:

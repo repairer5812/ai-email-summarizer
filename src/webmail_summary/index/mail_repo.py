@@ -278,6 +278,25 @@ def list_messages_for_resummarize_by_date(
     )
 
 
+def list_messages_for_resummarize_by_dates(
+    conn: sqlite3.Connection, *, date_keys: list[str]
+) -> list[sqlite3.Row]:
+    days = [str(x or "").strip() for x in (date_keys or []) if str(x or "").strip()]
+    if not days:
+        return []
+    # Preserve the caller's normalized order while deduplicating.
+    days = list(dict.fromkeys(days))
+    qmarks = ",".join(["?"] * len(days))
+    sql = (
+        "SELECT id, account_id, mailbox, uidvalidity, uid, subject, from_addr, "
+        "internal_date, summary, raw_eml_path, body_text_path, body_html_path, "
+        "topics_json "
+        f"FROM messages WHERE substr(internal_date, 1, 10) IN ({qmarks}) "
+        "ORDER BY internal_date ASC"
+    )
+    return list(conn.execute(sql, tuple(days)).fetchall())
+
+
 def list_messages_for_resummarize_by_ids(
     conn: sqlite3.Connection, *, message_ids: list[int]
 ) -> list[sqlite3.Row]:

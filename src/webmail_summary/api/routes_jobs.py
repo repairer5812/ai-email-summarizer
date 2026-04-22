@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import keyring
 from fastapi import APIRouter, Request
@@ -33,6 +33,24 @@ router = APIRouter(prefix="/api")
 
 def _db_path():
     return get_app_data_dir() / "db.sqlite3"
+
+
+def _normalize_date_keys(raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        day = str(item or "").strip()
+        if not day or day in seen:
+            continue
+        try:
+            date.fromisoformat(day)
+        except Exception:
+            continue
+        seen.add(day)
+        out.append(day)
+    return out
 
 
 def _parse_last_event_id(value: str | None) -> int:
@@ -280,6 +298,14 @@ def start_local_install(payload: dict):
 @router.post("/jobs/resummarize-day")
 def start_resummarize_day(payload: dict):
     date_key = str((payload or {}).get("date_key") or "").strip()
+    date_keys = _normalize_date_keys((payload or {}).get("date_keys"))
+    if date_key:
+        try:
+            date.fromisoformat(date_key)
+        except Exception:
+            return JSONResponse({"error": "invalid date_key"}, status_code=400)
+        if date_key not in date_keys:
+            date_keys.insert(0, date_key)
     only_failed = bool((payload or {}).get("only_failed", True))
     message_ids_raw = (payload or {}).get("message_ids")
     message_ids: list[int] | None = None
@@ -288,8 +314,13 @@ def start_resummarize_day(payload: dict):
             message_ids = [int(x) for x in message_ids_raw]
         except Exception:
             return JSONResponse({"error": "message_ids must be ints"}, status_code=400)
-    if not date_key:
-        return JSONResponse({"error": "date_key required"}, status_code=400)
+    if not date_keys:
+        return JSONResponse({"error": "date_key or date_keys required"}, status_code=400)
+    if message_ids and len(date_keys) != 1:
+        return JSONResponse(
+            {"error": "message_ids require exactly one date"},
+            status_code=400,
+        )
 
     conn0 = get_conn(_db_path())
     try:
@@ -302,7 +333,10 @@ def start_resummarize_day(payload: dict):
     job_id = get_runner().enqueue(
         kind="resummarize-day",
         fn=resummarize_day_task(
-            date_key=date_key, only_failed=only_failed, message_ids=message_ids
+            date_key=(date_keys[0] if len(date_keys) == 1 else ""),
+            date_keys=date_keys,
+            only_failed=only_failed,
+            message_ids=message_ids,
         ),
     )
     return {"job_id": job_id}

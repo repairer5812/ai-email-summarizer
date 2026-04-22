@@ -25,6 +25,9 @@
       {% if flash.startup_notice.log_path %}
         <div class="muted" style="margin-top: 6px; font-size: 0.85rem;">{{ t(request, 'home.notice.native_fallback.log') }} {{ flash.startup_notice.log_path }}</div>
       {% endif %}
+      {% if flash.startup_notice.report_path %}
+        <div class="muted" style="margin-top: 6px; font-size: 0.85rem;">{{ t(request, 'home.notice.native_fallback.report') }} {{ flash.startup_notice.report_path }}</div>
+      {% endif %}
     </div>
     <script>
     (() => {
@@ -33,6 +36,7 @@
         u.searchParams.delete('ui_notice');
         u.searchParams.delete('ui_reason');
         u.searchParams.delete('ui_retries');
+        u.searchParams.delete('ui_report');
         history.replaceState(null, '', u.toString());
       } catch (e) {}
     })();
@@ -505,6 +509,7 @@
   const LABEL_START = {{ t(request, 'home.btn.sync')|tojson }}, LABEL_STOP = {{ t(request, 'home.btn.sync_stop')|tojson }}, LABEL_REFRESH = {{ t(request, 'home.btn.refresh_overviews')|tojson }}, LABEL_RETRY_FAILED_DAY = {{ t(request, 'home.btn.retry_failed_day')|tojson }}, LABEL_RESUM_STOP = {{ t(request, 'day.btn.stop')|tojson }}, LABEL_SUMMARIZING = {{ t(request, 'home.btn.refresh_ing')|tojson }};
   const STR_STARTING = {{ ("동기화를 시작합니다" if ui_lang(request) == 'ko' else "Starting sync")|tojson }}, STR_ERROR = {{ ("오류" if ui_lang(request) == 'ko' else "Error")|tojson }}, STR_EVENT_STREAM = {{ ("오류: 이벤트 스트림" if ui_lang(request) == 'ko' else "Error: event stream")|tojson }};
   const STR_PICK_ONE_DAY = {{ t(request, 'home.btn.refresh_pick_one')|tojson }};
+  const STR_PICK_FAILED_DAY = {{ t(request, 'home.btn.retry_failed_pick_any')|tojson }};
   const STR_META_COUNT = {{ t(request, 'home.progress.meta.count')|tojson }}, STR_META_ETA = {{ t(request, 'home.progress.meta.eta')|tojson }}, STR_META_STOPPING = {{ t(request, 'home.progress.meta.stopping')|tojson }};
 
   let es = null, resumEs = null, refreshEs = null;
@@ -743,12 +748,16 @@
     });
   }
 
-  async function startHomeResummarize(dateKey, onlyFailed) {
+  async function startHomeResummarize(dateKeys, onlyFailed) {
     setResummarizeButtonsRunning();
+    const normalizedDays = Array.isArray(dateKeys) ? dateKeys.filter(Boolean) : [dateKeys].filter(Boolean);
+    const payload = { only_failed: !!onlyFailed };
+    if (normalizedDays.length === 1) payload.date_key = normalizedDays[0];
+    else if (normalizedDays.length > 1) payload.date_keys = normalizedDays;
     const res = await fetch('/api/jobs/resummarize-day', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date_key: dateKey, only_failed: !!onlyFailed })
+      body: JSON.stringify(payload)
     });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -962,11 +971,11 @@
       return;
     }
     const selectedDays = getSelectedDays();
-    if (selectedDays.length !== 1) {
-      alert(STR_PICK_ONE_DAY);
+    if (selectedDays.length < 1) {
+      alert(STR_PICK_FAILED_DAY);
       return;
     }
-    await startHomeResummarize(selectedDays[0], true);
+    await startHomeResummarize(selectedDays, true);
   });
 
   if (btnRefresh) btnRefresh.addEventListener('click', async () => {
@@ -981,7 +990,7 @@
       alert(STR_PICK_ONE_DAY);
       return;
     }
-    await startHomeResummarize(selectedDays[0], false);
+    await startHomeResummarize(selectedDays, false);
   });
 
   const ACTIVE_SYNC = "{{ (active.sync.id if active and active.sync else '') }}";
