@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { NextConfig } from "next";
 
 function normalizeBasePath(raw: string | undefined): string {
@@ -8,9 +10,11 @@ function normalizeBasePath(raw: string | undefined): string {
 }
 
 const basePath = normalizeBasePath(process.env.NEXT_PUBLIC_BASE_PATH);
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   output: "export",
+  outputFileTracingRoot: path.join(configDir, ".."),
   trailingSlash: true,
   basePath: basePath || undefined,
   assetPrefix: basePath || undefined,

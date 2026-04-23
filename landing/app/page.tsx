@@ -120,6 +120,9 @@ export default function Home() {
                 버튼을 누르면 릴리즈 페이지가 열리며, 위 파일명을 선택해 다운로드합니다.
               </p>
               <p className="text-xs text-slate-600">
+                macOS는 현재 설치형 배포 대신 소스 기반 browser-mode 테스트만 지원합니다.
+              </p>
+              <p className="text-xs text-slate-600">
                 <a
                   className="underline decoration-slate-300 underline-offset-4 hover:decoration-slate-400"
                   href="https://github.com/repairer5812/ai-email-summarizer/blob/main/CODE_SIGNING_POLICY.md"
@@ -140,7 +143,7 @@ export default function Home() {
                   <p>1) 설치 파일 다운로드 후 실행</p>
                   <p>2) 상단 메뉴 설정에서 메일 연결 테스트</p>
                   <p>3) 동기화 시작 후 날짜별 요약 확인</p>
-                  <p>4) 필요하면 대시보드에서 최신 버전 업데이트 확인</p>
+                  <p>4) 필요하면 여러 날짜의 오류 요약만 다시 시도</p>
                   <p className="text-sm text-slate-600">처음 설치부터 첫 요약 확인까지 보통 3분 내외입니다.</p>
                 </div>
               </CardContent>
@@ -176,7 +179,7 @@ export default function Home() {
                 <div className="space-y-2 text-sm text-slate-600">
                   <p className="rounded-xl bg-white/60 px-3 py-2">2026-03-02 (월) · 18건</p>
                   <p className="rounded-xl bg-white/60 px-3 py-2">중요 일정 포함 메일 4건</p>
-                  <p className="rounded-xl bg-white/60 px-3 py-2">업데이트 알림 · 최신 버전 확인</p>
+                  <p className="rounded-xl bg-white/60 px-3 py-2">오류 요약만 여러 날짜 선택 재시도</p>
                 </div>
               </div>
             </div>
@@ -336,6 +339,7 @@ export default function Home() {
                 <ul className="list-disc space-y-1 pl-5 text-slate-700">
                   <li>날짜별 카드로 메일함이 한눈에 정리.</li>
                   <li>요약/원문/상세를 원하는 수준으로 확인.</li>
+                  <li>오류 요약만 여러 날짜를 골라 한 번에 다시 시도.</li>
                   <li>동기화 진행 상황도 화면에서 바로 확인.</li>
                 </ul>
               </CardContent>
@@ -379,11 +383,12 @@ export default function Home() {
                 <CardTitle className="text-xl text-slate-900">자주 묻는 질문</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 rounded-3xl p-6 text-base leading-7 text-slate-700 clay-card">
-                <p><span className="font-semibold">Q.</span> 어떤 파일을 받으면 되나요?<br /><span className="text-slate-600">A.</span> 대부분은 <span className="font-semibold">webmail-summary.exe</span> 하나면 충분합니다.</p>
+                <p><span className="font-semibold">Q.</span> 어떤 파일을 받으면 되나요?<br /><span className="text-slate-600">A.</span> 대부분은 <span className="font-semibold">webmail-summary-setup-windows-x64-vX.Y.Z.exe</span> 설치 파일을 권장합니다. 포터블 <span className="font-semibold">webmail-summary.exe</span>도 가능하지만 자동 업데이트는 설치형 기준으로 동작합니다.</p>
                 <p><span className="font-semibold">Q.</span> 메일 원문은 어디에 저장되나요?<br /><span className="text-slate-600">A.</span> 내 PC 로컬 저장소에 보관됩니다.</p>
                 <p><span className="font-semibold">Q.</span> API 키는 안전한가요?<br /><span className="text-slate-600">A.</span> Windows Credential Manager를 사용해 저장합니다.</p>
                 <p><span className="font-semibold">Q.</span> Daouoffice만 되나요?<br /><span className="text-slate-600">A.</span> 아니요. IMAP 기반이라 IMAP을 제공하는 메일 서비스면 대부분 사용 가능합니다. (예: Gmail/Google Workspace, Outlook/Exchange(조직 정책상 IMAP 허용 시), 네이버/다음, 개인 도메인 메일)</p>
                 <p><span className="font-semibold">Q.</span> 특정 폴더만 가져올 수 있나요?<br /><span className="text-slate-600">A.</span> 네. 설정에서 가져올 메일 폴더를 선택할 수 있고, 선택한 폴더만 동기화합니다.</p>
+                <p><span className="font-semibold">Q.</span> macOS도 되나요?<br /><span className="text-slate-600">A.</span> 현재는 macOS 전용 설치 파일은 없고, 소스 기반 browser-mode 테스트만 지원합니다. 자세한 방법은 GitHub README의 macOS 안내를 참고해 주세요.</p>
               </CardContent>
             </Card>
         </section>
