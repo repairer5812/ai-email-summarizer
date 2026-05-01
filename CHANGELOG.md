@@ -14,6 +14,15 @@ All notable changes to this project are documented in this file.
 - Re-summarize target detection now treats placeholder summaries such as "summary items are insufficient" as retryable failures.
 - Home startup fallback notices now include the local error report path when one is available.
 
+## [0.6.6.14] - 2026-04-20
+
+### Fixed
+
+- 동기화 도중 IMAP 연결이 끊겨 "socket error: EOF occurred in violation of protocol"
+  같은 오류로 sync가 중단되던 문제를 수정했습니다.
+  - 메일 fetch 중 TLS/소켓 끊김이 감지되면 자동으로 재연결하고 같은 폴더를 다시 선택하여 작업을 이어갑니다.
+  - mark_seen / clear_seen에도 동일한 자동 복구 로직을 적용했습니다.
+
 ## [0.6.6.13] - 2026-04-20
 
 ### Fixed
