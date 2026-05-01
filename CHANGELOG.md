@@ -14,7 +14,7 @@ All notable changes to this project are documented in this file.
 - Re-summarize target detection now treats placeholder summaries such as "summary items are insufficient" as retryable failures.
 - Home startup fallback notices now include the local error report path when one is available.
 
-## [0.6.6.14] - 2026-04-20
+## [0.6.6.15] - 2026-04-22
 
 ### Fixed
 
