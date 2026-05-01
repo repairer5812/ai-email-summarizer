@@ -176,6 +176,33 @@ def parse_mail_search_filter(raw_value: str) -> MailSearchFilter:
     )
 
 
+def _is_transient_imap_error(exc: BaseException) -> bool:
+    """Return True if a fetch/select error looks worth reconnecting for.
+
+    Covers TLS/SSL drops, broken pipes, connection resets, and the
+    "EOF in violation of protocol" we saw mid-sync.
+    """
+    if is_imap_tls_error(exc):
+        return True
+    msg = _exception_text(exc)
+    needles = (
+        "broken pipe",
+        "connection reset",
+        "connection aborted",
+        "connection closed",
+        "socket error",
+        "eof",
+        "timed out",
+        "abort",
+    )
+    if any(n in msg for n in needles):
+        return True
+    name = type(exc).__name__.lower()
+    if name in {"connectionreseterror", "connectionaborted", "brokenpipeerror"}:
+        return True
+    return False
+
+
 class ImapSession:
     def __init__(self, host: str, port: int, user: str, password: str) -> None:
         self._host = host
@@ -184,6 +211,8 @@ class ImapSession:
         self._password = password
         self._client: IMAPClient | None = None
         self._tls_mode = "default"
+        self._selected_folder: str | None = None
+        self._selected_readonly: bool = False
 
     def __enter__(self) -> "ImapSession":
         first_error: Exception | None = None
@@ -249,6 +278,45 @@ class ImapSession:
 
     def select_folder(self, folder: str, *, readonly: bool = False) -> None:
         self.client.select_folder(folder, readonly=bool(readonly))
+        self._selected_folder = str(folder)
+        self._selected_readonly = bool(readonly)
+
+    def reconnect(self) -> None:
+        """Re-establish the IMAP connection and re-select the previous folder.
+
+        Used after transient TLS/socket drops mid-sync.
+        """
+        # Close any half-dead client first.
+        try:
+            if self._client is not None:
+                try:
+                    self._client.logout()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        self._client = None
+
+        # Reconnect using the same TLS mode that worked last time.
+        compatibility = self._tls_mode == "tls12_compat"
+        client = IMAPClient(
+            self._host,
+            port=self._port,
+            ssl=True,
+            ssl_context=_build_imap_ssl_context(compatibility=compatibility),
+            timeout=20,
+        )
+        client.login(self._user, self._password)
+        self._client = client
+
+        # Re-select the previously selected folder, if any.
+        if self._selected_folder:
+            try:
+                self._client.select_folder(
+                    self._selected_folder, readonly=self._selected_readonly
+                )
+            except Exception:
+                pass
 
     def get_uidvalidity(self) -> int:
         info = self.client.folder_status("INBOX", ["UIDVALIDITY"])
@@ -332,25 +400,39 @@ class ImapSession:
         fetched = 0
         total = len(uid_list)
 
+        def _fetch_with_retry(part: list[int], items: list[str]) -> Mapping[int, Mapping[bytes, Any]]:
+            """Fetch with up to 2 reconnect attempts on transient errors."""
+            last_exc: Exception | None = None
+            for attempt in range(3):
+                try:
+                    return cast(
+                        Mapping[int, Mapping[bytes, Any]],
+                        self.client.fetch(part, items),
+                    )
+                except Exception as exc:
+                    last_exc = exc
+                    if not _is_transient_imap_error(exc):
+                        raise
+                    if attempt >= 2:
+                        break
+                    try:
+                        self.reconnect()
+                    except Exception:
+                        # If reconnect itself fails, try once more on next iter.
+                        pass
+            assert last_exc is not None
+            raise last_exc
+
         def gen() -> Iterator[ImapMessage]:
             nonlocal fetched
             for part in chunks(uid_list, max(1, int(chunk_size))):
-                meta = cast(
-                    Mapping[int, Mapping[bytes, Any]],
-                    self.client.fetch(part, ["FLAGS", "INTERNALDATE"]),
-                )
+                meta = _fetch_with_retry(part, ["FLAGS", "INTERNALDATE"])
 
                 try:
-                    raw_map = cast(
-                        Mapping[int, Mapping[bytes, Any]],
-                        self.client.fetch(part, ["BODY.PEEK[]"]),
-                    )
+                    raw_map = _fetch_with_retry(part, ["BODY.PEEK[]"])
                 except Exception:
                     # Fallback for servers that don't accept BODY.PEEK[].
-                    raw_map = cast(
-                        Mapping[int, Mapping[bytes, Any]],
-                        self.client.fetch(part, ["RFC822"]),
-                    )
+                    raw_map = _fetch_with_retry(part, ["RFC822"])
 
                 fetched += len(part)
                 if on_progress is not None:
@@ -400,8 +482,20 @@ class ImapSession:
 
     def mark_seen(self, uid: int) -> None:
         # \Seen is the IMAP-standard read flag.
-        self.client.add_flags([uid], ["\\Seen"], silent=True)
+        try:
+            self.client.add_flags([uid], ["\\Seen"], silent=True)
+        except Exception as exc:
+            if not _is_transient_imap_error(exc):
+                raise
+            self.reconnect()
+            self.client.add_flags([uid], ["\\Seen"], silent=True)
 
     def clear_seen(self, uid: int) -> None:
         # Best-effort: remove the read flag (useful for smoke tests).
-        self.client.remove_flags([uid], ["\\Seen"], silent=True)
+        try:
+            self.client.remove_flags([uid], ["\\Seen"], silent=True)
+        except Exception as exc:
+            if not _is_transient_imap_error(exc):
+                raise
+            self.reconnect()
+            self.client.remove_flags([uid], ["\\Seen"], silent=True)
