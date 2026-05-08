@@ -48,16 +48,39 @@ def _server_command(port: int | None) -> list[str]:
     return cmd
 
 
-def _wait_for_active_url(data_dir, *, timeout_s: float = 12.0) -> str:
+def _parse_active_url_file(path: Path) -> tuple[str, int]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except Exception:
+        return "", 0
+    lines = text.splitlines()
+    url = lines[0].strip() if lines else ""
+    pid = 0
+    if len(lines) >= 2:
+        try:
+            pid = int(lines[1].strip())
+        except ValueError:
+            pid = 0
+    return url, pid
+
+
+def _wait_for_active_url(
+    data_dir,
+    *,
+    timeout_s: float = 12.0,
+    expected_pid: int | None = None,
+) -> str:
     url_path = data_dir / "active_url.txt"
     deadline = time.time() + float(timeout_s)
     last = ""
     while time.time() < deadline:
         try:
             if url_path.is_file():
-                last = url_path.read_text(encoding="utf-8", errors="replace").strip()
-                if last.startswith("http://") or last.startswith("https://"):
-                    return last
+                url, pid = _parse_active_url_file(url_path)
+                last = url
+                if url.startswith("http://") or url.startswith("https://"):
+                    if expected_pid is None or pid == int(expected_pid):
+                        return url
         except Exception:
             pass
         time.sleep(0.05)
@@ -70,6 +93,7 @@ def _wait_for_active_url_change(
     old_text: str,
     old_mtime: float,
     timeout_s: float = 30.0,
+    expected_pid: int | None = None,
 ) -> str:
     url_path = data_dir / "active_url.txt"
     deadline = time.time() + float(timeout_s)
@@ -78,15 +102,21 @@ def _wait_for_active_url_change(
         try:
             if url_path.is_file():
                 st = url_path.stat()
-                txt = url_path.read_text(encoding="utf-8", errors="replace").strip()
-                last = txt
-                if not (txt.startswith("http://") or txt.startswith("https://")):
+                url, pid = _parse_active_url_file(url_path)
+                last = url
+                if not (url.startswith("http://") or url.startswith("https://")):
+                    time.sleep(0.05)
+                    continue
+                # PID handshake: only accept the URL if it was written by the
+                # server we spawned. Otherwise we may pick up a leftover URL
+                # from a stale server that died mid-handoff.
+                if expected_pid is not None and pid != int(expected_pid):
                     time.sleep(0.05)
                     continue
                 if float(st.st_mtime) > float(old_mtime) + 1e-6:
-                    return txt
-                if txt and txt != old_text:
-                    return txt
+                    return url
+                if url and url != old_text:
+                    return url
         except Exception:
             pass
         time.sleep(0.05)
@@ -110,7 +140,7 @@ def _wait_for_http_ready(
                 last_exc = e
                 break
         try:
-            r = requests.get(url, timeout=(0.5, 1.5))
+            r = requests.get(url, timeout=(1.5, 3.0))
             if 200 <= r.status_code < 500:
                 return
         except Exception as e:
@@ -122,7 +152,7 @@ def _wait_for_http_ready(
 
 def _is_reachable(url: str) -> bool:
     try:
-        r = requests.get(url, timeout=(0.25, 0.75))
+        r = requests.get(url, timeout=(0.75, 1.5))
         return 200 <= r.status_code < 500
     except Exception:
         return False
@@ -628,10 +658,16 @@ def _run_native_window(
 
 def _kill_stale_webmail_processes() -> None:
     """Terminate any other webmail-summary processes left over from a
-    previous version (e.g. after an update where the old UI didn't close).
+    previous session (e.g. an orphaned server child whose UI parent already
+    exited, or a process from a forced shutdown that didn't run cleanup).
 
-    Only runs on Windows. Skips the current process and any process
-    whose exe path we can't determine.
+    MUST be called only AFTER ui.lock is acquired — otherwise this will
+    cannibalise the server child of a healthy concurrent UI launch, which
+    holds ui.lock and is in the middle of starting up. With the lock held,
+    any other webmail-summary.exe is unambiguously stale.
+
+    Only runs on Windows in frozen builds. Matches by exe path (not just
+    name) so we never kill an unrelated install of the same app.
     """
     if not is_windows():
         return
@@ -641,30 +677,50 @@ def _kill_stale_webmail_processes() -> None:
         import psutil
     except Exception:
         return
+
     my_pid = os.getpid()
-    my_exe_name = "webmail-summary.exe"
+    try:
+        my_exe = os.path.normcase(os.path.realpath(sys.executable))
+    except Exception:
+        my_exe = ""
+
+    targets: list = []
     for proc in psutil.process_iter(["pid", "name"]):
         try:
             if proc.info["pid"] == my_pid:
                 continue
             pname = str(proc.info.get("name") or "").lower()
-            if pname != my_exe_name:
+            if pname != "webmail-summary.exe":
                 continue
+            if my_exe:
+                try:
+                    proc_exe = os.path.normcase(os.path.realpath(proc.exe()))
+                except Exception:
+                    proc_exe = ""
+                # If we know our exe, only touch siblings from the same install.
+                if proc_exe and proc_exe != my_exe:
+                    continue
+            targets.append(proc)
+        except Exception:
+            continue
+
+    if not targets:
+        return
+
+    for proc in targets:
+        try:
             proc.terminate()
         except Exception:
             continue
-    # Give them a moment, then force kill stragglers.
-    time.sleep(0.5)
-    for proc in psutil.process_iter(["pid", "name"]):
+
+    _, alive = psutil.wait_procs(targets, timeout=2.0)
+    for proc in alive:
         try:
-            if proc.info["pid"] == my_pid:
-                continue
-            pname = str(proc.info.get("name") or "").lower()
-            if pname != my_exe_name:
-                continue
             proc.kill()
         except Exception:
             continue
+    if alive:
+        psutil.wait_procs(alive, timeout=1.0)
 
 
 def run_ui(*, port: int | None = None) -> None:
@@ -676,38 +732,46 @@ def run_ui(*, port: int | None = None) -> None:
 
     data_dir = get_app_data_dir()
 
-    # Clean up stale webmail-summary processes from a previous version
-    # (can happen if the old UI didn't close during an update handoff).
-    _kill_stale_webmail_processes()
-
+    # Acquire the UI lock BEFORE killing anything. If a healthy concurrent
+    # launch is already starting up, we must lose this race and bring it to
+    # the front — not kill its server child out from under it.
     ui_lock = SingleInstanceLock(data_dir / "ui.lock")
     if not ui_lock.acquire():
         signal_bring_to_front()
         return
+
+    # Lock held → any other webmail-summary.exe is genuinely stale (orphaned
+    # server child, leftover from a forced shutdown, etc.). Safe to kill.
+    _kill_stale_webmail_processes()
 
     write_ui_pid(os.getpid())
 
     server_proc: subprocess.Popen | None = None
     try:
         url_path = data_dir / "active_url.txt"
-        old_text = ""
-        old_mtime = 0.0
-        try:
-            if url_path.is_file():
-                old_text = url_path.read_text(
-                    encoding="utf-8", errors="replace"
-                ).strip()
-                old_mtime = float(url_path.stat().st_mtime)
-        except Exception:
-            old_text = ""
-            old_mtime = 0.0
+        url = ""
 
-        if old_text.startswith("http://") or old_text.startswith("https://"):
-            url = old_text if _is_reachable(old_text) else ""
-        else:
-            url = ""
+        if not bool(getattr(sys, "frozen", False)):
+            # Dev mode: a `python -m webmail_summary serve` may already be
+            # running (we don't kill those). Try to reuse its URL.
+            existing_url = ""
+            try:
+                if url_path.is_file():
+                    existing_url, _ = _parse_active_url_file(url_path)
+            except Exception:
+                existing_url = ""
+            if existing_url.startswith("http://") or existing_url.startswith("https://"):
+                if _is_reachable(existing_url):
+                    url = existing_url
 
         if not url:
+            # Wipe any leftover URL so we know the next value to appear in
+            # the file came from the server we are about to spawn.
+            try:
+                url_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
             cmd = _server_command(port)
             popen_kwargs: dict[str, object] = {"close_fds": True}
             popen_kwargs.update(detached_subprocess_kwargs())
@@ -715,11 +779,17 @@ def run_ui(*, port: int | None = None) -> None:
                 popen_kwargs["env"] = build_fresh_pyinstaller_env()
             server_proc = subprocess.Popen(cmd, **popen_kwargs)
 
+            expected_pid = int(server_proc.pid)
             url = _wait_for_active_url_change(
-                data_dir, old_text=old_text, old_mtime=old_mtime
+                data_dir,
+                old_text="",
+                old_mtime=0.0,
+                expected_pid=expected_pid,
             )
             if not url:
-                url = _wait_for_active_url(data_dir, timeout_s=12.0)
+                url = _wait_for_active_url(
+                    data_dir, timeout_s=12.0, expected_pid=expected_pid
+                )
             if not url:
                 raise RuntimeError("Failed to obtain active_url.txt from server")
 

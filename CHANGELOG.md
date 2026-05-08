@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.16] - 2026-05-08
+
+### Fixed
+
+- 앱을 짧은 시간 안에 두 번 실행하면 첫 번째 실행의 서버가 두 번째 실행에
+  의해 종료되어, "UI start failed (ConnectTimeout)"으로 첫 번째 창이 죽던
+  문제를 근본적으로 수정했습니다.
+  - `ui.lock`을 먼저 획득한 뒤에만 잔여 프로세스 정리 단계를 실행하도록
+    순서를 바꿨습니다. 동시 실행은 이제 서로의 서버를 죽이지 않고
+    bring-to-front 시그널만 보내고 종료합니다.
+  - 서버는 uvicorn이 포트를 실제로 바인드한 뒤에야 `active_url.txt`를
+    기록하며, 자신의 PID를 두 번째 줄에 함께 적어 핸드셰이크합니다.
+  - UI 런처는 서버를 띄우기 직전에 `active_url.txt`를 비우고, 그 뒤
+    파일에 나타난 URL이 자신이 띄운 server_proc의 PID와 일치할 때만
+    수락합니다. 죽은 이전 서버의 URL을 잘못 잡고 90초 동안 ConnectTimeout
+    하던 문제가 사라집니다.
+  - 잔여 프로세스 정리는 이제 실행 파일 경로까지 비교하여 다른 설치본의
+    `webmail-summary.exe`를 건드리지 않고, `psutil.wait_procs`로 제대로
+    종료를 기다립니다.
+  - HTTP ready 체크의 connect timeout을 0.5초 → 1.5초로 완화하여 바쁜
+    시스템에서 발생하던 우발적 실패를 줄였습니다.
+
 ## [0.6.6.14] - 2026-04-22
 
 ### Added

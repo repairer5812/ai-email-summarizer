@@ -178,8 +178,9 @@ def serve(opts: ServeOptions = ServeOptions()) -> None:
                 ).strip()
             except Exception:
                 existing = ""
-            if existing.startswith("http://") or existing.startswith("https://"):
-                webbrowser.open(existing)
+            existing_url = existing.splitlines()[0].strip() if existing else ""
+            if existing_url.startswith("http://") or existing_url.startswith("https://"):
+                webbrowser.open(existing_url)
         return
 
     app = create_app()
@@ -200,14 +201,27 @@ def serve(opts: ServeOptions = ServeOptions()) -> None:
     watchdog = threading.Thread(target=_close_watchdog, daemon=True)
     watchdog.start()
 
-    try:
+    @app.on_event("startup")
+    def _publish_active_url() -> None:
+        # Publish the URL only AFTER uvicorn has bound the port. Writing it
+        # from the main thread before uvicorn.run() risks pointing the UI at
+        # a server that has not yet bound (or crashes during init), wasting
+        # the entire connect-timeout budget on a phantom listener.
+        # The PID line is a handshake so the UI launcher can verify the URL
+        # was written by the server it spawned, not by a stale instance.
         try:
-            url_path.write_text(url, encoding="utf-8")
+            url_path.write_text(
+                f"{url}\n{os.getpid()}\n", encoding="utf-8"
+            )
         except Exception:
             pass
         if opts.open_browser:
-            webbrowser.open(url)
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
 
+    try:
         # In PyInstaller --noconsole builds, stdio can be None. Uvicorn's default
         # log formatters may call isatty() on sys.stderr; ensure it's always safe.
         if getattr(sys, "frozen", False):
