@@ -158,9 +158,12 @@ class CloudProvider(LlmProvider):
                 max_backoff_s=6.0,
             )
             if r.status_code != 200:
+                # Don't embed the raw error JSON in the summary — it pollutes
+                # daily overviews and is hard for placeholder filters to match.
+                # Keep a stable, identifiable token; full body goes to logs.
                 return LlmResult(
-                    summary=f"(LLM error: {r.status_code} {r.text[:100]})",
-                    tags=[],
+                    summary=f"(LLM error: HTTP {r.status_code})",
+                    tags=[f"llm_error:{r.status_code}"],
                     backlinks=[],
                     personal=False,
                 )

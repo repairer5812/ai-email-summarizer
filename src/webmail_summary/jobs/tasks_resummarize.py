@@ -75,6 +75,8 @@ def _needs_resummarize(summary: str) -> bool:
         return True
     if "llm unavailable" in s:
         return True
+    if "llm error" in s or "(llm error" in s:
+        return True
     if "failed to format input" in s or "invalid codepoint" in s:
         return True
     if "loading model" in s or "available commands" in s:

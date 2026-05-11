@@ -189,6 +189,8 @@ def _is_placeholder_bullet(text: str) -> bool:
         return True
     if "llmtimeout" in normalized or "llmunavailable" in normalized:
         return True
+    if "llmerror" in normalized:
+        return True
     if "failedtoformatinput" in normalized or "invalidcodepoint" in normalized:
         return True
     if "loadingmodel" in normalized or "availablecommands" in normalized:

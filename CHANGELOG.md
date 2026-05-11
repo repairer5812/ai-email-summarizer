@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.17] - 2026-05-08
+
+### Fixed
+
+- Upstage / OpenRouter 호환 클라우드 LLM이 4xx 응답(예: 모델명이 잘못되었거나
+  더 이상 지원되지 않을 때)을 돌려주면, 원시 에러 JSON이 그대로 메일 요약에
+  저장되고 일일 "요약의 요약" 첫 줄에 그대로 노출되던 문제를 수정했습니다.
+  - 4xx/5xx 응답은 이제 `(LLM error: HTTP <status>)` 형태의 정형화된
+    placeholder만 요약 필드에 저장하고, 상세 정보는 태그(`llm_error:<status>`)
+    로 분리합니다. 응답 본문이 그대로 묻어 들어가지 않습니다.
+  - 일일 요약 placeholder 필터(`_is_placeholder_bullet`)에 `llmerror`
+    패턴을 추가하여 잘못된 요약이 종합 입력에서 제외되도록 했습니다.
+  - 자동 재요약 트리거(`_needs_resummarize`)도 `(llm error)` 패턴을
+    인식하므로, 사용자가 모델명을 수정한 뒤 다시 동기화하면 실패한
+    항목들이 자동으로 재요약 대상에 포함됩니다.
+
 ## [0.6.6.16] - 2026-05-08
 
 ### Fixed
