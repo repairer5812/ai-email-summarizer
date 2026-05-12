@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -7,6 +9,7 @@ from webmail_summary.index.mail_repo import get_daily_overview
 from webmail_summary.index.settings import load_settings, set_setting
 from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
+from webmail_summary.llm.long_summarize import _is_placeholder_bullet
 from webmail_summary.ui.settings_gateway import db_path, get_setting
 from webmail_summary.ui.setup_service import (
     get_cloud_keys,
@@ -18,6 +21,27 @@ from webmail_summary.ui.updates import _build_update_state, _check_github_releas
 from webmail_summary.ui.web_shared import get_active_jobs, templates
 
 router = APIRouter()
+
+
+def _sanitize_overview_for_display(overview: str | None) -> str:
+    """Filter cached daily overview text to drop bullet lines that are LLM
+    placeholder/error markers.
+
+    Older cache entries were synthesized when the placeholder filter did not
+    yet recognise patterns like "(LLM error: HTTP 400)", so those bullets can
+    persist in the daily_overviews table even after the user upgrades. This
+    cleans them at display time without invalidating the cache or forcing a
+    re-summarize.
+    """
+    if not overview:
+        return overview or ""
+    out: list[str] = []
+    for line in overview.splitlines():
+        body = re.sub(r"^[\s\-*•·]+", "", line).strip()
+        if body and _is_placeholder_bullet(body):
+            continue
+        out.append(line)
+    return "\n".join(out).strip()
 
 
 def _build_day_cards(conn, *, limit: int = 90) -> list[dict]:
@@ -51,7 +75,7 @@ def _build_day_cards(conn, *, limit: int = 90) -> list[dict]:
             "day": day,
             "day_display": format_date_with_weekday_ko(day),
             "count": int(r[1] or 0),
-            "overview": get_daily_overview(conn, day),
+            "overview": _sanitize_overview_for_display(get_daily_overview(conn, day)),
             "failed_count": int(failed_by_day.get(day, 0)),
         }
         for r in rows_days

@@ -1375,10 +1375,13 @@ def synthesize_daily_overview(
     max_total_chars = 8000
 
     # Placeholder/error strings that must never reach the daily digest.
+    # Prefix-only entries (no closing paren) catch variants like
+    # "(LLM error: HTTP 400)" / "(LLM unavailable: ConnectionError ...)".
     _bad_markers = (
         "(no summary)",
         "(llm timeout)",
-        "(llm unavailable)",
+        "(llm unavailable",
+        "(llm error",
         "요약없음",
     )
 

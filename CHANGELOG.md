@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.18] - 2026-05-12
+
+### Fixed
+
+- v0.6.6.17 이후에도 일자별 카드의 미리보기 첫 줄에 `(LLM error: HTTP 400)`
+  같은 placeholder 문자열이 그대로 보이던 문제를 수정했습니다.
+  - 일일 요약 합성기(`synthesize_daily_overview`)의 `_bad_markers`에
+    `(llm error` / `(llm unavailable` 접두사를 추가해, 이후 새로 만들어지는
+    overview에는 placeholder 요약이 입력으로조차 들어가지 않습니다.
+  - 이미 SQLite `daily_overviews` 테이블에 캐시된 이전 overview는 재요약
+    전까지 갱신되지 않으므로, 홈 화면 표시 직전에 한 번 더 sanitize하여
+    `_is_placeholder_bullet`에 걸리는 라인을 제외하고 보여줍니다.
+    재요약 비용 없이 즉시 깨끗하게 표시됩니다.
+
 ## [0.6.6.17] - 2026-05-08
 
 ### Fixed
