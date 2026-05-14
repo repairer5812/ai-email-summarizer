@@ -207,11 +207,22 @@ def serve(opts: ServeOptions = ServeOptions()) -> None:
         # from the main thread before uvicorn.run() risks pointing the UI at
         # a server that has not yet bound (or crashes during init), wasting
         # the entire connect-timeout budget on a phantom listener.
-        # The PID line is a handshake so the UI launcher can verify the URL
-        # was written by the server it spawned, not by a stale instance.
+        #
+        # File format (3 lines):
+        #   1) url
+        #   2) os.getpid() — informational; do NOT use for handshake. Under
+        #      PyInstaller --onefile the launcher sees the bootstrap PID
+        #      while os.getpid() inside the server is the child Python PID,
+        #      so a PID equality check is structurally broken.
+        #   3) handshake token echoed back from WEBMAIL_SUMMARY_HANDSHAKE.
+        #      The launcher injects a random token via that env var; the
+        #      server writes it here so the launcher knows the URL came from
+        #      the server it just spawned (env vars are inherited across
+        #      bootstrap → child, unlike PIDs).
+        handshake = os.environ.get("WEBMAIL_SUMMARY_HANDSHAKE", "")
         try:
             url_path.write_text(
-                f"{url}\n{os.getpid()}\n", encoding="utf-8"
+                f"{url}\n{os.getpid()}\n{handshake}\n", encoding="utf-8"
             )
         except Exception:
             pass

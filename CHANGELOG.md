@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.19] - 2026-05-15
+
+### Fixed
+
+- **frozen 빌드(`--onefile`)에서만 발현되던 UI 시작 실패의 근본 원인을
+  제거했습니다.** v0.6.6.16에 도입했던 PID 기반 핸드셰이크는 PyInstaller
+  `--onefile` 모델과 구조적으로 충돌하여, 사용자가 "Failed to obtain
+  active_url.txt from server" 오류로 앱 자체를 띄울 수 없는 상태로
+  이어졌습니다.
+  - 원인: onefile EXE는 `bootstrap → child Python` 두 프로세스로 동작합니다.
+    `subprocess.Popen([sys.executable, ...]).pid`는 bootstrap PID인 반면,
+    서버 안에서 `os.getpid()`로 적는 PID는 child Python PID라 영원히 일치
+    하지 않습니다. 그래서 launcher의 PID 일치 검증이 30+12초 동안 timeout
+    한 뒤 실패했습니다.
+  - 수정: PID 검증을 제거하고, **환경변수(`WEBMAIL_SUMMARY_HANDSHAKE`)로
+    무작위 토큰을 전달하는 방식**으로 교체했습니다. 환경변수는 bootstrap
+    → child로 자동 전파되므로 PyInstaller 프로세스 모델과 무관하게 동작
+    합니다. 서버는 startup 이벤트에서 토큰을 `active_url.txt` 3번째 줄에
+    적고, launcher는 토큰이 일치할 때만 URL을 수락합니다. PID는
+    디버깅용 정보로 2번째 줄에 유지하되 검증에는 사용하지 않습니다.
+
+### Added
+
+- **Release workflow에 frozen 빌드 smoke test를 추가했습니다.** 빌드된
+  `webmail-summary.exe`를 격리된 데이터 디렉토리에서 띄워 60초 안에
+  `active_url.txt`가 만들어지는지 확인합니다. 이번 회귀처럼 onefile에서만
+  나타나는 launcher↔server handshake 결함은 dev 모드(python -m)에서
+  재현되지 않으므로, 같은 부류의 회귀가 다시 사용자 손에 닿기 전에
+  CI에서 자동으로 잡힙니다.
+
 ## [0.6.6.18] - 2026-05-12
 
 ### Fixed

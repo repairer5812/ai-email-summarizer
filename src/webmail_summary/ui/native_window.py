@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import secrets
 import sqlite3
 import subprocess
 import sys
@@ -13,6 +14,15 @@ from typing import Any, Protocol, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
+
+# Environment variable name used to pass a one-shot handshake token from the
+# UI launcher to its spawned server child. See _parse_active_url_file for the
+# reasoning — PyInstaller --onefile uses a bootstrap → child Python process
+# model, so server_proc.pid (bootstrap) does NOT match os.getpid() inside
+# the server (child). PID-based handshakes therefore deadlock in onefile
+# builds. A token in the environment is inherited by the child and works
+# regardless of the process model.
+HANDSHAKE_ENV_VAR = "WEBMAIL_SUMMARY_HANDSHAKE"
 
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.error_reports import write_error_report
@@ -48,11 +58,20 @@ def _server_command(port: int | None) -> list[str]:
     return cmd
 
 
-def _parse_active_url_file(path: Path) -> tuple[str, int]:
+def _parse_active_url_file(path: Path) -> tuple[str, int, str]:
+    """Parse active_url.txt → (url, pid, handshake_token).
+
+    File format (line per field, all optional except url):
+        line 1: url
+        line 2: server pid (informational only — DO NOT use for handshake;
+                see HANDSHAKE_ENV_VAR comment for why PID is unreliable)
+        line 3: handshake token written by the server (matches the token
+                the UI launcher injected via HANDSHAKE_ENV_VAR)
+    """
     try:
         text = path.read_text(encoding="utf-8", errors="replace").strip()
     except Exception:
-        return "", 0
+        return "", 0, ""
     lines = text.splitlines()
     url = lines[0].strip() if lines else ""
     pid = 0
@@ -61,14 +80,15 @@ def _parse_active_url_file(path: Path) -> tuple[str, int]:
             pid = int(lines[1].strip())
         except ValueError:
             pid = 0
-    return url, pid
+    token = lines[2].strip() if len(lines) >= 3 else ""
+    return url, pid, token
 
 
 def _wait_for_active_url(
     data_dir,
     *,
     timeout_s: float = 12.0,
-    expected_pid: int | None = None,
+    expected_token: str | None = None,
 ) -> str:
     url_path = data_dir / "active_url.txt"
     deadline = time.time() + float(timeout_s)
@@ -76,10 +96,17 @@ def _wait_for_active_url(
     while time.time() < deadline:
         try:
             if url_path.is_file():
-                url, pid = _parse_active_url_file(url_path)
+                url, _pid, token = _parse_active_url_file(url_path)
                 last = url
                 if url.startswith("http://") or url.startswith("https://"):
-                    if expected_pid is None or pid == int(expected_pid):
+                    # Handshake: a non-empty expected_token requires a match.
+                    # An empty token in the file is accepted (legacy server)
+                    # so this stays backward-compatible across upgrades.
+                    if (
+                        not expected_token
+                        or not token
+                        or token == expected_token
+                    ):
                         return url
         except Exception:
             pass
@@ -93,7 +120,7 @@ def _wait_for_active_url_change(
     old_text: str,
     old_mtime: float,
     timeout_s: float = 30.0,
-    expected_pid: int | None = None,
+    expected_token: str | None = None,
 ) -> str:
     url_path = data_dir / "active_url.txt"
     deadline = time.time() + float(timeout_s)
@@ -102,15 +129,16 @@ def _wait_for_active_url_change(
         try:
             if url_path.is_file():
                 st = url_path.stat()
-                url, pid = _parse_active_url_file(url_path)
+                url, _pid, token = _parse_active_url_file(url_path)
                 last = url
                 if not (url.startswith("http://") or url.startswith("https://")):
                     time.sleep(0.05)
                     continue
-                # PID handshake: only accept the URL if it was written by the
-                # server we spawned. Otherwise we may pick up a leftover URL
-                # from a stale server that died mid-handoff.
-                if expected_pid is not None and pid != int(expected_pid):
+                # Handshake: only reject if BOTH sides have tokens AND they
+                # disagree. Empty server-side token = legacy/upgrade case
+                # → accept (lock-first ordering already prevents concurrent
+                # foreign writers).
+                if expected_token and token and token != expected_token:
                     time.sleep(0.05)
                     continue
                 if float(st.st_mtime) > float(old_mtime) + 1e-6:
@@ -757,7 +785,7 @@ def run_ui(*, port: int | None = None) -> None:
             existing_url = ""
             try:
                 if url_path.is_file():
-                    existing_url, _ = _parse_active_url_file(url_path)
+                    existing_url, _pid, _token = _parse_active_url_file(url_path)
             except Exception:
                 existing_url = ""
             if existing_url.startswith("http://") or existing_url.startswith("https://"):
@@ -772,23 +800,36 @@ def run_ui(*, port: int | None = None) -> None:
             except Exception:
                 pass
 
+            # Inject a one-shot handshake token via the environment. The
+            # server echoes it into active_url.txt; the UI launcher rejects
+            # any URL whose token doesn't match. This replaces the previous
+            # PID-based handshake, which deadlocked under PyInstaller
+            # --onefile because server_proc.pid is the bootstrap EXE's PID
+            # and not the child Python process's os.getpid().
+            handshake_token = secrets.token_hex(8)
+
             cmd = _server_command(port)
             popen_kwargs: dict[str, object] = {"close_fds": True}
             popen_kwargs.update(detached_subprocess_kwargs())
             if bool(getattr(sys, "frozen", False)):
-                popen_kwargs["env"] = build_fresh_pyinstaller_env()
+                env = build_fresh_pyinstaller_env()
+            else:
+                env = dict(os.environ)
+            env[HANDSHAKE_ENV_VAR] = handshake_token
+            popen_kwargs["env"] = env
             server_proc = subprocess.Popen(cmd, **popen_kwargs)
 
-            expected_pid = int(server_proc.pid)
             url = _wait_for_active_url_change(
                 data_dir,
                 old_text="",
                 old_mtime=0.0,
-                expected_pid=expected_pid,
+                expected_token=handshake_token,
             )
             if not url:
                 url = _wait_for_active_url(
-                    data_dir, timeout_s=12.0, expected_pid=expected_pid
+                    data_dir,
+                    timeout_s=12.0,
+                    expected_token=handshake_token,
                 )
             if not url:
                 raise RuntimeError("Failed to obtain active_url.txt from server")

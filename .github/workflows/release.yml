@@ -83,6 +83,61 @@ jobs:
           Set-Content -Path version_info.txt -Value $versionInfoLines -Encoding utf8
           pyinstaller --noconfirm --clean --onefile --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import PIL --hidden-import _cffi_backend src/webmail_summary/cli.py
 
+      - name: Smoke test — frozen launcher publishes active_url.txt
+        shell: pwsh
+        # Catches regressions that only manifest in PyInstaller --onefile
+        # builds, which dev mode (python -m) cannot reproduce. Specifically
+        # the launcher → server handshake: server_proc.pid is the bootstrap
+        # EXE's PID, not os.getpid() inside the server child, so any PID-
+        # equality handshake will silently deadlock here. Failing the build
+        # at this step prevents a broken release from reaching users.
+        run: |
+          $smokeRoot = "$pwd\smoketest"
+          $localAppData = "$smokeRoot\LocalAppData"
+          $appData = "$smokeRoot\AppData"
+          New-Item -ItemType Directory -Force -Path $localAppData | Out-Null
+          New-Item -ItemType Directory -Force -Path $appData | Out-Null
+          $env:LOCALAPPDATA = $localAppData
+          $env:APPDATA = $appData
+          $urlFile = "$localAppData\WebmailSummary\active_url.txt"
+          Write-Host "Launching dist\webmail-summary.exe (LOCALAPPDATA=$localAppData)"
+          $proc = Start-Process -FilePath "dist\webmail-summary.exe" -PassThru -WindowStyle Hidden
+          try {
+            $found = $false
+            $content = ""
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep -Seconds 1
+              if (Test-Path $urlFile) {
+                $content = (Get-Content $urlFile -Raw).Trim()
+                if ($content -match "^https?://") {
+                  Write-Host "active_url.txt appeared after $($i + 1)s:"
+                  Write-Host $content
+                  $found = $true
+                  break
+                }
+              }
+            }
+            if (-not $found) {
+              Write-Host "##[error]active_url.txt did not appear within 60s"
+              Write-Host "This typically means the launcher → server handshake is broken"
+              Write-Host "in the frozen build (e.g. PID-based handshake under --onefile)."
+              if (Test-Path "$localAppData\WebmailSummary\logs\server.log") {
+                Write-Host "--- server.log tail ---"
+                Get-Content "$localAppData\WebmailSummary\logs\server.log" -Tail 30
+              }
+              if (Test-Path "$localAppData\WebmailSummary\logs\ui_start.log") {
+                Write-Host "--- ui_start.log tail ---"
+                Get-Content "$localAppData\WebmailSummary\logs\ui_start.log" -Tail 50
+              }
+              exit 1
+            }
+          } finally {
+            Get-Process webmail-summary -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            if ($proc -and -not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
+
       - name: Install Inno Setup
         shell: pwsh
         run: |
