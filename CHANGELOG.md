@@ -2,6 +2,109 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.7.0] - 2026-05-18
+
+성능, 자동 업데이트 알림, 데이터 무결성을 한꺼번에 개선한 마이너 릴리즈.
+v0.6.6 시리즈와 호환 (DB 마이그레이션 없음).
+
+### Added
+
+- **새 버전 자동 알림 모달**
+  - 앱 시작 시 백그라운드 thread로 GitHub release를 1회 조회. 홈 페이지
+    진입 시 새 버전이 있으면 모달이 자동으로 뜸. 이전엔 "확인" 버튼을
+    직접 눌러야 했음.
+  - 모달 "나중에" 버튼은 sessionStorage로 같은 버전 dismiss 추적. 같은
+    세션에선 다시 안 뜸. 새 버전·새 세션이면 다시 표시.
+  - 24시간/1주일 미루기, 이 버전 영구 건너뛰기는 기존과 동일.
+
+### Performance
+
+- **클라우드 모드 메일 동시 요약 (cloud 사용자 메일 100통 sync 기준
+  체감 5배 단축)**
+  - CloudProvider일 때 메일을 chunk로 묶어 ThreadPoolExecutor로 동시
+    LLM 호출. archive·DB upsert·export·mark는 메일 순서 유지하며 직렬.
+  - chunk_size는 provider rate-limit에 맞춰 동적 결정:
+    - google, upstage : 2
+    - openrouter free tier (`:free`/`/free`/flash) : 2
+    - openai, anthropic : 5
+    - openrouter (그 외) : 3
+  - 5초 간격 heartbeat로 진행률 메시지 갱신. "동시 N개 처리 (3/5 완료,
+    경과 00:25)" 표시. hang 오인 방지.
+  - cancel 응답성: future.result loop 안에서 cancel 체크, 진행 중 아닌
+    future는 즉시 cancel(). 평균 stop 응답 시간 420초 : 수십초 단축.
+- **로컬 LLM 호출 부수 비용 제거**
+  - `LlamaCppServerProvider.ensure_server` fast-path를 맨 앞으로 이동.
+    이미 healthy + 같은 cfg면 cleanup 없이 즉시 return. 회사망 노트북
+    같이 TCP 소켓 수천개 환경에서 메일당 50~수백 ms 누적되던 `psutil.
+    net_connections` 시스템 전수조사 제거.
+- **클라우드 LLM TCP·TLS 재사용**
+  - `requests.Session`을 모듈 전역으로 두고 OpenRouter·Anthropic·Gemini
+    호출에서 공유. 첫 호출만 TLS 1.3 handshake 비용(100~300 ms) 지불.
+- **favicon · PWA 아이콘 99.5% 감소**
+  - 기존 2048×2048 RGBA PNG 6.1MB였던 `app-icon.png`를 512×512 palette-
+    256 PNG 33KB로 다운샘플링·최적화. 모든 페이지 첫 방문마다 6MB
+    다운로드되던 문제 제거. PyInstaller 번들 크기에도 -6MB. 트레이 아이콘
+    은 별도 base64 (`tray_icon_data.py`) 사용이라 영향 없음.
+- **sqlite open/close 감소**
+  - Phase 3에서 `set_analysis` + `set_exported`가 conn 2개를 따로 열던
+    걸 1개로 묶음.
+- **chunk 단위 progress 깜빡임 제거**
+  - chunk_size > 1일 때 phase 3 stage 메시지를 chunk 단위 1회만 표시.
+    이전엔 메일 5개 × 2 stage = 10번 갱신이 1초 안에 발생해 progress
+    bar/stepper가 깜빡였음.
+
+### Fixed
+
+- **LLM timeout 메일 영구 누락 (데이터 무결성)**
+  - cloud LLM 일시 장애·네트워크 흔들림으로 timeout 발생 시 fallback
+    `(LLM timeout)` summary가 `set_seen_marked` 까지 호출돼 다음 sync
+    `get_incomplete_uids` 후보에서 영구 제외되던 문제. 사용자가 직접
+    DB·Obsidian을 손대지 않으면 다시는 자동 재요약되지 않았음.
+  - 변경 후: fallback 감지 시 `set_exported`·`_mark_one` skip. 다음
+    sync에서 자동 재시도. day list에 `(LLM timeout)` 표시 + "다음 sync
+    때 자동 재시도합니다" 이벤트 알림.
+  - 이 버그는 chunk 도입 이전부터 serial 경로에 있었으나 chunk_size=5
+    도입으로 동시 5건 timeout 위험이 5배가 되어 실제 노출이 커진 케이스.
+- **예외 타입별 한국어 메시지**
+  - 이전: 모든 LLM 호출 실패가 `(LLM unavailable)` 또는 `(LLM timeout)`
+    한 가지로 표시.
+  - 변경 후: `(LLM 응답 timeout)`, `(LLM 네트워크 오류)`, `(LLM HTTP
+    오류)`, `(LLM 응답 파싱 실패)`, `(LLM 호출 실패)` 로 분기.
+- **자동 업데이트 SHA256 fail-closed**
+  - 이전: release에 sha256sums 파일이 없으면 검증 없이 인스톨러 실행.
+  - 변경 후: 체크섬 누락 시 명시적으로 설치 중단.
+- **`obsidian_root` 경로 화이트리스트**
+  - 사용자 홈 디렉토리 안의 경로만 허용. Windows 시작 프로그램 폴더·
+    Program Files·`/etc` 등 시스템 디렉토리는 거부. CSRF 결합 시나리오
+    defense-in-depth.
+- **로컬 FastAPI Host·Origin 검증**
+  - `127.0.0.1`/`localhost`/`[::1]` 외 Host 헤더 403. 비 loopback Origin
+    헤더 403. DNS rebinding · 외부 cross-origin XHR 차단.
+- **한글 mojibake**
+  - `day.html`·`i18n.py`에 남아있던 CP949↔UTF-8 변환 사고 잔재 정리.
+- **사용자 친화 에러 메시지**
+  - IMAP 연결 실패·API 키 테스트 실패 시 raw exception 노출하던 경로를
+    한국어 친화 메시지로 교체. 내부 라이브러리 경로 노출 방지.
+- **silent `except Exception: pass` 정리**
+  - `routes_lifecycle.py` 3건에 `log.exception(...)` 추가.
+
+### Removed
+
+- 미사용 모듈 4개 삭제: `state.py`, `mail_parse.py`, `markdown.py`,
+  `app_paths.py`. 어디서도 import 0건이던 dead code.
+
+### Refactored
+
+- `app/serve.py` 신규: `ServeOptions`·`serve`를 `app/main.py`에서 분리해
+  `app ↔ ui` 순환 의존성 제거.
+- `util/timefmt.py` 신규: KST 정의 단일화.
+- `llamacpp_bin`·`llamacpp_server` 안 `_extract_json` 중복 3개 →
+  `util/jsonish.extract_first_json_object` 1개로 통일.
+- `sync_mailbox_task.run()` 안에 메일 1통 처리를 closure helper
+  (`_archive_and_index_one`, `_persist_and_export_one`, `_mark_one`,
+  `_record_llm_fallback`, `_set_stage_for`) 로 분리.
+- ruff 13 errors : 0 (E402, E731, F401, E401, F841 모두 정리).
+
 ## [0.6.6.23] - 2026-05-18
 
 ### Fixed
