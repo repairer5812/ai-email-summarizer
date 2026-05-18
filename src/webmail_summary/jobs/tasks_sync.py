@@ -85,6 +85,29 @@ def _cloud_base_delay_seconds(cloud_provider: str, model: str) -> float:
     return 0.4
 
 
+def _cloud_chunk_size(cloud_provider: str, model: str) -> int:
+    """Concurrent LLM call count per chunk, tuned to provider rate limits.
+
+    Low-RPM tiers (Google Gemini Flash free 15 RPM, Upstage Solar 30 RPM,
+    OpenRouter free models often 20 RPM) get a small chunk_size=2 to avoid
+    429 herd. Paid tiers (OpenAI 500+ RPM, Anthropic 50+ RPM tier 1) use
+    chunk_size=5. OpenRouter is provider-agnostic so we use a moderate
+    chunk_size=3.
+    """
+    provider = str(cloud_provider or "").strip().lower()
+    model_name = str(model or "").strip().lower()
+
+    if provider in {"google", "upstage"}:
+        return 2
+    if "flash" in model_name or ":free" in model_name or "/free" in model_name:
+        return 2
+    if provider in {"openai", "anthropic"}:
+        return 5
+    if provider == "openrouter":
+        return 3
+    return 3
+
+
 def _display_subject(subject: str, *, max_len: int = 30) -> str:
     s = str(subject or "")
     return (s[:max_len] + "...") if len(s) > max_len else s
@@ -585,10 +608,15 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     im2.select_folder(s.imap_folder, readonly=False)
                     im2.clear_seen(uid)
 
-            # Chunked + concurrent LLM calls for CloudProvider; serial for local.
-            chunk_size = (
-                5 if provider.__class__.__name__ == "CloudProvider" else 1
-            )
+            # Chunked + concurrent LLM calls for CloudProvider; serial for
+            # local. chunk_size is provider-rate-limit aware: free/low-RPM
+            # tiers get 2, paid tiers get 3-5.
+            if provider.__class__.__name__ == "CloudProvider":
+                chunk_size = _cloud_chunk_size(
+                    s.cloud_provider, s.openrouter_model
+                )
+            else:
+                chunk_size = 1
 
             def _set_stage_for(
                 *, i_global: int, display_date: str, subject: str, stage: str
