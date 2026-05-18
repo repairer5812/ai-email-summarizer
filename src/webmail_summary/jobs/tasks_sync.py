@@ -1036,15 +1036,17 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     else:
                         # Concurrent path: ThreadPoolExecutor over the chunk.
                         first = chunk_ctxs[0]
+                        last = chunk_ctxs[-1]
+                        chunk_msg_base = (
+                            f"[{first['display_date']}] 요약 중 동시 처리 "
+                            f"({first['i_global']}~{last['i_global']}/{msg_total})"
+                        )
                         _update_job_progress(
                             db_path=db_path,
                             job_id=job_id,
                             current=first["i_global"] - 0.99,
                             total=max(msg_total, 1),
-                            message=(
-                                f"[{first['display_date']}] 요약 중 "
-                                f"({first['i_global']}/{msg_total}, 동시 {len(chunk_ctxs)}개 처리)"
-                            ),
+                            message=chunk_msg_base,
                         )
 
                         llm_timeout_s = _llm_timeout_seconds(provider)
@@ -1052,38 +1054,108 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         def _worker(ctx: dict) -> tuple[LlmResult, float]:
                             return _call_llm_direct(ctx=ctx, on_progress=None)
 
-                        with ThreadPoolExecutor(
-                            max_workers=len(chunk_ctxs)
-                        ) as pool:
-                            futures = [
-                                pool.submit(_worker, ctx) for ctx in chunk_ctxs
-                            ]
-                            for idx, fut in enumerate(futures):
-                                ctx = chunk_ctxs[idx]
-                                try:
-                                    res_pair = fut.result(timeout=llm_timeout_s)
-                                except Exception as ex:
-                                    _add_job_event(
-                                        db_path=db_path,
-                                        job_id=job_id,
-                                        level="warn",
-                                        text=(
-                                            f"LLM 호출 timeout "
-                                            f"({ctx['i_global']}/{msg_total}, "
-                                            f"대기 {llm_timeout_s:.0f}초): "
-                                            f"{str(ex)[:140]}"
-                                        ),
-                                    )
-                                    res_pair = (
-                                        LlmResult(
-                                            summary="(LLM timeout)",
-                                            tags=[],
-                                            backlinks=[],
-                                            personal=False,
-                                        ),
-                                        float(llm_timeout_s),
-                                    )
-                                llm_outputs.append(res_pair)
+                        # Heartbeat: cloud LLM 호출이 길어도 사용자에게
+                        # 진행 중임을 알려준다. 5초마다 elapsed + 완료 카운트
+                        # 표시. ThreadPool 종료 시 자동 정지.
+                        chunk_done_count = [0]
+                        chunk_hb_stop = threading.Event()
+                        chunk_t0 = time.monotonic()
+
+                        def _chunk_heartbeat() -> None:
+                            while not chunk_hb_stop.wait(5.0):
+                                elapsed = time.monotonic() - chunk_t0
+                                mm = int(elapsed // 60)
+                                ss = int(elapsed % 60)
+                                done = int(chunk_done_count[0])
+                                _update_job_progress(
+                                    db_path=db_path,
+                                    job_id=job_id,
+                                    current=(
+                                        first["i_global"]
+                                        - 0.99
+                                        + 0.99 * (done / max(len(chunk_ctxs), 1))
+                                    ),
+                                    total=max(msg_total, 1),
+                                    message=(
+                                        f"{chunk_msg_base} "
+                                        f"({done}/{len(chunk_ctxs)} 완료, "
+                                        f"경과 {mm:02d}:{ss:02d})"
+                                    ),
+                                )
+
+                        chunk_hb_t = threading.Thread(
+                            target=_chunk_heartbeat,
+                            daemon=True,
+                            name="chunk-heartbeat",
+                        )
+                        chunk_hb_t.start()
+
+                        try:
+                            with ThreadPoolExecutor(
+                                max_workers=len(chunk_ctxs)
+                            ) as pool:
+                                futures = [
+                                    pool.submit(_worker, ctx)
+                                    for ctx in chunk_ctxs
+                                ]
+                                # Cancel pending futures early when user
+                                # presses stop. Already-running HTTP calls
+                                # cannot be aborted (Python limitation), but
+                                # not-yet-started ones get cancelled here.
+                                for idx, fut in enumerate(futures):
+                                    ctx = chunk_ctxs[idx]
+                                    if cancel.is_set():
+                                        # Cancel remaining pending futures.
+                                        for f2 in futures[idx:]:
+                                            f2.cancel()
+                                        # Fill outputs for the rest as
+                                        # fallback so Phase 3 zip works.
+                                        for _ in futures[idx:]:
+                                            llm_outputs.append(
+                                                (
+                                                    LlmResult(
+                                                        summary="(LLM cancelled)",
+                                                        tags=[],
+                                                        backlinks=[],
+                                                        personal=False,
+                                                    ),
+                                                    0.0,
+                                                )
+                                            )
+                                        break
+                                    try:
+                                        res_pair = fut.result(
+                                            timeout=llm_timeout_s
+                                        )
+                                    except Exception as ex:
+                                        _add_job_event(
+                                            db_path=db_path,
+                                            job_id=job_id,
+                                            level="warn",
+                                            text=(
+                                                f"LLM 호출 timeout "
+                                                f"({ctx['i_global']}/{msg_total}, "
+                                                f"대기 {llm_timeout_s:.0f}초): "
+                                                f"{str(ex)[:140]}"
+                                            ),
+                                        )
+                                        res_pair = (
+                                            LlmResult(
+                                                summary="(LLM timeout)",
+                                                tags=[],
+                                                backlinks=[],
+                                                personal=False,
+                                            ),
+                                            float(llm_timeout_s),
+                                        )
+                                    llm_outputs.append(res_pair)
+                                    chunk_done_count[0] += 1
+                        finally:
+                            chunk_hb_stop.set()
+                            try:
+                                chunk_hb_t.join(timeout=1.0)
+                            except Exception:
+                                pass
 
                     # Phase 3: Persist, export, mark in chunk order.
                     # LLM fallback (timeout / unavailable) detection: skip
