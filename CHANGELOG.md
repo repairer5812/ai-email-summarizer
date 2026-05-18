@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.22] - 2026-05-18
+
+### Fixed
+
+- **창 닫기 시 시스템 트레이 아이콘이 안 나타나던 진짜 원인을
+  제거했습니다.** v0.6.6.21에서 추가한 진단 로깅이 결정적 증거를
+  남겼습니다:
+  ```
+  tray_icon stage=fallback_tray _load_tray_image failed
+  error=FileNotFoundError: ...\_MEI*\webmail_summary\ui\static\app-icon.png
+  ```
+  같은 폴더의 `app.css`/`app.js`는 멀쩡히 번들에 들어가 정상 서빙
+  되는데, **6.3MB짜리 `app-icon.png`만 PyInstaller의 `--collect-data`
+  에서 누락**됐습니다. 트레이 아이콘 이미지가 없으면 `pystray.Icon(...)`
+  를 만들 수 없어 트레이가 통째로 안 떴습니다.
+  - 수정: release.yml의 PyInstaller 명령에 `--add-data
+    "src/webmail_summary/ui/static;webmail_summary/ui/static"` 및
+    `... templates ...`을 명시적으로 추가. `--collect-data`의
+    heuristic에 의존하지 않습니다.
+
+### Added
+
+- **Release smoke test에 `/static/app-icon.png` HTTP 응답 검증을
+  추가했습니다.** 빌드된 EXE를 실제로 띄운 뒤 `GET /static/app-icon.png`
+  으로 응답 코드 200과 파일 크기(>1KB)를 확인합니다. 같은 부류의
+  "static asset이 번들에서 silent drop되는" 회귀가 다시 생기면
+  release 단계에서 빌드가 실패하므로 사용자에게 도달하지 않습니다.
+
 ## [0.6.6.21] - 2026-05-18
 
 ### Diagnostic

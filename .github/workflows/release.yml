@@ -81,7 +81,12 @@ jobs:
             ')'
           )
           Set-Content -Path version_info.txt -Value $versionInfoLines -Encoding utf8
-          pyinstaller --noconfirm --clean --onefile --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --collect-submodules pystray --collect-submodules PIL --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import pystray._win32 --hidden-import PIL --hidden-import PIL.Image --hidden-import _cffi_backend src/webmail_summary/cli.py
+          # --add-data for static/ and templates/ explicitly: --collect-data
+          # was observed to silently drop app-icon.png (a 6 MB PNG used by
+          # the tray icon) on at least one user's build, even though smaller
+          # files in the same folder were included. Belt-and-suspenders with
+          # explicit add-data avoids relying on PyInstaller heuristics.
+          pyinstaller --noconfirm --clean --onefile --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --collect-submodules pystray --collect-submodules PIL --add-data "src/webmail_summary/ui/static;webmail_summary/ui/static" --add-data "src/webmail_summary/ui/templates;webmail_summary/ui/templates" --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import pystray._win32 --hidden-import PIL --hidden-import PIL.Image --hidden-import _cffi_backend src/webmail_summary/cli.py
 
       - name: Smoke test — frozen launcher publishes active_url.txt
         shell: pwsh
@@ -129,6 +134,29 @@ jobs:
                 Write-Host "--- ui_start.log tail ---"
                 Get-Content "$localAppData\WebmailSummary\logs\ui_start.log" -Tail 50
               }
+              exit 1
+            }
+            # Verify static assets (especially the tray-icon PNG) are
+            # actually bundled and served. PyInstaller can silently drop
+            # package data files; this assertion catches that class of
+            # regression before it reaches users.
+            $baseUrl = $content.TrimEnd('/')
+            $iconUrl = "$baseUrl/static/app-icon.png"
+            Write-Host "Verifying tray icon asset: $iconUrl"
+            try {
+              $resp = Invoke-WebRequest -Uri $iconUrl -UseBasicParsing -TimeoutSec 10
+              if ($resp.StatusCode -ne 200) {
+                Write-Host "##[error]GET $iconUrl returned $($resp.StatusCode), expected 200"
+                exit 1
+              }
+              if ($resp.RawContentLength -lt 1024) {
+                Write-Host "##[error]app-icon.png response too small ($($resp.RawContentLength) bytes) — bundled file likely corrupt"
+                exit 1
+              }
+              Write-Host "Tray icon asset served OK ($($resp.RawContentLength) bytes)"
+            } catch {
+              Write-Host "##[error]Could not fetch app-icon.png: $_"
+              Write-Host "Tray icon will not render in production. Aborting release."
               exit 1
             }
           } finally {
