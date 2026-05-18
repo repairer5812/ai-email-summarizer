@@ -140,8 +140,10 @@ jobs:
             # actually bundled and served. PyInstaller can silently drop
             # package data files; this assertion catches that class of
             # regression before it reaches users.
-            $baseUrl = $content.TrimEnd('/')
-            $iconUrl = "$baseUrl/static/app-icon.png"
+            # NB: active_url.txt is multi-line (url\npid\nhandshake), so
+            # take only the first line for the base URL.
+            $urlOnly = ($content -split "`r?`n")[0].Trim().TrimEnd('/')
+            $iconUrl = "$urlOnly/static/app-icon.png"
             Write-Host "Verifying tray icon asset: $iconUrl"
             try {
               $resp = Invoke-WebRequest -Uri $iconUrl -UseBasicParsing -TimeoutSec 10
