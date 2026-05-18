@@ -786,6 +786,53 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     )
                 return res, time.monotonic() - t1
 
+            def _is_llm_fallback(llm_res: LlmResult) -> bool:
+                """Detect LlmResult produced by timeout / exception fallback.
+
+                Worker `_call_llm_direct` returns (LLM unavailable) on any
+                Exception. Concurrent path returns (LLM timeout) on future
+                timeout. Both share the pattern: summary starts with
+                '(LLM ' and tags/backlinks/personal are all empty/False.
+                """
+                s = str(getattr(llm_res, "summary", "") or "")
+                if not s.startswith("(LLM "):
+                    return False
+                if llm_res.tags or llm_res.backlinks:
+                    return False
+                return True
+
+            def _record_llm_fallback(
+                *, ctx: dict, llm_res: LlmResult, dt2_s: float
+            ) -> None:
+                """Persist fallback summary so user can see what failed, but
+                do NOT mark exported / seen. Next sync retries via
+                get_incomplete_uids (seen_marked_at IS NULL).
+                """
+                i_global = ctx["i_global"]
+                msg_fk = ctx["msg_fk"]
+                conn_fb = get_conn(db_path)
+                try:
+                    set_analysis(
+                        conn_fb,
+                        message_fk=msg_fk,
+                        summary=llm_res.summary,
+                        tags=[],
+                        topics=[],
+                        personal=False,
+                        summarize_ms=int(max(0.0, dt2_s) * 1000.0),
+                    )
+                    conn_fb.commit()
+                finally:
+                    conn_fb.close()
+                _add_job_event(
+                    db_path=db_path,
+                    job_id=job_id,
+                    level="warn",
+                    text=(
+                        f"LLM 실패 메일 ({i_global}/{msg_total}): 다음 sync 때 자동 재시도합니다"
+                    ),
+                )
+
             def _persist_and_export_one(
                 *, ctx: dict, llm_res: LlmResult, dt2_s: float
             ) -> Path | None:
@@ -1021,9 +1068,10 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                                         job_id=job_id,
                                         level="warn",
                                         text=(
-                                            f"LLM timeout/exception "
-                                            f"(item {ctx['i_global']}/{msg_total}): "
-                                            f"{str(ex)[:160]}"
+                                            f"LLM 호출 timeout "
+                                            f"({ctx['i_global']}/{msg_total}, "
+                                            f"대기 {llm_timeout_s:.0f}초): "
+                                            f"{str(ex)[:140]}"
                                         ),
                                     )
                                     res_pair = (
@@ -1038,9 +1086,20 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                                 llm_outputs.append(res_pair)
 
                     # Phase 3: Persist, export, mark in chunk order.
+                    # LLM fallback (timeout / unavailable) detection: skip
+                    # export + mark so the message stays seen_marked_at=NULL
+                    # and gets retried on the next sync via
+                    # get_incomplete_uids. set_analysis is still called so
+                    # the user can see "(LLM timeout)" in the day list and
+                    # understand why retry is pending.
                     for ctx, (llm_res, dt2_s) in zip(chunk_ctxs, llm_outputs):
                         if cancel.is_set():
                             break
+                        if _is_llm_fallback(llm_res):
+                            _record_llm_fallback(
+                                ctx=ctx, llm_res=llm_res, dt2_s=dt2_s
+                            )
+                            continue
                         note_path = _persist_and_export_one(
                             ctx=ctx, llm_res=llm_res, dt2_s=dt2_s
                         )
