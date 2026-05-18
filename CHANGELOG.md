@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.20] - 2026-05-15
+
+### Fixed
+
+- **창 닫기 버튼이 트레이로 최소화되지 않고 창만 사라지던 문제를
+  수정했습니다.** `close_behavior=background` 설정에서 X 버튼을 누르면
+  창은 hide되지만 트레이 아이콘이 나타나지 않아, 사용자가 보기에는
+  앱이 종료된 것처럼 보였습니다 (실제로는 백그라운드 프로세스로 살아
+  있어 작업 관리자에서만 확인 가능).
+  - 원인: PyInstaller spec에 `--hidden-import pystray`만 있고
+    `--collect-submodules pystray`가 없어서 pystray가 런타임에 동적
+    import하는 플랫폼 백엔드(`pystray._win32` 등)가 frozen 빌드에
+    포함되지 않았습니다. `_ensure_tray_icon()`의 `import pystray`는
+    부분적으로만 성공하고 백엔드 모듈 로드에서 silently 실패해, 트레이
+    아이콘이 안 떴습니다. 같은 문제가 PIL의 일부 이미지 백엔드에도
+    잠재적으로 있었습니다.
+  - 수정: release workflow의 PyInstaller 명령에
+    `--collect-submodules pystray --collect-submodules PIL` 및
+    `--hidden-import pystray._win32 --hidden-import PIL.Image`를
+    추가해 백엔드 모듈을 모두 번들에 포함합니다.
+  - 보조 수정: `_ensure_tray_icon()`의 모든 실패 경로(import, 이미지
+    로드, Icon 생성, 이벤트 루프 크래시)에서 ui_start.log에 정확한
+    원인이 기록되도록 했습니다. 향후 같은 부류의 silent fail이 다시
+    생기면 즉시 진단 가능합니다.
+  - 방어 코드: `_on_closing`이 트레이 생성 실패 시에도 `window.hide()`
+    는 무조건 실행하도록 try/except로 감쌌습니다. 트레이가 안 떠도
+    최소한 앱이 죽지는 않습니다(서버는 살아있고, 다른 launcher 호출이
+    bring-to-front로 다시 띄울 수 있음).
+
 ## [0.6.6.19] - 2026-05-15
 
 ### Fixed

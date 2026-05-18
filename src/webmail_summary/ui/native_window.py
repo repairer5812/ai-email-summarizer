@@ -206,6 +206,32 @@ def _ui_start_log_path(data_dir):
     return log_dir / "ui_start.log"
 
 
+def _log_tray_failure(data_dir, stage: str, error: Exception) -> None:
+    """Append a tray-icon failure line to ui_start.log.
+
+    When the user clicks the window close button with close_behavior=background,
+    the window is hidden and a tray icon is supposed to appear. If the tray
+    icon can't be created (pystray missing, backend module not bundled, etc.)
+    the window vanishes without a tray icon — looking from outside exactly
+    like a broken "minimize to tray" feature. Logging the failure here makes
+    that case diagnosable from ui_start.log instead of silently swallowed.
+    """
+    try:
+        log_path = _ui_start_log_path(data_dir)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] "
+                f"tray_icon stage={stage} "
+                f"error={_short_error_reason(error)}\n"
+            )
+            fh.write(
+                "".join(traceback.format_exception(type(error), error, error.__traceback__))
+            )
+            fh.write("\n")
+    except Exception:
+        pass
+
+
 def _iter_exception_chain(error: Exception):
     seen: set[int] = set()
     cur: BaseException | None = error
@@ -563,10 +589,15 @@ def _run_native_window(
             return
         try:
             import pystray
-        except Exception:
+        except Exception as e:
+            _log_tray_failure(data_dir, "pystray import failed", e)
             return
 
-        img = _load_tray_image()
+        try:
+            img = _load_tray_image()
+        except Exception as e:
+            _log_tray_failure(data_dir, "_load_tray_image failed", e)
+            return
 
         def _open(_icon=None, _item=None):
             try:
@@ -595,18 +626,22 @@ def _run_native_window(
             except Exception:
                 pass
 
-        menu = pystray.Menu(
-            pystray.MenuItem("프로그램 열기", _open, default=True),
-            pystray.MenuItem("프로그램 종료", _exit),
-        )
-        icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
+        try:
+            menu = pystray.Menu(
+                pystray.MenuItem("프로그램 열기", _open, default=True),
+                pystray.MenuItem("프로그램 종료", _exit),
+            )
+            icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
+        except Exception as e:
+            _log_tray_failure(data_dir, "pystray.Icon construction failed", e)
+            return
         tray_state["icon"] = icon
 
         def _run_icon() -> None:
             try:
                 icon.run()
-            except Exception:
-                pass
+            except Exception as e:
+                _log_tray_failure(data_dir, "icon.run() crashed", e)
 
         th = threading.Thread(target=_run_icon, daemon=True)
         tray_state["thread"] = th
@@ -629,9 +664,22 @@ def _run_native_window(
     def _on_closing() -> bool:
         if quitting.is_set():
             return True
-        mode = _load_close_behavior(data_dir)
+        try:
+            mode = _load_close_behavior(data_dir)
+        except Exception:
+            # Defaulting to background here preserves the "do not lose user
+            # state" contract: if we can't read the setting, treat the close
+            # as a hide-to-tray rather than a hard exit.
+            mode = "background"
         if mode == "background":
-            _ensure_tray_icon()
+            # _ensure_tray_icon handles its own failures and logs them; we
+            # still hide the window even if the tray creation fails, so the
+            # app remains accessible via bring-to-front (other launches will
+            # signal it) and the server stays up.
+            try:
+                _ensure_tray_icon()
+            except Exception:
+                pass
             try:
                 window.hide()
             except Exception:
