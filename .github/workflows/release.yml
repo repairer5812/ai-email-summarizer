@@ -35,6 +35,17 @@ jobs:
         run: |
           python -c "import pydantic, pydantic_core; print('pydantic', pydantic.__version__); print('pydantic_core', pydantic_core.__version__)"
 
+      - name: Verify embedded tray icon decodes
+        # Catches base64 corruption (manual edit gone wrong, encoding issue,
+        # accidental whitespace) in src/webmail_summary/ui/tray_icon_data.py
+        # at dev-side time, before we spend 3 minutes building an EXE that
+        # would silently ship a broken tray icon. The tray icon lives in
+        # source as base64 (not as a bundled file) specifically to bypass
+        # external AV interference with PyInstaller _MEI extraction, so the
+        # source itself must always be a valid PNG.
+        run: |
+          python -c "from webmail_summary.ui.tray_icon_data import TRAY_ICON_PNG_BASE64; from base64 import b64decode; from io import BytesIO; from PIL import Image; data = b64decode(TRAY_ICON_PNG_BASE64); img = Image.open(BytesIO(data)); assert img.size[0] >= 16 and img.size[1] >= 16, f'tray icon too small: {img.size}'; print(f'embedded tray icon OK: size={img.size}, mode={img.mode}, raw_bytes={len(data)}, b64_chars={len(TRAY_ICON_PNG_BASE64)}')"
+
 
       - name: Build executable
         shell: pwsh
@@ -160,6 +171,30 @@ jobs:
               Write-Host "##[error]Could not fetch app-icon.png: $_"
               Write-Host "Tray icon will not render in production. Aborting release."
               exit 1
+            }
+            # Verify the embedded tray icon in PYZ archive is loaded
+            # correctly by the frozen launcher. In headless CI the launcher
+            # falls back to browser mode (no .NET runtime), which invokes
+            # _run_fallback_tray() → _load_tray_image() → decodes the
+            # embedded base64. Give the launcher a few seconds to reach that
+            # call site, then assert ui_start.log shows no _load_tray_image
+            # failure. Earlier stages of tray init may still fail in headless
+            # CI (e.g. icon.run() needs a Windows shell session) — that's
+            # fine; we only care that the *image data* loads.
+            Start-Sleep -Seconds 5
+            $uiLog = "$localAppData\WebmailSummary\logs\ui_start.log"
+            if (Test-Path $uiLog) {
+              $failures = Select-String -Path $uiLog -Pattern "_load_tray_image failed" -SimpleMatch
+              if ($failures) {
+                Write-Host "##[error]Embedded tray icon failed to load in frozen build:"
+                $failures | ForEach-Object { Write-Host "  $($_.Line)" }
+                Write-Host "--- ui_start.log tail ---"
+                Get-Content $uiLog -Tail 30
+                exit 1
+              }
+              Write-Host "Embedded tray icon decoded by launcher: no failures in ui_start.log"
+            } else {
+              Write-Host "##[warning]ui_start.log not present yet — launcher may not have reached fallback tray; not failing build"
             }
           } finally {
             Get-Process webmail-summary -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue

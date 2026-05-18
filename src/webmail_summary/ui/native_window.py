@@ -353,17 +353,28 @@ def _load_close_behavior(data_dir) -> str:
 
 
 def _load_tray_image() -> object:
+    """Load the tray icon image from the base64 blob embedded in Python source.
+
+    Why not read the bundled `ui/static/app-icon.png` directly?
+    On a confirmed user environment the 6 MB master PNG was silently removed
+    from PyInstaller's `_MEI*` extraction directory between EXE launch and
+    `_load_tray_image()` running — likely Windows Defender / EDR heuristic
+    targeting the freshly-extracted large PNG. See
+    `webmail_summary.ui.tray_icon_data` docstring for the forensic chain.
+
+    The embedded base64 string lives in the PYZ archive (Python bytecode
+    bundle), which the PyInstaller bootstrap loads into memory without
+    writing to a path an external security tool can intercept. As long as
+    Python source can be loaded at all, this function returns a valid image.
+    """
+    from base64 import b64decode
     from io import BytesIO
-    from importlib import resources as importlib_resources
 
     from PIL import Image
 
-    b = (
-        importlib_resources.files("webmail_summary")
-        .joinpath("ui", "static", "app-icon.png")
-        .read_bytes()
-    )
-    return Image.open(BytesIO(b))
+    from webmail_summary.ui.tray_icon_data import TRAY_ICON_PNG_BASE64
+
+    return Image.open(BytesIO(b64decode(TRAY_ICON_PNG_BASE64)))
 
 
 def _windows_app_mode_browsers() -> list[Path]:

@@ -2,6 +2,47 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.23] - 2026-05-18
+
+### Fixed
+
+- **트레이 아이콘이 사용자 환경에 따라 안 뜨던 문제를 근본 원인부터
+  제거했습니다.**
+  - v0.6.6.22 까지의 진단으로 확정된 사실:
+    1. 빌드된 EXE 의 PyInstaller archive 안에는 `app-icon.png` 가 정확히
+       6,368,586 bytes 로 포함되어 있음 (PyInstaller archive reader 로
+       직접 검증).
+    2. 사용자가 받은 EXE 의 SHA256 이 published SHA256SUMS 와 일치해
+       installer/signing 등 release pipeline 도 무관.
+    3. CI smoke test 에서는 같은 EXE 가 `/static/app-icon.png` 을 HTTP
+       200 + 6,368,586 bytes 로 정상 서빙.
+    4. 하지만 사용자 환경에서는 `_MEI*\webmail_summary\ui\static\app-icon.png`
+       이 누락 — 같은 폴더의 작은 파일들(app.css, app.js)은 추출되어
+       정상 서빙되는 상태에서 6.3MB PNG 만 사라짐.
+    → archive 자체는 멀쩡, 빌드도 멀쩡, 단지 사용자 환경에서 PyInstaller
+      추출 직후의 6MB PNG 를 외부 요인(Windows Defender / EDR 등의 큰 PNG
+      heuristic)이 격리하는 것으로 추정.
+  - **외부 요인을 통제할 수 없으므로, file system extraction 에 의존
+    하지 않는 구조로 변경했습니다.** 트레이용 64×64 아이콘을 base64 로
+    Python source 안에 직접 embed (`webmail_summary.ui.tray_icon_data`).
+    이 데이터는 PyInstaller PYZ archive (bytecode 번들) 에 들어가
+    bootstrap 이 메모리로 로드하므로, `_MEI*` 디렉토리에 추출되어 외부
+    도구가 건드릴 수 있는 상태가 되지 않습니다. file system, importlib
+    .resources, `--collect-data`, signing 등 어떤 외부 요인과도 무관하게
+    트레이 아이콘이 동작합니다.
+  - 기존 6.3MB `app-icon.png` 은 favicon 및 일반 HTTP 정적 자원으로 그대로
+    유지. 트레이용 아이콘만 별도 source-embedded.
+
+### Added
+
+- **Release pipeline 에 트레이 아이콘 검증 단계 두 가지 추가:**
+  - 빌드 전: dev source 에서 `tray_icon_data.TRAY_ICON_PNG_BASE64` 가 정상
+    decode 되어 16×16 이상 PIL Image 로 열리는지 확인 (base64 string 의
+    수동 수정이나 인코딩 오류 즉시 차단).
+  - 빌드 후 smoke test: 빌드된 EXE 를 띄운 뒤 `ui_start.log` 에
+    `_load_tray_image failed` 줄이 없는지 확인. 향후 어떤 이유로든 embedded
+    data 가 frozen build 에서 load 안 되면 release 단계에서 자동 차단.
+
 ## [0.6.6.22] - 2026-05-18
 
 ### Fixed
