@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-import json
 import os
-import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
-from webmail_summary.util.jsonish import coerce_summary_text, coerce_summary_value
+from webmail_summary.util.jsonish import (
+    coerce_summary_text,
+    coerce_summary_value,
+    extract_first_json_object,
+)
 
 
 @dataclass(frozen=True)
@@ -18,20 +20,6 @@ class LlamaCppBinConfig:
     ctx_size: int = 4096
     max_tokens: int = 512
     temperature: float = 0.2
-
-
-def _extract_json(text: str) -> dict | None:
-    # Best-effort: find the first valid JSON object anywhere in the output.
-    # Use raw_decode so braces inside strings don't break extraction.
-    dec = json.JSONDecoder()
-    for m in re.finditer(r"\{", text):
-        try:
-            obj, _end = dec.raw_decode(text[m.start() :])
-        except Exception:
-            continue
-        if isinstance(obj, dict):
-            return obj
-    return None
 
 
 class LlamaCppBinProvider(LlmProvider):
@@ -50,7 +38,6 @@ class LlamaCppBinProvider(LlmProvider):
         body: str,
         multimodal_inputs: list[LlmImageInput] | None = None,
     ) -> LlmResult:
-        ko = True  # Default to Korean per PRD
         parts: list[str] = [
             "You are an expert editor summarizing business communications.\n",
             "Return ONLY a single valid JSON object with keys: summary, tags (array of strings), backlinks (array of strings), personal (boolean).\n",
@@ -119,7 +106,7 @@ class LlamaCppBinProvider(LlmProvider):
             )
 
         out = (proc.stdout or "").strip()
-        obj = _extract_json(out)
+        obj = extract_first_json_object(out)
         if not obj:
             summary2 = coerce_summary_text(out)
             if any(

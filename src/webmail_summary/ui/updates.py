@@ -930,7 +930,19 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
         )
         downloaded_sha = _sha256_file(installer_path)
         expected_sha = _guess_expected_sha256_from_release(settings, filename)
-        if expected_sha and downloaded_sha != expected_sha.strip().lower():
+        if not expected_sha:
+            try:
+                installer_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            _set_update_apply_state(
+                conn,
+                stage="error",
+                percent=0,
+                message="릴리스에 SHA256 체크섬 파일이 없어 무결성 검증이 불가합니다. 업데이트를 중단합니다.",
+            )
+            return
+        if downloaded_sha != expected_sha.strip().lower():
             try:
                 installer_path.unlink(missing_ok=True)
             except Exception:

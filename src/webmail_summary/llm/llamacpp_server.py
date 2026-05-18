@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import threading
 import time
@@ -13,7 +12,11 @@ import requests
 import psutil
 
 from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
-from webmail_summary.util.jsonish import coerce_summary_text, coerce_summary_value
+from webmail_summary.util.jsonish import (
+    coerce_summary_text,
+    coerce_summary_value,
+    extract_first_json_object,
+)
 
 
 @dataclass(frozen=True)
@@ -394,17 +397,6 @@ class LlamaCppServerProvider(LlmProvider):
                 summary="(LLM unavailable)", tags=[], backlinks=[], personal=False
             )
 
-        def _extract_json(text: str) -> dict | None:
-            dec = json.JSONDecoder()
-            for m in re.finditer(r"\{", text):
-                try:
-                    obj, _end = dec.raw_decode(text[m.start() :])
-                except Exception:
-                    continue
-                if isinstance(obj, dict):
-                    return obj
-            return None
-
         content = ""
         try:
             content = str(
@@ -435,7 +427,7 @@ class LlamaCppServerProvider(LlmProvider):
             obj = None
 
         if not isinstance(obj, dict):
-            obj = _extract_json(content)
+            obj = extract_first_json_object(content)
         if not isinstance(obj, dict):
             summary2 = coerce_summary_text(content)
             if any(

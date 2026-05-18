@@ -5,7 +5,7 @@ import argparse
 from webmail_summary.util.ssl_certs import configure_requests_ca_bundle
 from webmail_summary.util.platform_caps import ui_platform_caps
 
-from webmail_summary.app.main import ServeOptions, serve
+from webmail_summary.app.serve import ServeOptions, serve
 from webmail_summary.jobs.runner import get_runner
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
 from webmail_summary.jobs.worker_sync import run_worker

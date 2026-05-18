@@ -348,8 +348,7 @@
     if (!isLocalDayJob) {
         [btn, btnAll, btnSel, ...singleRetryButtons].forEach(b => { if(b) b.disabled = true; });
         if (!jobDay) {
-          setProgress(0, "{% if ui_lang(request) == 'ko' %}?좏깮 ?좎쭨 ?ㅼ떆 ?붿빟 ?묒뾽??吏꾪뻾 以묒엯?덈떎.{% else %}A multi-day re-summarize job is in progress.{% endif %}");
-        } else {
+          setProgress(0, "{% if ui_lang(request) == 'ko' %}여러 날짜 다시 요약 작업이 진행 중입니다.{% else %}A multi-day re-summarize job is in progress.{% endif %}");
         }
         setProgress(0, "{% if ui_lang(request) == 'ko' %}다른 날짜의 요약 작업이 진행 중입니다.{% else %}Another day's summarization is in progress.{% endif %} (" + jobDay + ")");
     }

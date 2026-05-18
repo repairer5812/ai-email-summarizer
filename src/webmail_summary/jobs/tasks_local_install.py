@@ -71,7 +71,8 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
     finally:
         conn3.close()
 
-    import subprocess, os
+    import subprocess
+    import os
     cmd = [*mlx_inst.server_cmd, "--model", m.hf_repo_id, "--host", "127.0.0.1", "--port", "4899"]
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
@@ -81,26 +82,43 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
     import requests as req
     deadline = time.monotonic() + 600  # 10 min for large model download
     ready = False
-    while time.monotonic() < deadline:
-        if cancel.is_set():
-            proc.terminate()
-            return
-        if proc.poll() is not None:
-            break
-        try:
-            r = req.get("http://127.0.0.1:4899/v1/models", timeout=2)
-            if r.status_code == 200:
-                ready = True
-                break
-        except Exception:
-            pass
-        time.sleep(3)
-
-    proc.terminate()
     try:
-        proc.wait(timeout=10)
-    except Exception:
-        proc.kill()
+        while time.monotonic() < deadline:
+            if cancel.is_set():
+                break
+            if proc.poll() is not None:
+                break
+            try:
+                r = req.get("http://127.0.0.1:4899/v1/models", timeout=2)
+                if r.status_code == 200:
+                    ready = True
+                    break
+            except Exception:
+                pass
+            time.sleep(3)
+    finally:
+        # Always reap the dry-run server, even on cancel or exception.
+        # The previous cancel branch returned without proc.wait/kill, which
+        # left the mlx_lm.server child running after a cancelled install.
+        if proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                try:
+                    proc.wait(timeout=2)
+                except Exception:
+                    pass
+
+    if cancel.is_set():
+        return
 
     conn4 = get_conn(db_path)
     try:

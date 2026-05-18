@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import keyring
 from fastapi import APIRouter, Form, Request
@@ -16,17 +18,83 @@ from webmail_summary.imap_client import (
     parse_mail_search_filter,
 )
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
-from webmail_summary.llm.local_models import LOCAL_MODELS, RECOMMENDED_MODELS, LEGACY_MODELS, MLX_MODELS, get_local_model
-from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.llm.local_engine import find_llama_cpp_installed
-from webmail_summary.util.error_reports import mask_email_address, write_error_report
-from webmail_summary.util.platform_caps import is_apple_silicon as _is_apple_silicon
+from webmail_summary.llm.local_models import (
+    LEGACY_MODELS,
+    LOCAL_MODELS,
+    MLX_MODELS,
+    RECOMMENDED_MODELS,
+    get_local_model,
+)
+from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.ui.settings_gateway import db_path, set_setting
-from webmail_summary.ui.setup_service import get_cloud_keys
-from webmail_summary.ui.setup_service import pick_directory_dialog
-from webmail_summary.ui.setup_service import test_cloud_api_key
+from webmail_summary.ui.setup_service import (
+    get_cloud_keys,
+    pick_directory_dialog,
+    test_cloud_api_key,
+)
 from webmail_summary.ui.updates import _DEFAULT_UPDATE_REPO, _get_app_version
 from webmail_summary.ui.web_shared import get_active_jobs, templates
+from webmail_summary.util.error_reports import mask_email_address, write_error_report
+from webmail_summary.util.platform_caps import is_apple_silicon as _is_apple_silicon
+
+_OBSIDIAN_ROOT_DENY_PREFIXES: tuple[str, ...] = (
+    "C:\\Windows",
+    "C:\\Program Files",
+    "C:\\Program Files (x86)",
+    "C:\\ProgramData",
+    "/etc",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/boot",
+    "/sys",
+    "/proc",
+    "/dev",
+)
+
+
+def _is_safe_obsidian_root(raw: str) -> bool:
+    """Reject empty, relative, or sensitive-system-directory paths.
+
+    Allowed: paths under the user's home (or Documents/Desktop under it).
+    Rejected: paths outside user home, Windows system dirs, Linux system
+    dirs, or anything that resolves to a path containing the Startup
+    folder. Defense-in-depth on top of the loopback Host middleware: a
+    CSRF that slipped past the Host check still cannot redirect file
+    writes into the Windows Startup folder, /etc, or Program Files.
+    """
+
+    s = (raw or "").strip()
+    if not s:
+        return False
+    try:
+        p = Path(s).expanduser()
+    except Exception:
+        return False
+    if not p.is_absolute():
+        return False
+    try:
+        resolved = p.resolve(strict=False)
+    except Exception:
+        resolved = p
+    resolved_str = str(resolved)
+    low = resolved_str.replace("/", "\\").lower()
+    if "\\startup" in low or "\\start menu\\programs\\startup" in low:
+        return False
+    for deny in _OBSIDIAN_ROOT_DENY_PREFIXES:
+        if resolved_str.startswith(deny):
+            return False
+    try:
+        home = Path(os.path.expanduser("~")).resolve(strict=False)
+    except Exception:
+        return False
+    try:
+        resolved.relative_to(home)
+        return True
+    except ValueError:
+        return False
+
 
 router = APIRouter()
 
@@ -345,7 +413,7 @@ def setup_test_imap(
             {
                 "ok": False,
                 "kind": "network",
-                "message": f"연결 실패: {msg[:160]}"
+                "message": "IMAP 서버에 연결할 수 없습니다. 호스트 주소와 포트, 네트워크 연결을 확인해 주세요."
                 + _friendly_report_suffix(str(report_path)),
             }
         )
@@ -457,6 +525,14 @@ def setup_save(
             set_setting(conn, "imap_folder", imap_folder)
         set_setting(conn, "sender_filter", composed_sender_filter)
         if obsidian_root:
+            if not _is_safe_obsidian_root(obsidian_root):
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": "obsidian_root는 사용자 홈 디렉토리 안의 경로여야 합니다. 시스템 폴더 또는 시작프로그램 폴더는 사용할 수 없습니다.",
+                    },
+                    status_code=400,
+                )
             set_setting(conn, "obsidian_root", obsidian_root)
         if llm_backend:
             set_setting(conn, "llm_backend", llm_backend.strip().lower())
@@ -560,6 +636,8 @@ def setup_pick_obsidian():
     picked = pick_directory_dialog()
     if not picked:
         return RedirectResponse("/setup", status_code=302)
+    if not _is_safe_obsidian_root(picked):
+        return RedirectResponse("/setup?error=obsidian_path_unsafe", status_code=302)
 
     conn = get_conn(db_path())
     try:

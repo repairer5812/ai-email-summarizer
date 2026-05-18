@@ -134,8 +134,8 @@ def test_cloud_api_key(
         if r.status_code in {401, 403}:
             return False, f"실패: {provider.upper()} API 키 인증에 실패했습니다."
         return False, f"실패: {provider.upper()} API 오류 {r.status_code}"
-    except Exception as e:
-        return False, f"실패: API 테스트 중 예외가 발생했습니다. ({str(e)[:120]})"
+    except Exception:
+        return False, "실패: API 테스트 중 네트워크 오류가 발생했습니다. 네트워크 연결 또는 API 엔드포인트 상태를 확인해 주세요."
 
 
 def pick_directory_dialog() -> str | None:

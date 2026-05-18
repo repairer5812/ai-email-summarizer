@@ -3,15 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
-from datetime import timedelta
-
-try:
-    from zoneinfo import ZoneInfo
-
-    _KST = ZoneInfo("Asia/Seoul")
-except Exception:
-    _KST = timezone(timedelta(hours=9))
+from datetime import datetime
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -20,6 +12,7 @@ import keyring
 from PIL import Image
 
 from webmail_summary.archive.paths import get_message_paths
+from webmail_summary.util.timefmt import KST as _KST
 from webmail_summary.archive.pipeline import archive_message
 from webmail_summary.archive.html_rewrite import ExternalAsset
 from webmail_summary.archive.mime_parts import SavedAttachment

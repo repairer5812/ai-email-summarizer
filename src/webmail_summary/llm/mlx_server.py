@@ -127,21 +127,52 @@ def ensure_mlx_server(cfg: MlxServerConfig) -> None:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
 
+    # Capture startup output to a ring buffer so we can surface a useful
+    # error if the server exits early — but DRAIN the pipe on a background
+    # thread, otherwise mlx_lm.server eventually blocks on its stdout write
+    # (the OS pipe buffer is ~64 KB) and hangs while the server "appears" to
+    # be running. Once health check passes, the drain thread keeps consuming
+    # output for the rest of the server's lifetime so the parent stays
+    # responsive even if mlx-lm logs verbosely.
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
+        bufsize=1,
     )
+
+    startup_buf: list[str] = []
+    startup_buf_lock = threading.Lock()
+
+    def _drain_stdout() -> None:
+        try:
+            if proc.stdout is None:
+                return
+            for line in proc.stdout:
+                with startup_buf_lock:
+                    startup_buf.append(line)
+                    # Keep only the last ~200 lines so memory stays bounded.
+                    if len(startup_buf) > 200:
+                        del startup_buf[: len(startup_buf) - 200]
+        except Exception:
+            return
+
+    drain_thread = threading.Thread(
+        target=_drain_stdout, daemon=True, name="mlx-stdout-drain"
+    )
+    drain_thread.start()
+
+    def _snapshot_startup_output() -> str:
+        with startup_buf_lock:
+            return "".join(startup_buf)[-2000:]
 
     # Wait for server to become ready (model download + load can take time).
     deadline = time.monotonic() + 300  # 5 min for first-time model download
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            out = ""
-            if proc.stdout:
-                out = proc.stdout.read()[:2000]
+            out = _snapshot_startup_output()
             raise RuntimeError(f"mlx_lm.server exited (rc={proc.returncode}): {out}")
         if _health_check(cfg, timeout=2.0):
             break

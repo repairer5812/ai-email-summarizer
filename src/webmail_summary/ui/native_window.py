@@ -15,15 +15,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
-# Environment variable name used to pass a one-shot handshake token from the
-# UI launcher to its spawned server child. See _parse_active_url_file for the
-# reasoning — PyInstaller --onefile uses a bootstrap → child Python process
-# model, so server_proc.pid (bootstrap) does NOT match os.getpid() inside
-# the server (child). PID-based handshakes therefore deadlock in onefile
-# builds. A token in the environment is inherited by the child and works
-# regardless of the process model.
-HANDSHAKE_ENV_VAR = "WEBMAIL_SUMMARY_HANDSHAKE"
-
+from webmail_summary.ui import frozen_extensions
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.error_reports import write_error_report
 from webmail_summary.util.platform_caps import is_windows, ui_platform_caps
@@ -38,7 +30,15 @@ from webmail_summary.util.ui_lifecycle import (
     signal_bring_to_front,
     write_ui_pid,
 )
-from webmail_summary.ui import frozen_extensions
+
+# Environment variable name used to pass a one-shot handshake token from the
+# UI launcher to its spawned server child. PyInstaller --onefile uses a
+# bootstrap : child Python process model, so server_proc.pid (bootstrap)
+# does NOT match os.getpid() inside the server (child). PID-based
+# handshakes therefore deadlock in onefile builds. A token in the
+# environment is inherited by the child and works regardless of the
+# process model.
+HANDSHAKE_ENV_VAR = "WEBMAIL_SUMMARY_HANDSHAKE"
 
 
 class _TrayIconLike(Protocol):
@@ -838,7 +838,7 @@ def _kill_stale_webmail_processes() -> None:
 
 def run_ui(*, port: int | None = None) -> None:
     if not ui_platform_caps().use_native_window:
-        from webmail_summary.app.main import ServeOptions, serve
+        from webmail_summary.app.serve import ServeOptions, serve
 
         serve(ServeOptions(port=port, open_browser=True))
         return
@@ -983,14 +983,17 @@ def run_ui(*, port: int | None = None) -> None:
             # App-mode browser fallback: user sees an app-like window, so
             # no "opened in browser mode" notice. Regular browser fallback
             # keeps the notice so the user understands the downgrade.
-            app_url_builder = lambda u: u  # no notice for app mode
-            browser_url_builder = lambda u: _build_browser_fallback_url(
-                u,
-                reason=reason,
-                retry_count=max(0, native_attempts - 1),
-                include_notice=True,
-                report_path=str(report_path),
-            )
+            def app_url_builder(u: str) -> str:
+                return u
+
+            def browser_url_builder(u: str) -> str:
+                return _build_browser_fallback_url(
+                    u,
+                    reason=reason,
+                    retry_count=max(0, native_attempts - 1),
+                    include_notice=True,
+                    report_path=str(report_path),
+                )
             mode = _open_browser_fallback(
                 url,
                 app_url_builder=app_url_builder,
@@ -1031,5 +1034,27 @@ def run_ui(*, port: int | None = None) -> None:
         )
         return
     finally:
+        # Best-effort cleanup of any server child we spawned. The normal exit
+        # paths (_run_native_window's _on_closed handler and _run_fallback_tray)
+        # already terminate server_proc when the UI shuts down cleanly. This
+        # guard catches the leak window between subprocess.Popen above and
+        # those handlers — e.g. when _wait_for_active_url raises, when the
+        # browser fallback returns "" (no fallback succeeded), or when any
+        # other exception unwinds before the inner cleanup ran.
+        try:
+            if server_proc is not None and server_proc.poll() is None:
+                try:
+                    server_proc.terminate()
+                except Exception:
+                    pass
+                try:
+                    server_proc.wait(timeout=3.0)
+                except Exception:
+                    try:
+                        server_proc.kill()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         clear_ui_pid()
         ui_lock.release()

@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
 from webmail_summary.util.platform_caps import is_apple_silicon
 

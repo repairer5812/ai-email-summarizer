@@ -1126,12 +1126,15 @@
             if (fg) fg.remove();
           }
         } else {
-          alert((j && j.error) || 'Delete failed');
+          const serverMsg = (j && j.error) ? String(j.error) : '';
+          const friendly = serverMsg && /^[\w가-힣 .,!?():%/-]+$/.test(serverMsg) ? serverMsg : '{% if ui_lang(request) == "ko" %}모델 삭제에 실패했습니다.{% else %}Delete failed.{% endif %}';
+          alert(friendly);
           btn.disabled = false;
           btn.textContent = '{% if ui_lang(request) == "ko" %}삭제{% else %}Delete{% endif %}';
         }
       } catch (e) {
-        alert('Delete failed: ' + String(e && e.message ? e.message : e));
+        console.error('local model delete failed', e);
+        alert('{% if ui_lang(request) == "ko" %}모델 삭제 중 네트워크 오류가 발생했습니다.{% else %}Delete failed due to network error.{% endif %}');
         btn.disabled = false;
         btn.textContent = '{% if ui_lang(request) == "ko" %}삭제{% else %}Delete{% endif %}';
       }

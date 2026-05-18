@@ -168,7 +168,8 @@
       }
       if (btn) btn.textContent = '다운로드 중...';
       timer = setInterval(() => { poll().catch((e) => {
-        alert(String((e && e.message) ? e.message : e));
+        console.error('update poll failed', e);
+        alert('업데이트 진행 상태를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
         if (btn) {
           btn.disabled = false;
           btn.textContent = oldText || '업데이트 설치';
@@ -176,7 +177,9 @@
       }); }, 400);
       await poll();
     } catch (e) {
-      alert(String((e && e.message) ? e.message : e));
+      console.error('update start failed', e);
+      const friendly = (e && e.message && /^[\w가-힣 .,!?():%/-]+$/.test(String(e.message))) ? String(e.message) : '업데이트 시작에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+      alert(friendly);
       if (btn) {
         btn.disabled = false;
         btn.textContent = oldText || '업데이트 설치';
@@ -762,7 +765,9 @@
     const j = await res.json().catch(() => ({}));
     if (!res.ok) {
       setResummarizeButtonsIdle();
-      alert((j && (j.message || j.error)) ? String(j.message || j.error) : 'failed');
+      const serverMsg = (j && (j.message || j.error)) ? String(j.message || j.error) : '';
+      const friendly = serverMsg && /^[\w가-힣 .,!?():%/-]+$/.test(serverMsg) ? serverMsg : '재요약 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      alert(friendly);
       return;
     }
     watchResummarize(j.job_id);
