@@ -122,6 +122,27 @@ def serve(opts: ServeOptions = ServeOptions()) -> None:
             except Exception:
                 pass
 
+        def _run_update_check() -> None:
+            try:
+                from webmail_summary.index.db import get_conn
+                from webmail_summary.index.settings import load_settings
+                from webmail_summary.ui.updates import _check_github_release
+
+                conn = get_conn(data_dir / "db.sqlite3")
+                try:
+                    settings = load_settings(conn)
+                    if not settings.update_auto_check_enabled:
+                        return
+                    _check_github_release(conn, settings, force=True)
+                finally:
+                    conn.close()
+            except Exception:
+                pass
+
+        threading.Thread(
+            target=_run_update_check, daemon=True, name="update-startup-check"
+        ).start()
+
     try:
         if getattr(sys, "frozen", False):
             log_dir = data_dir / "logs"

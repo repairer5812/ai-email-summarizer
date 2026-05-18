@@ -189,11 +189,21 @@
 
   const modal = document.getElementById('update-modal');
   if (!modal) return;
-  modal.setAttribute('aria-hidden', 'false');
+  const latestVer = {{ (update.latest|tojson) if update and update.latest else '""' }};
+  let dismissedSameVer = false;
+  try {
+    dismissedSameVer = latestVer && sessionStorage.getItem('update_modal_dismissed_version') === latestVer;
+  } catch (e) {}
+  if (!dismissedSameVer) {
+    modal.setAttribute('aria-hidden', 'false');
+  }
   const closeBtn = document.getElementById('update-modal-close');
   const close = () => {
     modal.setAttribute('aria-hidden', 'true');
     modal.style.display = '';
+    try {
+      if (latestVer) sessionStorage.setItem('update_modal_dismissed_version', latestVer);
+    } catch (e) {}
   };
   if (closeBtn) closeBtn.addEventListener('click', close);
   const backdrop = modal.querySelector('.modal__backdrop');
