@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from email import policy
 from email.parser import BytesParser
@@ -422,6 +423,18 @@ def _run_llm_summary(
     return llm_res
 
 
+def _chunked(iterable: Iterable, n: int) -> Iterator[list]:
+    """Yield chunks of size n from iterable. Last chunk may be smaller."""
+    chunk: list = []
+    for item in iterable:
+        chunk.append(item)
+        if len(chunk) >= n:
+            yield chunk
+            chunk = []
+    if chunk:
+        yield chunk
+
+
 def _group_processed_notes(
     processed_notes: list[tuple[str, Path, list[str]]],
 ) -> tuple[dict[str, list[Path]], dict[str, list[Path]]]:
@@ -572,143 +585,346 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     im2.select_folder(s.imap_folder, readonly=False)
                     im2.clear_seen(uid)
 
-            try:
-                for i, m in enumerate(msg_iter, start=1):
-                    if cancel.is_set():
-                        break
+            # Chunked + concurrent LLM calls for CloudProvider; serial for local.
+            chunk_size = (
+                5 if provider.__class__.__name__ == "CloudProvider" else 1
+            )
 
-                    # Extract basic info early for progress reporting
-                    hdr = _parse_headers(m.rfc822)
-                    internal_date_str = _email_date(m.internaldate)
-                    subject = hdr.get("subject") or "(no subject)"
-                    display_date = internal_date_str[:10]
-                    display_sub = _display_subject(subject)
+            def _set_stage_for(
+                *, i_global: int, display_date: str, subject: str, stage: str
+            ) -> None:
+                _update_job_progress(
+                    db_path=db_path,
+                    job_id=job_id,
+                    current=i_global - 0.99,
+                    total=max(msg_total, 1),
+                    message=_build_stage_message(
+                        stage=stage,
+                        display_date=display_date,
+                        subject=subject,
+                    ),
+                )
 
-                    def set_stage(stage: str) -> None:
-                        _update_job_progress(
-                            db_path=db_path,
-                            job_id=job_id,
-                            current=i - 0.99,
-                            total=max(msg_total, 1),
-                            message=_build_stage_message(
-                                stage=stage,
-                                display_date=display_date,
-                                subject=subject,
-                            ),
-                        )
+            def _archive_and_index_one(i_global: int, m):
+                """Archive + DB upsert + body/multimodal prep. Serial per mail."""
+                hdr = _parse_headers(m.rfc822)
+                internal_date_str = _email_date(m.internaldate)
+                subject = hdr.get("subject") or "(no subject)"
+                display_date = internal_date_str[:10]
+                display_sub = _display_subject(subject)
 
-                    set_stage("archive")
+                _set_stage_for(
+                    i_global=i_global,
+                    display_date=display_date,
+                    subject=subject,
+                    stage="archive",
+                )
+                _add_job_event(
+                    db_path=db_path,
+                    job_id=job_id,
+                    level="info",
+                    text="아카이브 시작",
+                )
 
+                t0 = time.monotonic()
+                paths = get_message_paths(
+                    data_root=data_dir,
+                    account_id=account_id,
+                    mailbox=s.imap_folder,
+                    uidvalidity=uidvalidity,
+                    uid=m.uid,
+                )
+                ar = archive_message(
+                    raw_rfc822=m.rfc822,
+                    paths=paths,
+                    external_max_bytes=s.external_max_bytes,
+                )
+                dt_s = time.monotonic() - t0
+                if dt_s > 15:
                     _add_job_event(
                         db_path=db_path,
                         job_id=job_id,
-                        level="info",
-                        text="아카이브 시작",
+                        level="warn",
+                        text=f"아카이브가 느립니다 ({dt_s:.1f}초)",
                     )
 
-                    t0 = time.monotonic()
-
-                    paths = get_message_paths(
-                        data_root=data_dir,
+                _set_stage_for(
+                    i_global=i_global,
+                    display_date=display_date,
+                    subject=subject,
+                    stage="index",
+                )
+                conn1 = get_conn(db_path)
+                try:
+                    msg_fk = upsert_message(
+                        conn1,
                         account_id=account_id,
                         mailbox=s.imap_folder,
                         uidvalidity=uidvalidity,
                         uid=m.uid,
-                    )
-                    ar = archive_message(
-                        raw_rfc822=m.rfc822,
-                        paths=paths,
-                        external_max_bytes=s.external_max_bytes,
-                    )
-
-                    dt_s = time.monotonic() - t0
-                    if dt_s > 15:
-                        _add_job_event(
-                            db_path=db_path,
-                            job_id=job_id,
-                            level="warn",
-                            text=f"아카이브가 느립니다 ({dt_s:.1f}초)",
-                        )
-
-                    set_stage("index")
-                    conn1 = get_conn(db_path)
-                    try:
-                        msg_fk = upsert_message(
-                            conn1,
-                            account_id=account_id,
-                            mailbox=s.imap_folder,
-                            uidvalidity=uidvalidity,
-                            uid=m.uid,
-                            message_id=hdr.get("message_id"),
-                            internal_date=internal_date_str,
-                            from_addr=hdr.get("from"),
-                            to_addr=hdr.get("to"),
-                            subject=subject,
-                            raw_eml_path=str(ar.raw_eml_path),
-                            body_html_path=str(ar.body_html_path)
-                            if ar.body_html_path
-                            else None,
-                            body_text_path=str(ar.body_text_path)
-                            if ar.body_text_path
-                            else None,
-                            rendered_html_path=str(ar.rendered_html_path)
-                            if ar.rendered_html_path
-                            else None,
-                        )
-                        replace_attachments(
-                            conn1,
-                            message_fk=msg_fk,
-                            items=[
-                                {
-                                    "filename": a.filename,
-                                    "mime_type": a.mime_type,
-                                    "size_bytes": a.size_bytes,
-                                    "rel_path": a.rel_path,
-                                    "content_id": a.content_id,
-                                    "is_inline": a.is_inline,
-                                }
-                                for a in ar.attachments
-                            ],
-                        )
-                        replace_external_assets(
-                            conn1,
-                            message_fk=msg_fk,
-                            items=[
-                                {
-                                    "original_url": a.original_url,
-                                    "rel_path": a.rel_path,
-                                    "mime_type": a.mime_type,
-                                    "size_bytes": a.size_bytes,
-                                    "status": a.status,
-                                }
-                                for a in ar.external_assets
-                            ],
-                        )
-                        conn1.commit()
-                    finally:
-                        conn1.close()
-
-                    body_text = _load_body_text_for_llm(
-                        body_text_path=str(ar.body_text_path)
-                        if ar.body_text_path
-                        else None,
+                        message_id=hdr.get("message_id"),
+                        internal_date=internal_date_str,
+                        from_addr=hdr.get("from"),
+                        to_addr=hdr.get("to"),
+                        subject=subject,
+                        raw_eml_path=str(ar.raw_eml_path),
                         body_html_path=str(ar.body_html_path)
                         if ar.body_html_path
                         else None,
+                        body_text_path=str(ar.body_text_path)
+                        if ar.body_text_path
+                        else None,
+                        rendered_html_path=str(ar.rendered_html_path)
+                        if ar.rendered_html_path
+                        else None,
                     )
-                    multimodal_inputs: list[LlmImageInput] | None = None
-                    if provider.supports_multimodal_inputs() and bool(
-                        getattr(s, "cloud_multimodal_enabled", False)
-                    ):
-                        selected_inputs = _select_multimodal_inputs(
-                            base_dir=paths.base_dir,
-                            attachments=list(ar.attachments or []),
-                            external_assets=list(ar.external_assets or []),
-                        )
-                        if selected_inputs:
-                            multimodal_inputs = selected_inputs
+                    replace_attachments(
+                        conn1,
+                        message_fk=msg_fk,
+                        items=[
+                            {
+                                "filename": a.filename,
+                                "mime_type": a.mime_type,
+                                "size_bytes": a.size_bytes,
+                                "rel_path": a.rel_path,
+                                "content_id": a.content_id,
+                                "is_inline": a.is_inline,
+                            }
+                            for a in ar.attachments
+                        ],
+                    )
+                    replace_external_assets(
+                        conn1,
+                        message_fk=msg_fk,
+                        items=[
+                            {
+                                "original_url": a.original_url,
+                                "rel_path": a.rel_path,
+                                "mime_type": a.mime_type,
+                                "size_bytes": a.size_bytes,
+                                "status": a.status,
+                            }
+                            for a in ar.external_assets
+                        ],
+                    )
+                    conn1.commit()
+                finally:
+                    conn1.close()
 
-                    set_stage("summarize")
+                body_text = _load_body_text_for_llm(
+                    body_text_path=str(ar.body_text_path)
+                    if ar.body_text_path
+                    else None,
+                    body_html_path=str(ar.body_html_path)
+                    if ar.body_html_path
+                    else None,
+                )
+                multimodal_inputs: list[LlmImageInput] | None = None
+                if provider.supports_multimodal_inputs() and bool(
+                    getattr(s, "cloud_multimodal_enabled", False)
+                ):
+                    selected_inputs = _select_multimodal_inputs(
+                        base_dir=paths.base_dir,
+                        attachments=list(ar.attachments or []),
+                        external_assets=list(ar.external_assets or []),
+                    )
+                    if selected_inputs:
+                        multimodal_inputs = selected_inputs
+
+                originally_seen = any(
+                    (f.lower() == b"\\seen") for f in (m.flags or tuple())
+                )
+
+                return {
+                    "i_global": i_global,
+                    "m": m,
+                    "hdr": hdr,
+                    "subject": subject,
+                    "display_date": display_date,
+                    "display_sub": display_sub,
+                    "paths": paths,
+                    "ar": ar,
+                    "msg_fk": msg_fk,
+                    "body_text": body_text,
+                    "multimodal_inputs": multimodal_inputs,
+                    "originally_seen": originally_seen,
+                }
+
+            def _call_llm_direct(
+                *, ctx: dict, on_progress
+            ) -> tuple[LlmResult, float]:
+                """Direct summarize_email_long_aware call for concurrent path.
+
+                Returns (result, summarize_seconds). On timeout/exception returns
+                a fallback LlmResult identical to _run_llm_summary semantics.
+                """
+                t1 = time.monotonic()
+                try:
+                    res = summarize_email_long_aware(
+                        provider,
+                        subject=sanitize_text_for_llm(str(ctx["subject"])),
+                        body=sanitize_text_for_llm(ctx["body_text"]),
+                        on_progress=on_progress,
+                        user_profile={
+                            "roles": s.user_roles,
+                            "interests": s.user_interests,
+                        },
+                        multimodal_inputs=ctx["multimodal_inputs"],
+                    )
+                except Exception as ex:
+                    _add_job_event(
+                        db_path=db_path,
+                        job_id=job_id,
+                        level="warn",
+                        text=f"LLM exception: {str(ex)[:180]}",
+                    )
+                    res = LlmResult(
+                        summary="(LLM unavailable)",
+                        tags=[],
+                        backlinks=[],
+                        personal=False,
+                    )
+                return res, time.monotonic() - t1
+
+            def _persist_and_export_one(
+                *, ctx: dict, llm_res: LlmResult, dt2_s: float
+            ) -> Path | None:
+                """Save analysis, export Obsidian note. Returns note_path or None."""
+                i_global = ctx["i_global"]
+                m = ctx["m"]
+                subject = ctx["subject"]
+                display_date = ctx["display_date"]
+                display_sub = ctx["display_sub"]
+                msg_fk = ctx["msg_fk"]
+                paths = ctx["paths"]
+                hdr = ctx["hdr"]
+                topics = llm_res.backlinks
+
+                if dt2_s > 60:
+                    _add_job_event(
+                        db_path=db_path,
+                        job_id=job_id,
+                        level="warn",
+                        text=f"요약이 느립니다 ({dt2_s:.1f}초)",
+                    )
+
+                conn2 = get_conn(db_path)
+                try:
+                    set_analysis(
+                        conn2,
+                        message_fk=msg_fk,
+                        summary=llm_res.summary,
+                        tags=llm_res.tags,
+                        topics=topics,
+                        personal=llm_res.personal,
+                        summarize_ms=int(max(0.0, dt2_s) * 1000.0),
+                    )
+                    conn2.commit()
+                finally:
+                    conn2.close()
+
+                _set_stage_for(
+                    i_global=i_global,
+                    display_date=display_date,
+                    subject=subject,
+                    stage="export",
+                )
+                email_dt = (
+                    m.internaldate.date() if m.internaldate else dt.date.today()
+                )
+                try:
+                    note_path = export_email_note(
+                        vault_root=vault_root,
+                        inp=MessageExportInput(
+                            message_key=f"{account_id}-{uidvalidity}-{m.uid}",
+                            date=email_dt,
+                            sender=str(hdr.get("from") or "(unknown)"),
+                            subject=str(subject),
+                            summary=llm_res.summary,
+                            tags=llm_res.tags,
+                            topics=topics,
+                            archive_dir=paths.base_dir,
+                        ),
+                    )
+                except Exception as e:
+                    _add_job_event(
+                        db_path=db_path,
+                        job_id=job_id,
+                        level="error",
+                        text=f"Obsidian export failed (continuing): {e}",
+                    )
+                    _update_job_progress(
+                        db_path=db_path,
+                        job_id=job_id,
+                        current=i_global,
+                        total=max(msg_total, 1),
+                        message=f"[{display_date}] Obsidian 내보내기 실패 (계속): {display_sub} ({i_global}/{msg_total})",
+                    )
+                    return None
+
+                conn3 = get_conn(db_path)
+                try:
+                    set_exported(conn3, message_fk=msg_fk)
+                    conn3.commit()
+                finally:
+                    conn3.close()
+                return note_path
+
+            def _mark_one(*, ctx: dict) -> None:
+                i_global = ctx["i_global"]
+                m = ctx["m"]
+                subject = ctx["subject"]
+                display_date = ctx["display_date"]
+                msg_fk = ctx["msg_fk"]
+                originally_seen = ctx["originally_seen"]
+
+                _set_stage_for(
+                    i_global=i_global,
+                    display_date=display_date,
+                    subject=subject,
+                    stage="mark",
+                )
+                try:
+                    _mark_seen_retry(m.uid)
+                    if revert_seen and not originally_seen:
+                        to_revert.append(int(m.uid))
+                    connm = get_conn(db_path)
+                    try:
+                        set_seen_marked(connm, message_fk=msg_fk)
+                        connm.commit()
+                    finally:
+                        connm.close()
+                except Exception as e:
+                    connm2 = get_conn(db_path)
+                    try:
+                        repo.add_event(
+                            connm2,
+                            job_id=job_id,
+                            level="warn",
+                            text=f"읽음 처리 실패: {e}",
+                        )
+                    finally:
+                        connm2.close()
+
+            try:
+                global_counter = 0
+                for chunk in _chunked(msg_iter, chunk_size):
+                    if cancel.is_set():
+                        break
+
+                    # Phase 1: Archive + index sequentially (DB / FS safety).
+                    chunk_ctxs: list[dict] = []
+                    for m in chunk:
+                        if cancel.is_set():
+                            break
+                        global_counter += 1
+                        ctx = _archive_and_index_one(global_counter, m)
+                        chunk_ctxs.append(ctx)
+
+                    if not chunk_ctxs:
+                        break
+
+                    # Phase 2: LLM calls (concurrent for chunk_size > 1).
                     _add_job_event(
                         db_path=db_path,
                         job_id=job_id,
@@ -716,18 +932,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         text="요약 시작",
                     )
 
-                    def update_sub_progress(fraction: float) -> None:
-                        _update_job_progress(
-                            db_path=db_path,
-                            job_id=job_id,
-                            current=i - 1 + fraction,
-                            total=max(msg_total, 1),
-                            message=f"[{display_date}] 요약 중: {display_sub} ({i}/{msg_total})",
-                        )
-
-                    t1 = time.monotonic()
-
-                    # Cloud pacing: keep a small provider-specific delay.
+                    # Cloud pacing applied once per chunk (shared rate budget).
                     if provider.__class__.__name__ == "CloudProvider":
                         time.sleep(
                             _cloud_base_delay_seconds(
@@ -736,131 +941,122 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                             )
                         )
 
-                    user_profile = {
-                        "roles": s.user_roles,
-                        "interests": s.user_interests,
-                    }
+                    llm_outputs: list[tuple[LlmResult, float]] = []
 
-                    llm_res = _run_llm_summary(
-                        db_path=db_path,
-                        job_id=job_id,
-                        provider=provider,
-                        subject=subject,
-                        body_text=body_text,
-                        user_profile=user_profile,
-                        update_sub_progress=update_sub_progress,
-                        item_index=i,
-                        item_total=msg_total,
-                        display_date=display_date,
-                        display_sub=display_sub,
-                        multimodal_inputs=multimodal_inputs,
-                    )
+                    if chunk_size <= 1:
+                        # Serial path: keep existing heartbeat-based _run_llm_summary.
+                        for ctx in chunk_ctxs:
+                            i_global = ctx["i_global"]
+                            display_date = ctx["display_date"]
+                            display_sub = ctx["display_sub"]
+                            _set_stage_for(
+                                i_global=i_global,
+                                display_date=display_date,
+                                subject=ctx["subject"],
+                                stage="summarize",
+                            )
 
-                    topics = llm_res.backlinks
+                            def _sub_progress(fraction: float, _i=i_global, _dd=display_date, _ds=display_sub) -> None:
+                                _update_job_progress(
+                                    db_path=db_path,
+                                    job_id=job_id,
+                                    current=_i - 1 + fraction,
+                                    total=max(msg_total, 1),
+                                    message=f"[{_dd}] 요약 중: {_ds} ({_i}/{msg_total})",
+                                )
 
-                    dt2_s = time.monotonic() - t1
-                    if dt2_s > 60:
-                        _add_job_event(
-                            db_path=db_path,
-                            job_id=job_id,
-                            level="warn",
-                            text=f"요약이 느립니다 ({dt2_s:.1f}초)",
-                        )
-
-                    conn2 = get_conn(db_path)
-                    try:
-                        set_analysis(
-                            conn2,
-                            message_fk=msg_fk,
-                            summary=llm_res.summary,
-                            tags=llm_res.tags,
-                            topics=topics,
-                            personal=llm_res.personal,
-                            summarize_ms=int(max(0.0, dt2_s) * 1000.0),
-                        )
-                        conn2.commit()
-                    finally:
-                        conn2.close()
-
-                    # Export to Obsidian
-                    set_stage("export")
-                    email_dt = (
-                        m.internaldate.date() if m.internaldate else dt.date.today()
-                    )
-                    note_path: Path | None = None
-                    try:
-                        note_path = export_email_note(
-                            vault_root=vault_root,
-                            inp=MessageExportInput(
-                                message_key=f"{account_id}-{uidvalidity}-{m.uid}",
-                                date=email_dt,
-                                sender=str(hdr.get("from") or "(unknown)"),
-                                subject=str(subject),
-                                summary=llm_res.summary,
-                                tags=llm_res.tags,
-                                topics=topics,
-                                archive_dir=paths.base_dir,
-                            ),
-                        )
-                    except Exception as e:
-                        _add_job_event(
-                            db_path=db_path,
-                            job_id=job_id,
-                            level="error",
-                            text=f"Obsidian export failed (continuing): {e}",
-                        )
+                            t1 = time.monotonic()
+                            llm_res = _run_llm_summary(
+                                db_path=db_path,
+                                job_id=job_id,
+                                provider=provider,
+                                subject=ctx["subject"],
+                                body_text=ctx["body_text"],
+                                user_profile={
+                                    "roles": s.user_roles,
+                                    "interests": s.user_interests,
+                                },
+                                update_sub_progress=_sub_progress,
+                                item_index=i_global,
+                                item_total=msg_total,
+                                display_date=display_date,
+                                display_sub=display_sub,
+                                multimodal_inputs=ctx["multimodal_inputs"],
+                            )
+                            llm_outputs.append(
+                                (llm_res, time.monotonic() - t1)
+                            )
+                    else:
+                        # Concurrent path: ThreadPoolExecutor over the chunk.
+                        first = chunk_ctxs[0]
                         _update_job_progress(
                             db_path=db_path,
                             job_id=job_id,
-                            current=i,
+                            current=first["i_global"] - 0.99,
                             total=max(msg_total, 1),
-                            message=f"[{display_date}] Obsidian 내보내기 실패 (계속): {display_sub} ({i}/{msg_total})",
+                            message=(
+                                f"[{first['display_date']}] 요약 중 "
+                                f"({first['i_global']}/{msg_total}, 동시 {len(chunk_ctxs)}개 처리)"
+                            ),
                         )
-                        continue
 
-                    conn3 = get_conn(db_path)
-                    try:
-                        set_exported(conn3, message_fk=msg_fk)
-                        conn3.commit()
-                    finally:
-                        conn3.close()
+                        llm_timeout_s = _llm_timeout_seconds(provider)
 
-                    # Mark as read only after durable export
-                    set_stage("mark")
-                    originally_seen = any(
-                        (f.lower() == b"\\seen") for f in (m.flags or tuple())
-                    )
+                        def _worker(ctx: dict) -> tuple[LlmResult, float]:
+                            return _call_llm_direct(ctx=ctx, on_progress=None)
 
-                    try:
-                        _mark_seen_retry(m.uid)
-                        if revert_seen and not originally_seen:
-                            to_revert.append(int(m.uid))
-                        connm = get_conn(db_path)
-                        try:
-                            set_seen_marked(connm, message_fk=msg_fk)
-                            connm.commit()
-                        finally:
-                            connm.close()
-                    except Exception as e:
-                        connm2 = get_conn(db_path)
-                        try:
-                            repo.add_event(
-                                connm2,
-                                job_id=job_id,
-                                level="warn",
-                                text=f"읽음 처리 실패: {e}",
-                            )
-                        finally:
-                            connm2.close()
+                        with ThreadPoolExecutor(
+                            max_workers=len(chunk_ctxs)
+                        ) as pool:
+                            futures = [
+                                pool.submit(_worker, ctx) for ctx in chunk_ctxs
+                            ]
+                            for idx, fut in enumerate(futures):
+                                ctx = chunk_ctxs[idx]
+                                try:
+                                    res_pair = fut.result(timeout=llm_timeout_s)
+                                except Exception as ex:
+                                    _add_job_event(
+                                        db_path=db_path,
+                                        job_id=job_id,
+                                        level="warn",
+                                        text=(
+                                            f"LLM timeout/exception "
+                                            f"(item {ctx['i_global']}/{msg_total}): "
+                                            f"{str(ex)[:160]}"
+                                        ),
+                                    )
+                                    res_pair = (
+                                        LlmResult(
+                                            summary="(LLM timeout)",
+                                            tags=[],
+                                            backlinks=[],
+                                            personal=False,
+                                        ),
+                                        float(llm_timeout_s),
+                                    )
+                                llm_outputs.append(res_pair)
 
-                    # Collect for daily/topic notes
-                    date_prefix = (
-                        m.internaldate.date().isoformat()
-                        if m.internaldate
-                        else dt.date.today().isoformat()
-                    )
-                    if note_path is not None:
-                        processed_notes.append((date_prefix, note_path, topics))
+                    # Phase 3: Persist, export, mark in chunk order.
+                    for ctx, (llm_res, dt2_s) in zip(chunk_ctxs, llm_outputs):
+                        if cancel.is_set():
+                            break
+                        note_path = _persist_and_export_one(
+                            ctx=ctx, llm_res=llm_res, dt2_s=dt2_s
+                        )
+                        if note_path is None:
+                            continue
+                        _mark_one(ctx=ctx)
+
+                        m = ctx["m"]
+                        date_prefix = (
+                            m.internaldate.date().isoformat()
+                            if m.internaldate
+                            else dt.date.today().isoformat()
+                        )
+                        processed_notes.append(
+                            (date_prefix, note_path, llm_res.backlinks)
+                        )
 
                 # Daily digests + topic notes
                 by_date, by_topic = _group_processed_notes(processed_notes)
