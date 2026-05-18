@@ -69,23 +69,22 @@ def _is_healthy(cfg: LlamaCppServerConfig) -> bool:
         return False
 
 
-def ensure_server(cfg: LlamaCppServerConfig) -> None:
-    global _proc, _running_cfg
-
-    # Kill any other llama-server instances bound to our port.
-    # We want exactly one local server process so requests don't randomly
-    # hit an older, heavier model.
+def _terminate_stale_llama_servers(port: int) -> None:
+    """Walk psutil.net_connections looking for stale llama-server processes
+    bound to our port. This is a system-wide TCP table scan that can take
+    50~수백 ms on machines with many open sockets, so we only do it when
+    we actually need to start a fresh server (not on every summarize call).
+    """
     try:
         for c in psutil.net_connections(kind="tcp"):
             try:
-                if not c.laddr or int(getattr(c.laddr, "port", 0)) != int(cfg.port):
+                if not c.laddr or int(getattr(c.laddr, "port", 0)) != int(port):
                     continue
                 if c.status != "LISTEN":
                     continue
                 pid = int(c.pid or 0)
                 if pid <= 0:
                     continue
-                # Don't kill our own process if it's already running.
                 if _proc is not None and _proc.poll() is None and pid == _proc.pid:
                     continue
                 p = psutil.Process(pid)
@@ -97,15 +96,18 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
                         pass
             except Exception:
                 continue
-
-        # Give terminated processes a moment to exit.
         time.sleep(0.2)
     except Exception:
         pass
 
-    # Fast path: already running and healthy.
-    # IMPORTANT: Don't call _arm_idle_shutdown() while holding _lock,
-    # because _arm_idle_shutdown() also acquires _lock (deadlock risk).
+
+def ensure_server(cfg: LlamaCppServerConfig) -> None:
+    global _proc, _running_cfg
+
+    # Fast path FIRST: if our own server is already running with the same
+    # config and is healthy, skip the expensive system-wide TCP scan and
+    # return immediately. This is the common case during a sync of N
+    # emails: only the very first summarize() pays the cleanup cost.
     proc_ok = None
     with _lock:
         if _proc is not None and _running_cfg == cfg and _proc.poll() is None:
@@ -114,6 +116,10 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
     if proc_ok is not None and _is_healthy(cfg):
         _arm_idle_shutdown()
         return
+
+    # Slow path: need to (re)start the server. Now it's worth scanning
+    # the TCP table to evict any stale llama-server bound to our port.
+    _terminate_stale_llama_servers(int(cfg.port))
 
     with _lock:
         # If a different config is requested, stop the old server.

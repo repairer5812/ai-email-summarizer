@@ -18,6 +18,13 @@ from webmail_summary.util.jsonish import (
     extract_first_json_object,
 )
 
+# Reuse a single Session across all cloud calls so the underlying TLS
+# connection (and DNS lookup) is kept alive between summarize() calls.
+# For OpenRouter/Anthropic/Google endpoints based in the US, a fresh
+# TLS 1.3 handshake from Korea costs 100~300 ms; with keepalive this is
+# paid once per process, not once per email.
+_SESSION = requests.Session()
+
 
 @dataclass(frozen=True)
 class CloudConfig:
@@ -222,7 +229,7 @@ class CloudProvider(LlmProvider):
     ) -> requests.Response:
         last_resp: requests.Response | None = None
         for attempt in range(max(1, int(max_attempts))):
-            r = requests.post(url, headers=headers, json=payload, timeout=120)
+            r = _SESSION.post(url, headers=headers, json=payload, timeout=120)
             last_resp = r
             if r.status_code != 429:
                 return r
@@ -266,7 +273,7 @@ class CloudProvider(LlmProvider):
         }
 
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=60)
+            r = _SESSION.post(url, headers=headers, json=payload, timeout=60)
             if r.status_code >= 400:
                 return LlmResult(
                     summary=f"(Anthropic API error {r.status_code})",
@@ -333,7 +340,7 @@ class CloudProvider(LlmProvider):
 
         for attempt in range(3):
             try:
-                r = requests.post(url, json=payload, timeout=120)
+                r = _SESSION.post(url, json=payload, timeout=120)
                 last_status = r.status_code
                 last_resp = r.text
 
