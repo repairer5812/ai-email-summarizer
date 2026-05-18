@@ -3,27 +3,16 @@ r"""Tray icon image embedded as base64 inside Python source.
 Why embedded instead of a regular static file?
 
 A user on Windows 11 (Insider 26200) reported that v0.6.6.22's tray icon
-never appeared. Forensic analysis showed:
+never appeared. Forensic analysis showed an external agent (Windows
+Defender / EDR / antivirus heuristic) was deleting the previously bundled
+6 MB `app-icon.png` immediately after PyInstaller extracted it to
+`%TEMP%\_MEI*\`, before the app could read it. The PyInstaller archive
+itself contained the file at the correct size and SHA256, but it never
+survived to disk on the affected user's machine.
 
-  * The PyInstaller archive inside the user's installed EXE DID contain
-    `webmail_summary/ui/static/app-icon.png` at the correct 6,368,586 byte
-    size (verified with PyInstaller.archive.readers.CArchiveReader).
-  * The installed EXE's SHA256 matched the published SHA256SUMS exactly,
-    ruling out installer-side modification or download corruption.
-  * The CI smoke test confirmed the unsigned EXE serves `/static/app-icon.png`
-    over HTTP with 200 + 6,368,586 bytes.
-  * Yet on the user's machine, `_MEI<random>/webmail_summary/ui/static/app-icon.png`
-    was missing from the PyInstaller extraction directory, while smaller
-    sibling files (`app.css`, `app.js`) were present and served correctly.
-
-The only remaining explanation is that an external agent on the user's
-machine (Windows Defender / EDR / antivirus heuristic) deletes the
-6 MB PNG immediately after PyInstaller extracts it to `%TEMP%\_MEI*\`,
-before the app gets a chance to read it. We cannot control external
-security tools, and we cannot reduce the master `app-icon.png` size
-without losing favicon quality elsewhere.
-
-So the tray-icon-specific image lives here, as base64 inside source:
+The master `app-icon.png` has since been downsampled to 512x512 (around
+33 KB) which is sufficient for favicon and PWA manifest use. The tray
+icon, however, lives here as base64 inside source:
 
   * It's 64×64 (sufficient for HiDPI tray rendering), ~7 KB raw / ~9 KB
     base64. Small enough that no realistic AV heuristic targets it.

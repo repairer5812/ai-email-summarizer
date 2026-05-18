@@ -93,10 +93,11 @@ jobs:
           )
           Set-Content -Path version_info.txt -Value $versionInfoLines -Encoding utf8
           # --add-data for static/ and templates/ explicitly: --collect-data
-          # was observed to silently drop app-icon.png (a 6 MB PNG used by
-          # the tray icon) on at least one user's build, even though smaller
-          # files in the same folder were included. Belt-and-suspenders with
-          # explicit add-data avoids relying on PyInstaller heuristics.
+          # was observed to silently drop app-icon.png on at least one user's
+          # build, even though smaller files in the same folder were included.
+          # The icon is now 512x512 (around 33 KB) but explicit add-data
+          # remains belt-and-suspenders against PyInstaller collection
+          # heuristics. The tray icon is embedded in tray_icon_data.py.
           pyinstaller --noconfirm --clean --onefile --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --collect-submodules pystray --collect-submodules PIL --add-data "src/webmail_summary/ui/static;webmail_summary/ui/static" --add-data "src/webmail_summary/ui/templates;webmail_summary/ui/templates" --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import pystray._win32 --hidden-import PIL --hidden-import PIL.Image --hidden-import _cffi_backend src/webmail_summary/cli.py
 
       - name: Smoke test — frozen launcher publishes active_url.txt
