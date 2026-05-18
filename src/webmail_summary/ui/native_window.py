@@ -412,23 +412,43 @@ def _windows_app_mode_browsers() -> list[Path]:
     return paths
 
 
+def _log_tray_progress(data_dir, msg: str) -> None:
+    """Append a non-error progress line so we can tell from ui_start.log
+    whether the fallback tray code path was even reached."""
+    try:
+        log_path = _ui_start_log_path(data_dir)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] tray_icon {msg}\n"
+            )
+    except Exception:
+        pass
+
+
 def _run_fallback_tray(
-    *, url: str, server_proc: subprocess.Popen | None
+    *, url: str, server_proc: subprocess.Popen | None, data_dir
 ) -> None:
     """Run a tray icon loop so the user can exit when native window failed.
 
     Blocks until the user picks 'exit' (or pystray loop ends).  Cleans up
     the server process on exit.
+
+    Every failure path logs to ui_start.log so the case "tray icon never
+    appeared" is diagnosable end-to-end (entry → import → image →
+    construction → event loop) rather than silently swallowed.
     """
+    _log_tray_progress(data_dir, "fallback_tray entered")
+
     try:
         import pystray
-    except Exception:
-        # No pystray available: nothing we can do.
+    except Exception as e:
+        _log_tray_failure(data_dir, "fallback_tray pystray import failed", e)
         return
 
     try:
         img = _load_tray_image()
-    except Exception:
+    except Exception as e:
+        _log_tray_failure(data_dir, "fallback_tray _load_tray_image failed", e)
         return
 
     stopped = threading.Event()
@@ -459,17 +479,23 @@ def _run_fallback_tray(
         except Exception:
             pass
 
-    menu = pystray.Menu(
-        pystray.MenuItem("프로그램 열기", _open, default=True),
-        pystray.MenuItem("프로그램 종료", _exit),
-    )
-    icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
+    try:
+        menu = pystray.Menu(
+            pystray.MenuItem("프로그램 열기", _open, default=True),
+            pystray.MenuItem("프로그램 종료", _exit),
+        )
+        icon = pystray.Icon("webmail-summary", img, "webmail-summary", menu)
+    except Exception as e:
+        _log_tray_failure(data_dir, "fallback_tray pystray.Icon construction failed", e)
+        return
     icon_box["icon"] = icon
 
+    _log_tray_progress(data_dir, "fallback_tray icon.run() starting")
     try:
         icon.run()  # Blocks until icon.stop().
-    except Exception:
-        pass
+    except Exception as e:
+        _log_tray_failure(data_dir, "fallback_tray icon.run() crashed", e)
+    _log_tray_progress(data_dir, "fallback_tray icon.run() returned")
 
     # User requested exit → clean up server.
     try:
@@ -963,7 +989,9 @@ def run_ui(*, port: int | None = None) -> None:
                 # Keep a tray icon alive so the user can quit the server.
                 # Without this, closing the Edge/Chrome window leaves the
                 # server process running with no way to stop it.
-                _run_fallback_tray(url=url, server_proc=server_proc)
+                _run_fallback_tray(
+                    url=url, server_proc=server_proc, data_dir=data_dir
+                )
                 return
             raise native_error
     except Exception as e:

@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.6.21] - 2026-05-18
+
+### Diagnostic
+
+- **브라우저 fallback 모드에서도 트레이 아이콘 실패를 ui_start.log에
+  진단할 수 있도록 로깅을 추가했습니다.** v0.6.6.20에서 진단 로깅은
+  네이티브 창 경로(`_ensure_tray_icon`)에만 들어갔는데, .NET 런타임이
+  없어 브라우저 fallback으로 빠지는 환경에서는 트레이 아이콘을
+  `_run_fallback_tray()`가 띄웁니다. 거기엔 silent return 분기가 그대로
+  남아 있어 트레이가 안 떠도 로그가 비어 있었습니다.
+  - `_run_fallback_tray()`의 모든 단계(entered → pystray import →
+    이미지 로드 → Icon 생성 → icon.run() 시작/종료/크래시)를
+    `ui_start.log`에 `tray_icon ...` 줄로 기록합니다.
+  - 이번 빌드의 사용자 로그를 받으면 어느 단계가 silent fail 중인지
+    한 번에 가려낼 수 있습니다.
+
 ## [0.6.6.20] - 2026-05-15
 
 ### Fixed
