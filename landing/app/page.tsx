@@ -339,7 +339,8 @@ export default function Home() {
                 <ul className="list-disc space-y-1 pl-5 text-slate-700">
                   <li>날짜별 카드로 메일함이 한눈에 정리.</li>
                   <li>요약/원문/상세를 원하는 수준으로 확인.</li>
-                  <li>오류 요약만 여러 날짜를 골라 한 번에 다시 시도.</li>
+                  <li>실패한 요약은 다음 동기화 때 자동으로 재시도.</li>
+                  <li>오류 요약만 여러 날짜를 골라 즉시 다시 시도하는 옵션도 제공.</li>
                   <li>동기화 진행 상황도 화면에서 바로 확인.</li>
                 </ul>
               </CardContent>
@@ -359,6 +360,7 @@ export default function Home() {
                   <li>설치 후 브라우저 화면이 자동으로 열림.</li>
                   <li>연결 테스트로 로그인 성공 여부를 바로 확인.</li>
                   <li>첫 요약이 생성되면 그날부터 바로 활용.</li>
+                  <li>새 버전이 나오면 앱 시작 시 자동으로 안내 모달.</li>
                 </ul>
               </CardContent>
             </Card>
