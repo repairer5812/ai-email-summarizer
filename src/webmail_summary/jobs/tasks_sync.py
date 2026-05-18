@@ -778,21 +778,32 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     "originally_seen": originally_seen,
                 }
 
-            def _call_llm_direct(
-                *, ctx: dict, on_progress
-            ) -> tuple[LlmResult, float]:
+            def _call_llm_direct(*, ctx: dict) -> tuple[LlmResult, float]:
                 """Direct summarize_email_long_aware call for concurrent path.
 
                 Returns (result, summarize_seconds). On timeout/exception returns
                 a fallback LlmResult identical to _run_llm_summary semantics.
+
+                예외 타입별 한국어 메시지 분기: timeout·네트워크·HTTP·파싱·기타.
+                _is_llm_fallback 의 '(LLM ' startswith 패턴은 그대로 매칭됨.
                 """
+                # Lazy import: requests/json 은 _call_llm_direct 가
+                # provider 미사용 환경에서도 모듈 로드되도록 함수 내부에서 import.
+                import json as _json
+
+                try:
+                    import requests.exceptions as _rex
+                except Exception:  # pragma: no cover - requests 미설치 환경
+                    _rex = None  # type: ignore[assignment]
+                from concurrent.futures import TimeoutError as _FutTimeout
+
                 t1 = time.monotonic()
                 try:
                     res = summarize_email_long_aware(
                         provider,
                         subject=sanitize_text_for_llm(str(ctx["subject"])),
                         body=sanitize_text_for_llm(ctx["body_text"]),
-                        on_progress=on_progress,
+                        on_progress=None,
                         user_profile={
                             "roles": s.user_roles,
                             "interests": s.user_interests,
@@ -800,14 +811,29 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         multimodal_inputs=ctx["multimodal_inputs"],
                     )
                 except Exception as ex:
+                    # 예외 타입별 한국어 메시지 분기. _is_llm_fallback 은
+                    # '(LLM ' startswith 로 매칭하므로 모두 통과.
+                    fallback_summary = "(LLM 호출 실패)"
+                    if _rex is not None and isinstance(ex, _rex.Timeout):
+                        fallback_summary = "(LLM 응답 timeout)"
+                    elif isinstance(ex, _FutTimeout):
+                        fallback_summary = "(LLM 응답 timeout)"
+                    elif _rex is not None and isinstance(
+                        ex, _rex.ConnectionError
+                    ):
+                        fallback_summary = "(LLM 네트워크 오류)"
+                    elif _rex is not None and isinstance(ex, _rex.HTTPError):
+                        fallback_summary = "(LLM HTTP 오류)"
+                    elif isinstance(ex, _json.JSONDecodeError):
+                        fallback_summary = "(LLM 응답 파싱 실패)"
                     _add_job_event(
                         db_path=db_path,
                         job_id=job_id,
                         level="warn",
-                        text=f"LLM exception: {str(ex)[:180]}",
+                        text=f"LLM exception ({type(ex).__name__}): {str(ex)[:160]}",
                     )
                     res = LlmResult(
-                        summary="(LLM unavailable)",
+                        summary=fallback_summary,
                         tags=[],
                         backlinks=[],
                         personal=False,
@@ -862,9 +888,19 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                 )
 
             def _persist_and_export_one(
-                *, ctx: dict, llm_res: LlmResult, dt2_s: float
+                *,
+                ctx: dict,
+                llm_res: LlmResult,
+                dt2_s: float,
+                suppress_stage_update: bool = False,
             ) -> Path | None:
-                """Save analysis, export Obsidian note. Returns note_path or None."""
+                """Save analysis, export Obsidian note. Returns note_path or None.
+
+                B 3.1 최소 침습 conn pool: set_analysis + set_exported 를
+                conn2 1개로 묶어서 phase 3 conn 3회 → 2회 (export 실패 시 1회).
+                C P1-2 깜빡임 완화: suppress_stage_update=True 면 메일별
+                _set_stage_for("export") skip (chunk_size>1 분기에서만 True).
+                """
                 i_global = ctx["i_global"]
                 m = ctx["m"]
                 subject = ctx["subject"]
@@ -883,8 +919,21 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         text=f"요약이 느립니다 ({dt2_s:.1f}초)",
                     )
 
+                if not suppress_stage_update:
+                    _set_stage_for(
+                        i_global=i_global,
+                        display_date=display_date,
+                        subject=subject,
+                        stage="export",
+                    )
+                email_dt = (
+                    m.internaldate.date() if m.internaldate else dt.date.today()
+                )
+
                 conn2 = get_conn(db_path)
                 try:
+                    # set_analysis 먼저: export 실패해도 사용자가 요약 결과를
+                    # day list 에서 볼 수 있도록 함.
                     set_analysis(
                         conn2,
                         message_fk=msg_fk,
@@ -895,57 +944,51 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         summarize_ms=int(max(0.0, dt2_s) * 1000.0),
                     )
                     conn2.commit()
+                    try:
+                        note_path = export_email_note(
+                            vault_root=vault_root,
+                            inp=MessageExportInput(
+                                message_key=f"{account_id}-{uidvalidity}-{m.uid}",
+                                date=email_dt,
+                                sender=str(hdr.get("from") or "(unknown)"),
+                                subject=str(subject),
+                                summary=llm_res.summary,
+                                tags=llm_res.tags,
+                                topics=topics,
+                                archive_dir=paths.base_dir,
+                            ),
+                        )
+                    except Exception as e:
+                        _add_job_event(
+                            db_path=db_path,
+                            job_id=job_id,
+                            level="error",
+                            text=f"Obsidian export failed (continuing): {e}",
+                        )
+                        _update_job_progress(
+                            db_path=db_path,
+                            job_id=job_id,
+                            current=i_global,
+                            total=max(msg_total, 1),
+                            message=f"[{display_date}] Obsidian 내보내기 실패 (계속): {display_sub} ({i_global}/{msg_total})",
+                        )
+                        return None
+
+                    # 같은 conn 으로 set_exported 까지 묶음 (conn 2개 → 1개).
+                    set_exported(conn2, message_fk=msg_fk)
+                    conn2.commit()
                 finally:
                     conn2.close()
-
-                _set_stage_for(
-                    i_global=i_global,
-                    display_date=display_date,
-                    subject=subject,
-                    stage="export",
-                )
-                email_dt = (
-                    m.internaldate.date() if m.internaldate else dt.date.today()
-                )
-                try:
-                    note_path = export_email_note(
-                        vault_root=vault_root,
-                        inp=MessageExportInput(
-                            message_key=f"{account_id}-{uidvalidity}-{m.uid}",
-                            date=email_dt,
-                            sender=str(hdr.get("from") or "(unknown)"),
-                            subject=str(subject),
-                            summary=llm_res.summary,
-                            tags=llm_res.tags,
-                            topics=topics,
-                            archive_dir=paths.base_dir,
-                        ),
-                    )
-                except Exception as e:
-                    _add_job_event(
-                        db_path=db_path,
-                        job_id=job_id,
-                        level="error",
-                        text=f"Obsidian export failed (continuing): {e}",
-                    )
-                    _update_job_progress(
-                        db_path=db_path,
-                        job_id=job_id,
-                        current=i_global,
-                        total=max(msg_total, 1),
-                        message=f"[{display_date}] Obsidian 내보내기 실패 (계속): {display_sub} ({i_global}/{msg_total})",
-                    )
-                    return None
-
-                conn3 = get_conn(db_path)
-                try:
-                    set_exported(conn3, message_fk=msg_fk)
-                    conn3.commit()
-                finally:
-                    conn3.close()
                 return note_path
 
-            def _mark_one(*, ctx: dict) -> None:
+            def _mark_one(
+                *, ctx: dict, suppress_stage_update: bool = False
+            ) -> None:
+                """IMAP \\Seen 플래그 마킹 + DB seen_marked_at 갱신.
+
+                C P1-3 깜빡임 완화: suppress_stage_update=True 면 메일별
+                _set_stage_for("mark") skip (chunk_size>1 분기에서만 True).
+                """
                 i_global = ctx["i_global"]
                 m = ctx["m"]
                 subject = ctx["subject"]
@@ -953,12 +996,13 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                 msg_fk = ctx["msg_fk"]
                 originally_seen = ctx["originally_seen"]
 
-                _set_stage_for(
-                    i_global=i_global,
-                    display_date=display_date,
-                    subject=subject,
-                    stage="mark",
-                )
+                if not suppress_stage_update:
+                    _set_stage_for(
+                        i_global=i_global,
+                        display_date=display_date,
+                        subject=subject,
+                        stage="mark",
+                    )
                 try:
                     _mark_seen_retry(m.uid)
                     if revert_seen and not originally_seen:
@@ -1080,7 +1124,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         llm_timeout_s = _llm_timeout_seconds(provider)
 
                         def _worker(ctx: dict) -> tuple[LlmResult, float]:
-                            return _call_llm_direct(ctx=ctx, on_progress=None)
+                            return _call_llm_direct(ctx=ctx)
 
                         # Heartbeat: cloud LLM 호출이 길어도 사용자에게
                         # 진행 중임을 알려준다. 5초마다 elapsed + 완료 카운트
@@ -1192,6 +1236,25 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     # get_incomplete_uids. set_analysis is still called so
                     # the user can see "(LLM timeout)" in the day list and
                     # understand why retry is pending.
+                    #
+                    # C P1-2/1-3 깜빡임 완화: chunk_size>1 분기에서는
+                    # 메일별 _set_stage_for 호출을 skip 하고 chunk 단위
+                    # 1회만 progress 갱신. chunk_size=1 분기는 회귀 위험
+                    # 0 을 위해 기존 동작 유지.
+                    suppress_stage = chunk_size > 1
+                    if suppress_stage and chunk_ctxs:
+                        _first = chunk_ctxs[0]
+                        _last = chunk_ctxs[-1]
+                        _update_job_progress(
+                            db_path=db_path,
+                            job_id=job_id,
+                            current=_first["i_global"],
+                            total=max(msg_total, 1),
+                            message=(
+                                f"[{_first['display_date']}] 저장·읽음 처리 중 "
+                                f"({_first['i_global']}~{_last['i_global']}/{msg_total})"
+                            ),
+                        )
                     for ctx, (llm_res, dt2_s) in zip(chunk_ctxs, llm_outputs):
                         if cancel.is_set():
                             break
@@ -1201,11 +1264,16 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                             )
                             continue
                         note_path = _persist_and_export_one(
-                            ctx=ctx, llm_res=llm_res, dt2_s=dt2_s
+                            ctx=ctx,
+                            llm_res=llm_res,
+                            dt2_s=dt2_s,
+                            suppress_stage_update=suppress_stage,
                         )
                         if note_path is None:
                             continue
-                        _mark_one(ctx=ctx)
+                        _mark_one(
+                            ctx=ctx, suppress_stage_update=suppress_stage
+                        )
 
                         m = ctx["m"]
                         date_prefix = (
