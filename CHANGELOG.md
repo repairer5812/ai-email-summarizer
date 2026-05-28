@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.7.1] - 2026-05-27
+
+### Fixed
+
+- **.NET 미설치 환경에서 두 번째 실행이 무반응이던 문제**
+  - 증상: 앱을 한 번 실행 후 (Edge `--app` fallback 창을 열어 사용)
+    창을 닫고, 트레이의 "프로그램 종료"는 누르지 않은 채 EXE를
+    다시 더블클릭하면 아무 일도 일어나지 않음. 앱이 영영 실행
+    안 되는 것처럼 보임.
+  - 원인: `_run_native_window`에는 두 번째 실행이 보낸
+    `ui_bring_to_front` 신호를 받아 창을 띄우는 워처가 있었지만,
+    `.NET runtime` 누락으로 fallback tray 모드로 빠진 경우의
+    `_run_fallback_tray`에는 같은 워처가 없었음. 결과적으로 트레이
+    인스턴스가 살아 있는 한 새 실행은 lock 획득 실패 → 신호만 쓰고
+    종료 → 기존 인스턴스는 신호 무시 → 사용자 눈엔 무반응.
+  - 수정: `_run_fallback_tray`에도 bring-to-front 워처를 추가. 신호
+    수신 시 동일한 Edge/Chrome `--app` → 기본 브라우저 fallback
+    체인을 재실행. 트레이의 "프로그램 열기" 메뉴도 같은 체인을
+    재사용하도록 통일.
+  - 영향: `.NET Desktop Runtime`이 설치되지 않은 다수 사용자
+    환경에서 두 번째부터의 실행이 정상적으로 브라우저 창을 띄움.
+    설치 가이드에 .NET 8 설치를 요구하지 않아도 됨.
+
 ## [0.6.7.0] - 2026-05-18
 
 성능, 자동 업데이트 알림, 데이터 무결성을 한꺼번에 개선한 마이너 릴리즈.

@@ -437,7 +437,11 @@ def _log_tray_progress(data_dir, msg: str) -> None:
 
 
 def _run_fallback_tray(
-    *, url: str, server_proc: subprocess.Popen | None, data_dir
+    *,
+    url: str,
+    server_proc: subprocess.Popen | None,
+    data_dir,
+    reopen_browser=None,
 ) -> None:
     """Run a tray icon loop so the user can exit when native window failed.
 
@@ -447,6 +451,17 @@ def _run_fallback_tray(
     Every failure path logs to ui_start.log so the case "tray icon never
     appeared" is diagnosable end-to-end (entry → import → image →
     construction → event loop) rather than silently swallowed.
+
+    `reopen_browser`: optional zero-arg callable that re-runs the same
+    Edge/Chrome `--app` → default-browser preference chain that opened the
+    initial fallback window. Used by:
+      - the "프로그램 열기" tray menu, so the user can recover after
+        closing the Edge `--app` window without quitting the server;
+      - the bring-to-front watcher below, so a second EXE double-click
+        from a user who can't find the tray icon still produces a window.
+    Without this watcher, a stale fallback-tray instance silently swallowed
+    all future bring-to-front signals and the app appeared "frozen / won't
+    launch" — exactly the dead-end users without .NET 8 fell into.
     """
     _log_tray_progress(data_dir, "fallback_tray entered")
 
@@ -465,7 +480,13 @@ def _run_fallback_tray(
     stopped = threading.Event()
     icon_box: dict[str, object] = {"icon": None}
 
-    def _open(_icon=None, _item=None):
+    def _reopen_window() -> None:
+        if reopen_browser is not None:
+            try:
+                if reopen_browser():
+                    return
+            except Exception:
+                pass
         try:
             if is_windows():
                 os.startfile(url)  # noqa: S606
@@ -473,6 +494,9 @@ def _run_fallback_tray(
                 webbrowser.open(url)
         except Exception:
             pass
+
+    def _open(_icon=None, _item=None):
+        _reopen_window()
 
     def _exit(_icon=None, _item=None):
         stopped.set()
@@ -489,6 +513,19 @@ def _run_fallback_tray(
                 cast(_TrayIconLike, icon).stop()
         except Exception:
             pass
+
+    def _bring_to_front_watcher() -> None:
+        last_ts = read_bring_to_front_ts()
+        while not stopped.wait(0.5):
+            ts = read_bring_to_front_ts()
+            if ts > last_ts:
+                last_ts = ts
+                _log_tray_progress(
+                    data_dir, "fallback_tray bring_to_front signal received"
+                )
+                _reopen_window()
+
+    threading.Thread(target=_bring_to_front_watcher, daemon=True).start()
 
     try:
         menu = pystray.Menu(
@@ -1000,11 +1037,25 @@ def run_ui(*, port: int | None = None) -> None:
                 browser_url_builder=browser_url_builder,
             )
             if mode:
+                # Reusable closure for the fallback tray's "프로그램 열기"
+                # menu and bring-to-front watcher. Same builders as initial
+                # fallback so the URL/notice/app-mode behavior stays
+                # consistent across re-opens.
+                def _reopen_browser() -> str:
+                    return _open_browser_fallback(
+                        url,
+                        app_url_builder=app_url_builder,
+                        browser_url_builder=browser_url_builder,
+                    )
+
                 # Keep a tray icon alive so the user can quit the server.
                 # Without this, closing the Edge/Chrome window leaves the
                 # server process running with no way to stop it.
                 _run_fallback_tray(
-                    url=url, server_proc=server_proc, data_dir=data_dir
+                    url=url,
+                    server_proc=server_proc,
+                    data_dir=data_dir,
+                    reopen_browser=_reopen_browser,
                 )
                 return
             raise native_error

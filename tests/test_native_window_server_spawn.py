@@ -1,8 +1,13 @@
+import sys
+import threading
+import time
+import types
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from webmail_summary.util.process_control import build_fresh_pyinstaller_env
 from webmail_summary.ui import frozen_extensions, native_window
+from webmail_summary.util import ui_lifecycle
 
 
 def test_fresh_pyinstaller_env_resets_to_new_top_level_process(monkeypatch):
@@ -259,6 +264,74 @@ def test_ensure_frozen_extension_alias_creates_plain_pyd_copy(monkeypatch, tmp_p
 
     assert aliased == mei / "_cffi_backend.pyd"
     assert aliased.read_bytes() == b"stub"
+
+
+def test_fallback_tray_bring_to_front_signal_reopens_browser(monkeypatch, tmp_path):
+    """Regression: a stale fallback-tray instance must reopen the browser
+    when a second EXE launch signals bring-to-front. Previously the tray
+    had no watcher, so secondary launches silently no-op'd and the app
+    appeared frozen on systems without .NET 8 (the .NET-missing path is
+    exactly when _run_fallback_tray takes over from _run_native_window).
+    """
+    monkeypatch.setattr(ui_lifecycle, "get_app_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(native_window, "_load_tray_image", lambda: object())
+
+    reopens: list[int] = []
+
+    def _reopen() -> str:
+        reopens.append(1)
+        return "browser"
+
+    icon_stopped = threading.Event()
+    icon_started = threading.Event()
+
+    class _FakeIcon:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run(self):
+            icon_started.set()
+            icon_stopped.wait(timeout=5.0)
+
+        def stop(self):
+            icon_stopped.set()
+
+    fake_pystray = types.ModuleType("pystray")
+    fake_pystray.Menu = lambda *a, **k: object()
+    fake_pystray.MenuItem = lambda *a, **k: object()
+    fake_pystray.Icon = _FakeIcon
+    monkeypatch.setitem(sys.modules, "pystray", fake_pystray)
+
+    # Pre-seed an existing timestamp so the watcher's baseline is non-zero;
+    # only a *newer* timestamp should trigger a reopen.
+    ui_lifecycle.signal_bring_to_front(ts=100.0)
+
+    tray_thread = threading.Thread(
+        target=native_window._run_fallback_tray,
+        kwargs={
+            "url": "http://127.0.0.1:9999/",
+            "server_proc": None,
+            "data_dir": tmp_path,
+            "reopen_browser": _reopen,
+        },
+        daemon=True,
+    )
+    tray_thread.start()
+    assert icon_started.wait(timeout=5.0), "fake tray icon never started"
+
+    # Simulate a second EXE double-click signaling bring-to-front.
+    ui_lifecycle.signal_bring_to_front(ts=200.0)
+
+    # Watcher polls every 0.5s; give it up to 3s.
+    deadline = time.time() + 3.0
+    while time.time() < deadline and not reopens:
+        time.sleep(0.05)
+
+    try:
+        assert reopens, "fallback tray ignored bring_to_front signal"
+    finally:
+        icon_stopped.set()
+        tray_thread.join(timeout=2.0)
 
 
 def test_preload_frozen_cffi_backend_retries_after_creating_alias(
