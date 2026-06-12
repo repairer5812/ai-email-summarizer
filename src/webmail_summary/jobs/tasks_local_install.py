@@ -196,8 +196,23 @@ def local_install_task(*, model_id: str):
             except Exception:
                 pass
 
+        # Honor the user's GPU/accel preference when fetching the engine build
+        # (cpu = default CPU build, vulkan = GPU-enabled build).
         try:
-            inst = ensure_llama_cpp_installed(on_progress=_engine_progress)
+            from webmail_summary.index.settings import load_settings
+
+            conn_s = get_conn(db_path)
+            try:
+                _accel = (load_settings(conn_s).local_accel or "cpu").strip().lower()
+            finally:
+                conn_s.close()
+        except Exception:
+            _accel = "cpu"
+
+        try:
+            inst = ensure_llama_cpp_installed(
+                on_progress=_engine_progress, prefer=_accel
+            )
         except EngineInstallError as e:
             conn2 = get_conn(db_path)
             try:

@@ -63,9 +63,11 @@ def _normalized_arch() -> str:
     return m or "unknown"
 
 
-def _pick_release_assets(assets: list[dict]) -> list[dict]:
+def _pick_release_assets(assets: list[dict], prefer: str = "cpu") -> list[dict]:
     sys_name = (platform.system() or "").strip().lower()
     arch = _normalized_arch()
+    prefer = (prefer or "cpu").strip().lower()
+    _gpu_kw = ("cuda", "vulkan", "hip", "rocm", "sycl", "opencl")
 
     def _archive_kind(name: str) -> str | None:
         n = (name or "").strip().lower()
@@ -117,10 +119,23 @@ def _pick_release_assets(assets: list[dict]) -> list[dict]:
             # Newer llama.cpp releases frequently ship macOS/Linux as tar.gz.
             if kind == "tar.gz":
                 s += 120
-        if "cpu" in n:
-            s += 2_000
-        if sys_name == "windows" and "bin-win-cpu" in n:
-            s += 500
+
+        if prefer == "vulkan":
+            # GPU build requested: rank the Vulkan bundle first, keep the
+            # CPU bundle only as a low-priority fallback.
+            if "vulkan" in n:
+                s += 3_000
+            elif "cpu" in n:
+                s += 100
+        else:
+            # CPU build (default): prefer cpu, de-prioritize GPU bundles so we
+            # never auto-pick a heavyweight CUDA/Vulkan zip by accident.
+            if "cpu" in n:
+                s += 2_000
+            if sys_name == "windows" and "bin-win-cpu" in n:
+                s += 500
+            if any(k in n for k in _gpu_kw):
+                s -= 1_500
         if sys_name == "darwin" and any(
             x in n for x in ["bin-macos", "bin-darwin", "bin-osx"]
         ):
@@ -146,6 +161,7 @@ def ensure_llama_cpp_installed(
     timeout_s: int = 180,
     min_build: int = 0,
     on_progress: "Callable[[int, int, str], None] | None" = None,
+    prefer: str = "cpu",
 ) -> LlamaCppInstall:
     # Install under app-data/WebmailSummary/engines/llama.cpp/<tag>/
     engines = get_engines_dir() / "llama.cpp"
@@ -164,7 +180,9 @@ def ensure_llama_cpp_installed(
         data = None
         latest_tag = None
 
-    existing = find_llama_cpp_installed(min_build=min_build)
+    existing = find_llama_cpp_installed(
+        min_build=min_build, prefer=prefer, strict=True
+    )
     if existing is not None:
         # If already at the latest tag, skip.
         if latest_tag is None or existing.version_tag == latest_tag:
@@ -184,7 +202,7 @@ def ensure_llama_cpp_installed(
 
     tag = str(data.get("tag_name") or "latest").strip() or "latest"
     assets = data.get("assets") or []
-    candidates = _pick_release_assets(list(assets))
+    candidates = _pick_release_assets(list(assets), prefer=prefer)
     if not candidates:
         platform_name = (platform.system() or "unknown").strip() or "unknown"
         arch = _normalized_arch()
@@ -283,11 +301,63 @@ def _cleanup_old_engines(engines_dir: Path, *, keep_tag: str) -> None:
         pass
 
 
-def find_llama_cpp_installed(*, min_build: int = 0) -> LlamaCppInstall | None:
+def _dir_has_vulkan(d: Path) -> bool:
+    """True if a Vulkan-enabled llama.cpp build lives in *d* (ggml-vulkan)."""
+    try:
+        for _ in d.rglob("ggml-vulkan.dll"):
+            return True
+        for _ in d.rglob("libggml-vulkan*"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _find_llama_cli_for_backend(
+    root: Path, prefer: str | None, strict: bool
+) -> Path | None:
+    """Locate a llama CLI under *root*, preferring the requested backend.
+
+    *prefer* is ``"vulkan"`` or ``"cpu"`` (or None = any).  When *strict* and
+    no install matches the requested backend, returns None so the caller can
+    trigger a download of the correct build.  When not *strict*, falls back to
+    any available CLI.
+    """
+    names = [
+        "llama-cli.exe",
+        "llama.exe",
+        "main.exe",
+        "llama-cli",
+        "llama",
+        "llama-gemma3-cli.exe",
+        "llama-gemma3-cli",
+    ]
+    fallback: Path | None = None
+    want = (prefer or "").strip().lower() or None
+    for name in names:
+        for p in root.rglob(name):
+            if not p.is_file():
+                continue
+            if want is None:
+                return p
+            has_vk = _dir_has_vulkan(p.parent)
+            if (want == "vulkan") == has_vk:
+                return p
+            if fallback is None:
+                fallback = p
+    return None if strict else fallback
+
+
+def find_llama_cpp_installed(
+    *, min_build: int = 0, prefer: str | None = None, strict: bool = False
+) -> LlamaCppInstall | None:
     """Find an installed llama.cpp engine.
 
     *min_build* defaults to 0 (accept any version).  Callers that need a
     newer engine (e.g. for Gemma 4 support) should pass ``_MIN_BUILD_NUMBER``.
+    *prefer* selects a backend (``"cpu"`` or ``"vulkan"``); with *strict* the
+    backend must match or None is returned (used to decide whether to download
+    a different build).
     """
     engines = get_engines_dir() / "llama.cpp"
     if not engines.exists():
@@ -295,13 +365,15 @@ def find_llama_cpp_installed(*, min_build: int = 0) -> LlamaCppInstall | None:
 
     candidates = sorted([p for p in engines.iterdir() if p.is_dir()], reverse=True)
     for c in candidates:
-        cli = _find_llama_cli(c)
-        if cli is None:
-            continue
         build = _parse_build_number(c.name)
         if min_build > 0 and build > 0 and build < min_build:
             continue  # skip outdated engines
-        return LlamaCppInstall(version_tag=c.name, bin_dir=c, llama_cli_path=cli)
+        cli = _find_llama_cli_for_backend(c, prefer, strict)
+        if cli is None:
+            continue
+        return LlamaCppInstall(
+            version_tag=c.name, bin_dir=cli.parent, llama_cli_path=cli
+        )
     return None
 
 

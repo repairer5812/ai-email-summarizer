@@ -185,11 +185,18 @@
                     <div class="form-group">
                       <label>{{ t(request, 'setup.local_tier') }}</label>
                       <select name="local_model_id" id="local-model">
-                        <optgroup label="{% if ui_lang(request) == 'ko' %}추천 모델{% else %}Recommended{% endif %}">
+                        <optgroup label="{% if ui_lang(request) == 'ko' %}추천 (상업 사용 가능){% else %}Recommended (commercial-safe){% endif %}">
                         {% for m in recommended_models %}
                           <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" data-engine="gguf" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
                         {% endfor %}
                         </optgroup>
+                        {% if korean_nc_models %}
+                        <optgroup label="{% if ui_lang(request) == 'ko' %}한국어 특화 (개인·연구용, 비상업){% else %}Korean-specialized (personal/research, non-commercial){% endif %}">
+                        {% for m in korean_nc_models %}
+                          <option value="{{ m.id }}" data-notes="{{ m.notes|e }}" data-engine="gguf" {% if defaults.local_model_id == m.id %}selected{% endif %}>{{ m.label }}</option>
+                        {% endfor %}
+                        </optgroup>
+                        {% endif %}
                         {% if is_apple_silicon and mlx_models %}
                         <optgroup label="MLX (Apple Silicon)" id="mlx-optgroup">
                         {% for m in mlx_models %}
@@ -205,6 +212,26 @@
                       </select>
                       <div class="help" id="model-notes"></div>
                     </div>
+
+                    {% if not is_apple_silicon %}
+                    <div class="form-group">
+                      <label>{% if ui_lang(request) == 'ko' %}CPU 스레드{% else %}CPU threads{% endif %}</label>
+                      <input type="number" name="local_threads" id="local-threads" min="0" max="32" step="1"
+                             value="{{ defaults.local_threads if defaults.local_threads else 0 }}" />
+                      <div class="help">{% if ui_lang(request) == 'ko' %}0 = 자동(P코어 수 감지). 인텔 하이브리드 CPU는 P코어 수로 두는 것이 보통 가장 빠릅니다.{% else %}0 = auto (detect P-core count). On Intel hybrid CPUs, the P-core count is usually fastest.{% endif %}</div>
+                    </div>
+                    <div class="form-group">
+                      <label>{% if ui_lang(request) == 'ko' %}GPU 가속 (실험){% else %}GPU acceleration (experimental){% endif %}</label>
+                      <select name="local_accel" id="local-accel">
+                        <option value="cpu" {% if defaults.local_accel != 'vulkan' %}selected{% endif %}>{% if ui_lang(request) == 'ko' %}CPU만 (기본·안정){% else %}CPU only (default, stable){% endif %}</option>
+                        <option value="vulkan" {% if defaults.local_accel == 'vulkan' %}selected{% endif %}>{% if ui_lang(request) == 'ko' %}Vulkan GPU 오프로드{% else %}Vulkan GPU offload{% endif %}</option>
+                      </select>
+                      <div class="help">{% if ui_lang(request) == 'ko' %}Vulkan은 Intel·AMD·NVIDIA GPU에 오프로드합니다. 내장 GPU에서는 긴 메일 처리(prefill)만 빨라지고 일부 드라이버에서 불안정할 수 있어, 실패 시 자동으로 CPU로 돌아갑니다. 변경 후 모델을 다시 설치하면 GPU용 엔진을 받습니다.{% else %}Vulkan offloads to Intel/AMD/NVIDIA GPUs. On integrated GPUs it mainly speeds up long-email prefill and may be unstable on some drivers, so it auto-falls back to CPU on failure. Re-install the model after changing to fetch the GPU engine.{% endif %}</div>
+                    </div>
+                    {% else %}
+                    <input type="hidden" name="local_accel" value="cpu" />
+                    <input type="hidden" name="local_threads" value="0" />
+                    {% endif %}
 
                     <div class="form-group">
                       <label>{{ t(request, 'setup.local.status') }}</label>
@@ -835,6 +862,10 @@
     if (cloudMultimodalCheckbox) fd.append('cloud_multimodal_enabled', cloudMultimodalCheckbox.checked ? '1' : '0');
     if (modelSelect) fd.append('local_model_id', modelSelect.value || '');
     if (localEngineField) fd.append('local_engine', localEngineField.value || 'auto');
+    const localAccelField = form ? form.querySelector('[name="local_accel"]') : null;
+    if (localAccelField) fd.append('local_accel', localAccelField.value || 'cpu');
+    const localThreadsField = form ? form.querySelector('[name="local_threads"]') : null;
+    if (localThreadsField) fd.append('local_threads', localThreadsField.value || '0');
     if (cloudModelSelect) fd.append('openrouter_model', cloudModelSelect.value || '');
     return fd;
   }

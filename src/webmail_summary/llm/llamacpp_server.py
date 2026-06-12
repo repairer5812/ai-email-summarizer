@@ -32,6 +32,8 @@ class LlamaCppServerConfig:
     total_request_budget_s: float = 45.0
     temperature: float = 0.2
     alias: str = "local"
+    threads: int = 0  # 0 = auto (P-core count)
+    n_gpu_layers: int = 0  # 0 = CPU only; >0 offloads layers (needs a GPU build)
 
 
 _lock = threading.Lock()
@@ -131,7 +133,9 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
         _proc = None
         _running_cfg = None
 
-        threads = max(1, min(8, (os.cpu_count() or 4)))
+        from webmail_summary.util.platform_caps import optimal_cpu_threads
+
+        threads = optimal_cpu_threads(int(getattr(cfg, "threads", 0)))
         cmd: list[str] = [
             str(cfg.server_exe),
             "--model",
@@ -150,6 +154,10 @@ def ensure_server(cfg: LlamaCppServerConfig) -> None:
             "1",
             "--cont-batching",
         ]
+        # GPU offload (only effective with a GPU-enabled llama.cpp build, e.g.
+        # the Vulkan release; harmlessly ignored by the CPU-only build).
+        if int(getattr(cfg, "n_gpu_layers", 0)) > 0:
+            cmd += ["-ngl", str(int(cfg.n_gpu_layers))]
 
         # Use a quiet subprocess; server logs are not critical for the app.
         popen_kwargs: dict = {

@@ -20,6 +20,7 @@ from webmail_summary.imap_client import (
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings
 from webmail_summary.llm.local_engine import find_llama_cpp_installed
 from webmail_summary.llm.local_models import (
+    KOREAN_NC_MODELS,
     LEGACY_MODELS,
     LOCAL_MODELS,
     MLX_MODELS,
@@ -275,6 +276,8 @@ def setup_get(request: Request):
                 "cloud_multimodal_enabled": settings.cloud_multimodal_enabled,
                 "local_model_id": settings.local_model_id,
                 "local_engine": getattr(settings, "local_engine", "auto"),
+                "local_accel": getattr(settings, "local_accel", "cpu"),
+                "local_threads": getattr(settings, "local_threads", 0),
                 "openrouter_model": settings.openrouter_model,
                 "external_max_bytes": str(settings.external_max_bytes),
                 "revert_seen": settings.revert_seen_after_sync,
@@ -300,6 +303,7 @@ def setup_get(request: Request):
             },
             "local_models": LOCAL_MODELS,
             "recommended_models": RECOMMENDED_MODELS,
+            "korean_nc_models": KOREAN_NC_MODELS,
             "legacy_models": LEGACY_MODELS,
             "mlx_models": MLX_MODELS,
             "is_apple_silicon": _is_apple_silicon(),
@@ -482,6 +486,8 @@ def setup_save(
     llm_backend: str = Form("local"),
     local_model_id: str = Form("fast"),
     local_engine: str = Form("auto"),
+    local_accel: str = Form("cpu"),
+    local_threads: str = Form("0"),
     cloud_provider: str = Form("openai"),
     cloud_multimodal_enabled: str = Form("0"),
     openrouter_model: str = Form(""),
@@ -556,6 +562,15 @@ def setup_save(
         if eng not in {"auto", "llamacpp", "mlx"}:
             eng = "auto"
         set_setting(conn, "local_engine", eng)
+        acc = (local_accel or "cpu").strip().lower()
+        if acc not in {"cpu", "vulkan"}:
+            acc = "cpu"
+        set_setting(conn, "local_accel", acc)
+        try:
+            thr = int(str(local_threads or "0").strip() or "0")
+        except Exception:
+            thr = 0
+        set_setting(conn, "local_threads", str(max(0, thr)))
         if openrouter_model:
             set_setting(conn, "openrouter_model", openrouter_model.strip())
         if external_max_bytes:
@@ -656,6 +671,8 @@ def setup_save_partial(
     cloud_multimodal_enabled: str = Form(None),
     local_model_id: str = Form(None),
     local_engine: str = Form(None),
+    local_accel: str = Form(None),
+    local_threads: str = Form(None),
     openrouter_model: str = Form(None),
 ):
     from webmail_summary.index.db import get_conn
@@ -690,6 +707,17 @@ def setup_save_partial(
             if eng not in {"auto", "llamacpp", "mlx"}:
                 eng = "auto"
             set_setting(conn, "local_engine", eng)
+        if local_accel is not None:
+            acc = str(local_accel or "cpu").strip().lower()
+            if acc not in {"cpu", "vulkan"}:
+                acc = "cpu"
+            set_setting(conn, "local_accel", acc)
+        if local_threads is not None:
+            try:
+                thr = int(str(local_threads or "0").strip() or "0")
+            except Exception:
+                thr = 0
+            set_setting(conn, "local_threads", str(max(0, thr)))
         if openrouter_model is not None and str(openrouter_model).strip():
             set_setting(conn, "openrouter_model", str(openrouter_model).strip())
         conn.commit()

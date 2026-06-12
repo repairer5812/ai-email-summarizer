@@ -20,6 +20,7 @@ class LlamaCppBinConfig:
     ctx_size: int = 4096
     max_tokens: int = 512
     temperature: float = 0.2
+    threads: int = 0  # 0 = auto (P-core count)
 
 
 class LlamaCppBinProvider(LlmProvider):
@@ -63,7 +64,9 @@ class LlamaCppBinProvider(LlmProvider):
         )
         prompt = "".join(parts)
 
-        threads = max(1, min(8, (os.cpu_count() or 4)))
+        from webmail_summary.util.platform_caps import optimal_cpu_threads
+
+        threads = optimal_cpu_threads(getattr(self._cfg, "threads", 0))
         cmd = [
             str(self._cfg.llama_cli_path),
             "-m",

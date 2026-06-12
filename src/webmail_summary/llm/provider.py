@@ -7,7 +7,7 @@ import keyring
 from webmail_summary.index.settings import Settings
 from webmail_summary.llm.base import LlmProvider
 from webmail_summary.llm.llamacpp_bin import LlamaCppBinConfig, LlamaCppBinProvider
-from webmail_summary.llm.local_engine import find_llama_cpp_installed
+from webmail_summary.llm.local_engine import find_llama_cpp_installed, _dir_has_vulkan
 from webmail_summary.llm.llamacpp_server import (
     LlamaCppServerConfig,
     LlamaCppServerProvider,
@@ -139,7 +139,9 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
             log.info("MLX provider unavailable; falling back to llama.cpp")
 
         # --- llama.cpp path (original) ---
-        inst = find_llama_cpp_installed()
+        accel = (getattr(settings, "local_accel", "cpu") or "cpu").strip().lower()
+        threads_override = int(getattr(settings, "local_threads", 0) or 0)
+        inst = find_llama_cpp_installed(prefer=accel)
         if inst is None:
             raise LlmNotReady("Local engine not installed")
 
@@ -180,14 +182,24 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
             if not model_path.exists() or not complete.exists():
                 raise LlmNotReady("Local model not installed")
 
+        # GPU offload only if the user opted into Vulkan AND a Vulkan-enabled
+        # engine is actually installed (otherwise -ngl would be a no-op).
+        engine_has_vulkan = False
+        try:
+            engine_has_vulkan = _dir_has_vulkan(inst.llama_cli_path.parent)
+        except Exception:
+            engine_has_vulkan = False
+        n_gpu_layers = 99 if (accel == "vulkan" and engine_has_vulkan) else 0
+
         # Prefer persistent llama-server to avoid reloading the model per email.
         server_exe = _find_llama_server_sibling(inst.llama_cli_path)
         if server_exe is not None:
-            try:
-                # Local llama-server can be slow on some machines.
-                # Use generous timeouts and allow a retry (we restart the server on timeout).
-                budget = _local_tier_budget(tier)
-                max_attempts = 2
+            # Local llama-server can be slow on some machines.
+            # Use generous timeouts and allow a retry (we restart the server on timeout).
+            budget = _local_tier_budget(tier)
+            max_attempts = 2
+
+            def _make_server(ngl: int) -> LlmProvider:
                 return LlamaCppServerProvider(
                     LlamaCppServerConfig(
                         server_exe=server_exe,
@@ -198,15 +210,31 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
                         total_request_budget_s=float(
                             budget.total_request_budget_s
                         ),
+                        threads=int(threads_override),
+                        n_gpu_layers=int(ngl),
                     ),
                     tier=tier,
                 )
+
+            try:
+                return _make_server(n_gpu_layers)
             except Exception:
-                pass
+                # If GPU offload failed to start (e.g. an unstable Vulkan
+                # driver on this iGPU), fall back to CPU before giving up.
+                if n_gpu_layers > 0:
+                    try:
+                        log.warning(
+                            "Vulkan llama-server failed to start; falling back to CPU"
+                        )
+                        return _make_server(0)
+                    except Exception:
+                        pass
 
         return LlamaCppBinProvider(
             LlamaCppBinConfig(
-                llama_cli_path=inst.llama_cli_path, model_path=model_path
+                llama_cli_path=inst.llama_cli_path,
+                model_path=model_path,
+                threads=int(threads_override),
             ),
             tier=tier,
         )

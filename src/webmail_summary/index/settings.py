@@ -34,6 +34,8 @@ class Settings:
     update_download_url: str
     update_last_check_status: str
     local_engine: str = "auto"  # "auto" | "llamacpp" | "mlx"
+    local_accel: str = "cpu"  # "cpu" | "vulkan" (GPU offload, experimental)
+    local_threads: int = 0  # 0 = auto (P-core count)
     new_models_v2_dismissed: bool = False
 
 
@@ -120,6 +122,15 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
     local_engine = (get_setting(conn, "local_engine") or "auto").strip().lower()
     if local_engine not in {"auto", "llamacpp", "mlx"}:
         local_engine = "auto"
+    local_accel = (get_setting(conn, "local_accel") or "cpu").strip().lower()
+    if local_accel not in {"cpu", "vulkan"}:
+        local_accel = "cpu"
+    try:
+        local_threads = int(get_setting(conn, "local_threads") or "0")
+    except Exception:
+        local_threads = 0
+    if local_threads < 0:
+        local_threads = 0
     new_models_v2_dismissed = (
         get_setting(conn, "new_models_v2_dismissed") or "0"
     ).strip().lower() in {"1", "true", "yes", "on"}
@@ -152,5 +163,7 @@ def load_settings(conn: sqlite3.Connection) -> Settings:
         update_download_url=update_download_url,
         update_last_check_status=update_last_check_status,
         local_engine=local_engine,
+        local_accel=local_accel,
+        local_threads=local_threads,
         new_models_v2_dismissed=new_models_v2_dismissed,
     )
