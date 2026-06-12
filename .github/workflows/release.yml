@@ -12,8 +12,6 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    env:
-      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -218,56 +216,13 @@ jobs:
           if (!(Test-Path $iscc)) { throw "ISCC not found at $iscc" }
           & $iscc /O"release" /F"webmail-summary-setup-windows-x64" /DMyAppVersion=$ver "installer\webmail-summary.iss"
 
-      - name: Prepare unsigned bundle (for optional signing)
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path unsigned | Out-Null
-          Copy-Item dist/webmail-summary.exe unsigned/webmail-summary.exe
-          Copy-Item release/webmail-summary-setup-windows-x64.exe unsigned/webmail-summary-setup-windows-x64.exe
-
-      - name: Upload unsigned artifacts (for SignPath)
-        id: upload_unsigned
-        uses: actions/upload-artifact@v7
-        with:
-          name: unsigned-windows
-          if-no-files-found: error
-          path: |
-            unsigned/webmail-summary.exe
-            unsigned/webmail-summary-setup-windows-x64.exe
-
-      - name: Sign with SignPath (optional)
-        id: signpath
-        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
-        continue-on-error: true
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ env.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.upload_unsigned.outputs.artifact-id }}
-          wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: 3600
-          output-artifact-directory: signed
-
       - name: Prepare artifacts
         shell: pwsh
         run: |
           $ver = "${{ github.ref_name }}".TrimStart('v')
           $installerName = "webmail-summary-setup-windows-x64-v$ver.exe"
-          $signedPortable = Get-ChildItem -Path signed -Recurse -File -Filter webmail-summary.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($null -ne $signedPortable) {
-            Copy-Item $signedPortable.FullName release/webmail-summary.exe -Force
-          } else {
-            Copy-Item unsigned/webmail-summary.exe release/webmail-summary.exe -Force
-          }
-
-          $signedInstaller = Get-ChildItem -Path signed -Recurse -File -Filter webmail-summary-setup-windows-x64.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($null -ne $signedInstaller) {
-            Copy-Item $signedInstaller.FullName ("release/" + $installerName) -Force
-          } else {
-            Copy-Item unsigned/webmail-summary-setup-windows-x64.exe ("release/" + $installerName) -Force
-          }
+          Copy-Item dist/webmail-summary.exe release/webmail-summary.exe -Force
+          Copy-Item release/webmail-summary-setup-windows-x64.exe ("release/" + $installerName) -Force
           Compress-Archive -Path release/webmail-summary.exe -DestinationPath release/webmail-summary-windows-x64.zip -Force
           Get-FileHash release/webmail-summary.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary.exe" } | Out-File release/SHA256SUMS.txt -Encoding ascii
           Get-FileHash ("release/" + $installerName) -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $installerName" } | Add-Content release/SHA256SUMS.txt
