@@ -201,7 +201,7 @@ export default function Home() {
               <CardHeader className="pb-0">
                 <CardTitle className="text-base font-semibold text-slate-900">대시보드</CardTitle>
               </CardHeader>
-              <CardContent className="rounded-3xl clay-card">
+              <CardContent className="rounded-3xl clay-card py-6">
                 <a
                   href={withBasePath("/screenshots/dashboard.svg")}
                   target="_blank"
@@ -231,7 +231,7 @@ export default function Home() {
               <CardHeader className="pb-0">
                 <CardTitle className="text-base font-semibold text-slate-900">날짜별 요약</CardTitle>
               </CardHeader>
-              <CardContent className="rounded-3xl clay-card">
+              <CardContent className="rounded-3xl clay-card py-6">
                 <a
                   href={withBasePath("/screenshots/daily.svg")}
                   target="_blank"
@@ -260,7 +260,7 @@ export default function Home() {
               <CardHeader className="pb-0">
                 <CardTitle className="text-base font-semibold text-slate-900">메일 상세</CardTitle>
               </CardHeader>
-              <CardContent className="rounded-3xl clay-card">
+              <CardContent className="rounded-3xl clay-card py-6">
                 <a
                   href={withBasePath("/screenshots/message.svg")}
                   target="_blank"
