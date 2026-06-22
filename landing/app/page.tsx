@@ -203,14 +203,14 @@ export default function Home() {
               </CardHeader>
               <CardContent className="rounded-3xl clay-card">
                 <a
-                  href={withBasePath("/screenshots/dashboard.png")}
+                  href={withBasePath("/screenshots/dashboard.svg")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group block"
                 >
                   <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-white/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                     <Image
-                      src={withBasePath("/screenshots/dashboard.png")}
+                      src={withBasePath("/screenshots/dashboard.svg")}
                       alt="webmail-summary 대시보드 화면"
                       fill
                       sizes="(min-width: 768px) 100vw, 100vw"
@@ -233,14 +233,14 @@ export default function Home() {
               </CardHeader>
               <CardContent className="rounded-3xl clay-card">
                 <a
-                  href={withBasePath("/screenshots/daily.png")}
+                  href={withBasePath("/screenshots/daily.svg")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group block"
                 >
                   <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-white/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                     <Image
-                      src={withBasePath("/screenshots/daily.png")}
+                      src={withBasePath("/screenshots/daily.svg")}
                       alt="webmail-summary 날짜별 요약 화면"
                       fill
                       sizes="(min-width: 768px) 50vw, 100vw"
@@ -262,14 +262,14 @@ export default function Home() {
               </CardHeader>
               <CardContent className="rounded-3xl clay-card">
                 <a
-                  href={withBasePath("/screenshots/message.png")}
+                  href={withBasePath("/screenshots/message.svg")}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="group block"
                 >
                   <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-white/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                     <Image
-                      src={withBasePath("/screenshots/message.png")}
+                      src={withBasePath("/screenshots/message.svg")}
                       alt="webmail-summary 메일 상세 요약 및 원문 화면"
                       fill
                       sizes="(min-width: 768px) 50vw, 100vw"

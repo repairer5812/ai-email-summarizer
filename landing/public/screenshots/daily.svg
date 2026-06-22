@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" font-family="Pretendard, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f5f5f7"/><stop offset="1" stop-color="#eef1f7"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.9" cy="-0.1" r="0.7">
+      <stop offset="0" stop-color="#4f46e5" stop-opacity="0.16"/>
+      <stop offset="0.65" stop-color="#4f46e5" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#fbfcff"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/><stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .name{font-size:15px;font-weight:800;fill:#0f172a}
+      .sub{font-size:11px;fill:#64748b}
+      .nav{font-size:13px;font-weight:700;fill:#64748b}
+      .h1{font-size:30px;font-weight:800;fill:#0f172a}
+      .muted{font-size:11px;fill:#64748b}
+      .subj{font-size:16px;font-weight:700;fill:#0f172a}
+      .core{font-size:13px;fill:#0f172a}
+      .corebold{font-size:13px;font-weight:800;fill:#4f46e5}
+      .item{font-size:12.5px;fill:#0f172a}
+      .bullet{fill:#4f46e5}
+      .btnp{font-size:11.5px;font-weight:800;fill:#ffffff}
+      .btns{font-size:11.5px;font-weight:800;fill:#0f172a}
+      .btnsm{font-size:11px;font-weight:800;fill:#0f172a}
+    </style>
+  </defs>
+
+  <rect width="1200" height="900" fill="url(#bg)"/>
+  <rect width="1200" height="900" fill="url(#glow)"/>
+
+  <!-- Topbar -->
+  <g filter="url(#shadow)"><rect x="24" y="20" width="1152" height="60" rx="22" fill="url(#card)" stroke="#e7ebf3"/></g>
+  <rect x="44" y="29" width="42" height="42" rx="14" fill="url(#brand)"/>
+  <text x="65" y="56" text-anchor="middle" font-size="20" font-weight="900" fill="#ffffff">W</text>
+  <text x="98" y="45" class="name">웹메일 요약</text>
+  <text x="98" y="63" class="sub">로컬 메일 아카이브 + Obsidian 내보내기</text>
+  <text x="858" y="55" class="nav">대시보드</text>
+  <text x="946" y="55" class="nav">설정</text>
+  <text x="1000" y="55" class="nav">개발자정보</text>
+  <text x="1152" y="55" text-anchor="end" class="nav">English</text>
+
+  <!-- Hero (day) -->
+  <text x="44" y="120" class="muted" font-size="12">해당 날짜 메일</text>
+  <text x="44" y="154" class="h1">2026-06-22</text>
+  <!-- actions -->
+  <g filter="url(#shadow)"><rect x="612" y="120" width="150" height="32" rx="11" fill="url(#brand)"/></g>
+  <text x="687" y="141" text-anchor="middle" class="btnp">오류/누락만 다시 요약</text>
+  <g filter="url(#shadow)"><rect x="770" y="120" width="160" height="32" rx="11" fill="url(#brand)"/></g>
+  <text x="850" y="141" text-anchor="middle" class="btnp">해당 날짜 전체 다시 요약</text>
+  <rect x="938" y="120" width="134" height="32" rx="11" fill="#ffffff" stroke="#e7ebf3" opacity="0.7"/>
+  <text x="1005" y="141" text-anchor="middle" class="btns" opacity="0.7">선택 다시 요약 (0)</text>
+  <rect x="1080" y="120" width="92" height="32" rx="11" fill="#ffffff" stroke="#e7ebf3"/>
+  <text x="1126" y="141" text-anchor="middle" class="btns">대시보드</text>
+
+  <!-- Message row 1 -->
+  <g filter="url(#shadow)"><rect x="24" y="196" width="1152" height="200" rx="26" fill="url(#card)" stroke="#e7ebf3"/></g>
+  <rect x="48" y="222" width="20" height="20" rx="6" fill="#fff" stroke="#cbd5e1"/>
+  <text x="84" y="234" class="subj">[학회] 2026 한국정보과학회 추계학술대회 논문 모집</text>
+  <text x="84" y="256" class="muted">2026-06-22 09:14 · 요약 1.4s</text>
+  <rect x="1008" y="216" width="62" height="28" rx="9" fill="#ffffff" stroke="#e7ebf3"/>
+  <text x="1039" y="234" text-anchor="middle" class="btnsm">원문</text>
+  <g filter="url(#shadow)"><rect x="1080" y="216" width="72" height="28" rx="9" fill="url(#brand)"/></g>
+  <text x="1116" y="234" text-anchor="middle" class="btnp">상세</text>
+  <line x1="44" y1="274" x2="1156" y2="274" stroke="#e7ebf3"/>
+  <rect x="44" y="288" width="1112" height="34" rx="10" fill="#f3f6fa"/>
+  <rect x="44" y="288" width="3" height="34" fill="#4f46e5"/>
+  <text x="62" y="310"><tspan class="corebold">핵심  </tspan><tspan class="core">초록 제출 마감 6/30 18:00, 정식 논문 제출은 8/15까지.</tspan></text>
+  <text class="bullet" x="48" y="350">•</text><text x="62" y="350" class="item">발표 분야: 자연어처리, 컴퓨터비전, 데이터마이닝, AI 응용</text>
+  <text class="bullet" x="48" y="376">•</text><text x="62" y="376" class="item">제출 시스템 링크와 LaTeX·HWP 양식 파일 첨부, 우수 논문 학회지 게재</text>
+
+  <!-- Message row 2 -->
+  <g filter="url(#shadow)"><rect x="24" y="414" width="1152" height="200" rx="26" fill="url(#card)" stroke="#e7ebf3"/></g>
+  <rect x="48" y="440" width="20" height="20" rx="6" fill="#fff" stroke="#cbd5e1"/>
+  <text x="84" y="452" class="subj">6월 법인카드 사용내역 확인 및 증빙 제출 요청</text>
+  <text x="84" y="474" class="muted">2026-06-22 11:02 · 요약 0.9s</text>
+  <rect x="1008" y="434" width="62" height="28" rx="9" fill="#ffffff" stroke="#e7ebf3"/>
+  <text x="1039" y="452" text-anchor="middle" class="btnsm">원문</text>
+  <g filter="url(#shadow)"><rect x="1080" y="434" width="72" height="28" rx="9" fill="url(#brand)"/></g>
+  <text x="1116" y="452" text-anchor="middle" class="btnp">상세</text>
+  <line x1="44" y1="492" x2="1156" y2="492" stroke="#e7ebf3"/>
+  <rect x="44" y="506" width="1112" height="34" rx="10" fill="#f3f6fa"/>
+  <rect x="44" y="506" width="3" height="34" fill="#4f46e5"/>
+  <text x="62" y="528"><tspan class="corebold">핵심  </tspan><tspan class="core">6/25까지 증빙 누락 3건 보완 필요 (회신 요망).</tspan></text>
+  <text class="bullet" x="48" y="568">•</text><text x="62" y="568" class="item">식대 2건, 도서구입 1건 영수증 미첨부 상태</text>
+  <text class="bullet" x="48" y="594">•</text><text x="62" y="594" class="item">회계 시스템에서 영수증 이미지 직접 업로드 가능</text>
+
+  <!-- Message row 3 -->
+  <g filter="url(#shadow)"><rect x="24" y="632" width="1152" height="200" rx="26" fill="url(#card)" stroke="#e7ebf3"/></g>
+  <rect x="48" y="658" width="20" height="20" rx="6" fill="#fff" stroke="#cbd5e1"/>
+  <text x="84" y="670" class="subj">[GitHub] Your repositories had 4 workflow runs this week</text>
+  <text x="84" y="692" class="muted">2026-06-22 07:30 · 요약 0.7s</text>
+  <rect x="1008" y="652" width="62" height="28" rx="9" fill="#ffffff" stroke="#e7ebf3"/>
+  <text x="1039" y="670" text-anchor="middle" class="btnsm">원문</text>
+  <g filter="url(#shadow)"><rect x="1080" y="652" width="72" height="28" rx="9" fill="url(#brand)"/></g>
+  <text x="1116" y="670" text-anchor="middle" class="btnp">상세</text>
+  <line x1="44" y1="710" x2="1156" y2="710" stroke="#e7ebf3"/>
+  <rect x="44" y="724" width="1112" height="34" rx="10" fill="#f3f6fa"/>
+  <rect x="44" y="724" width="3" height="34" fill="#4f46e5"/>
+  <text x="62" y="746"><tspan class="corebold">핵심  </tspan><tspan class="core">빌드 3건 성공, 1건 실패(타임아웃) — 재실행 권장.</tspan></text>
+  <text class="bullet" x="48" y="786">•</text><text x="62" y="786" class="item">ai-email-summarizer: 릴리스 빌드 및 Pages 배포 성공</text>
+  <text class="bullet" x="48" y="812">•</text><text x="62" y="812" class="item">실패한 워크플로는 GitHub Actions에서 재실행 권장</text>
+</svg>
