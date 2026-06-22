@@ -2,11 +2,11 @@
 {% block content %}
 <section class="hero">
   <div class="hero__row">
-    <div>
+    <div style="min-width: 0;">
       <p class="muted" style="margin-bottom: 4px;">{{ msg.internal_date }}</p>
-      <h1>{{ msg.subject }}</h1>
+      <h1 style="word-break: break-word; overflow-wrap: anywhere;">{{ msg.subject }}</h1>
     </div>
-    <div class="hero__actions" style="flex-direction: row; align-items: center; gap: 8px;">
+    <div class="hero__actions" style="flex-direction: row; align-items: center; flex-wrap: nowrap; flex-shrink: 0; gap: 8px;">
       <a class="btn btn--secondary" href="{{ msg.back_href or '/' }}">{{ t(request, 'detail.back') }}</a>
       <button class="btn btn--secondary" type="button" id="btn-close-window" data-fallback="{{ msg.back_href or '/' }}">{{ t(request, 'detail.close_window') }}</button>
     </div>

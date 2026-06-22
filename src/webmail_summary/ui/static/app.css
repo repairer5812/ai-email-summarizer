@@ -447,6 +447,7 @@ button,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
   cursor: pointer;
   transition: var(--transition);
   box-shadow: 0 8px 18px -10px rgba(59, 130, 246, 0.38);

@@ -2,9 +2,9 @@
 {% block content %}
 <section class="hero">
   <div class="hero__row">
-    <div>
+    <div style="min-width: 0;">
       <p class="muted" style="margin-bottom: 4px;">{{ msg.internal_date }}</p>
-      <h1>{{ msg.subject }}</h1>
+      <h1 style="word-break: break-word; overflow-wrap: anywhere;">{{ msg.subject }}</h1>
       {% if msg.summarize_ms or msg.summarized_at %}
         <div class="muted" style="margin-top:8px; font-size: 0.9rem;">
           {% if ui_lang(request) == 'ko' %}요약됨{% else %}Summarized{% endif %}
@@ -13,7 +13,7 @@
         </div>
       {% endif %}
     </div>
-    <div class="hero__actions">
+    <div class="hero__actions" style="flex-shrink: 0;">
       <a class="btn btn--secondary" href="{{ msg.back_href or '/' }}">{{ t(request, 'detail.back') }}</a>
     </div>
   </div>

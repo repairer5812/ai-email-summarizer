@@ -235,4 +235,35 @@ def serve_message_file(request: Request, message_id: int, path: str):
             )
         return RedirectResponse(f"/message/{int(message_id)}/original", status_code=302)
 
+    if normalized_path == "rendered.html" and embed == "1":
+        # Normalize archived email markup so wide/centered content fits the
+        # iframe width instead of being clipped on the sides. External
+        # stylesheets are stripped during archiving, so emails often fall back
+        # to their raw fixed widths and overflow the viewport.
+        try:
+            raw_html = target.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return FileResponse(str(target))
+        fit_css = (
+            "<style>"
+            "html,body{margin:0!important;padding:16px!important;"
+            "box-sizing:border-box;background:#fff;}"
+            "body{overflow-x:auto;overflow-wrap:anywhere;word-break:break-word;"
+            "-webkit-text-size-adjust:100%;}"
+            "img,video{max-width:100%!important;height:auto!important;}"
+            "table{max-width:100%!important;}"
+            "</style>"
+        )
+        head_idx = raw_html.lower().find("<head")
+        if head_idx != -1:
+            gt = raw_html.find(">", head_idx)
+            injected = (
+                raw_html[: gt + 1] + fit_css + raw_html[gt + 1 :]
+                if gt != -1
+                else fit_css + raw_html
+            )
+        else:
+            injected = fit_css + raw_html
+        return HTMLResponse(injected)
+
     return FileResponse(str(target))
