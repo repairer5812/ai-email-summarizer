@@ -10,33 +10,28 @@ import webmail_summary.util.platform_caps as caps
 # Model registry
 # ---------------------------------------------------------------------------
 
-def test_mlx_models_exist():
-    assert len(lm.MLX_MODELS) >= 3
-    for m in lm.MLX_MODELS:
-        assert m.engine == "mlx"
-        assert m.group == "mlx"
-
-
 def test_gguf_models_exist():
     assert len(lm.GGUF_MODELS) >= 3
     for m in lm.GGUF_MODELS:
         assert m.engine == "gguf"
 
 
-def test_counterpart_mapping():
-    assert lm.get_counterpart_model_id("fast") == "mlx_fast"
-    assert lm.get_counterpart_model_id("mlx_fast") == "fast"
-    assert lm.get_counterpart_model_id("standard") == "mlx_standard"
-    assert lm.get_counterpart_model_id("mlx_standard") == "standard"
-    assert lm.get_counterpart_model_id("qwen35_4b") == "mlx_qwen35_4b"
-    assert lm.get_counterpart_model_id("mlx_qwen35_4b") == "qwen35_4b"
+def test_no_mlx_models_registered():
+    # 2026-06-22: tier별 GGUF 3종(fast/standard/performance)만 운영, MLX 미운영.
+    assert lm.MLX_MODELS == []
+
+
+def test_counterpart_mapping_disabled():
+    # MLX 미운영이라 GGUF↔MLX 대응은 항상 None.
+    assert lm.get_counterpart_model_id("fast") is None
+    assert lm.get_counterpart_model_id("standard") is None
     assert lm.get_counterpart_model_id("unknown") is None
 
 
-def test_get_local_model_returns_mlx():
-    m = lm.get_local_model("mlx_fast")
-    assert m.id == "mlx_fast"
-    assert m.engine == "mlx"
+def test_legacy_mlx_id_aliases_to_gguf():
+    # 옛 MLX 저장 ID는 GGUF 대응으로 이관된다.
+    assert lm.get_local_model("mlx_fast").id == "fast"
+    assert lm.get_local_model("mlx_standard").id == "standard"
 
 
 # ---------------------------------------------------------------------------

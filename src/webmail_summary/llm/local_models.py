@@ -21,18 +21,22 @@ class LocalModelChoice:
     min_ram_gb: float = 0.0  # recommended minimum total RAM (GB)
 
 
+# 2026-06-22: 8코어 CPU 실측 벤치(동일 한국어 메일 요약)로 tier별 1종만 남김.
+#   빠름  EXAONE 4.0 1.2B   약 39.5 tok/s  (압도적 속도, 짧은 메일에 충분)
+#   표준  Gemma 3 4B        약 15.6 tok/s  (속도·품질 균형, 깔끔한 요약)
+#   성능  Qwen3 4B 2507     약 12.9 tok/s  (가장 충실한 요약, 다국어 강함)
+# (Mi:dm Mini·Gemma 4 E2B는 CPU 추론이 비정상적으로 느려 제외. MLX·기타 정리.)
 LOCAL_MODELS: list[LocalModelChoice] = [
-    # ── 추천 (상업 사용 가능) ─────────────────────────────
     LocalModelChoice(
-        id="midm_mini",
-        label="빠름·기본 — KT Mi:dm 2.0 Mini 2.3B (Q4_K_M)",
+        id="fast",
+        label="빠름 — EXAONE 4.0 1.2B (Q4_K_M)",
         tier="fast",
-        hf_repo_id="mykor/Midm-2.0-Mini-Instruct-gguf",
-        hf_filename="Midm-2.0-Mini-Instruct-Q4_K_M.gguf",
-        notes="한국 특화(존댓말·한자어) 2.3B. 한국어 지시이행이 우수하고 8GB에서도 안전. 상업 사용 가능(MIT).",
+        hf_repo_id="LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF",
+        hf_filename="EXAONE-4.0-1.2B-Q4_K_M.gguf",
+        notes="LG EXAONE 4.0 1.2B. 가장 빠름(8코어 CPU 약 40 tok/s). RAM 4GB에서도 동작. 짧은 메일 요약에 충분.",
         group="recommended",
-        license="MIT",
-        commercial=True,
+        license="EXAONE",
+        commercial=False,
         min_ram_gb=4.0,
     ),
     LocalModelChoice(
@@ -41,134 +45,43 @@ LOCAL_MODELS: list[LocalModelChoice] = [
         tier="standard",
         hf_repo_id="bartowski/google_gemma-3-4b-it-GGUF",
         hf_filename="google_gemma-3-4b-it-Q4_K_M.gguf",
-        notes="Gemma 3 4B. 안정적인 균형 품질. 상업 사용 가능(Gemma 라이선스).",
+        notes="Gemma 3 4B. 속도와 품질의 균형. 핵심·마감·금액을 안정적으로 잡는 깔끔한 요약. RAM 8GB 권장.",
         group="recommended",
         license="Gemma",
         commercial=True,
         min_ram_gb=8.0,
     ),
     LocalModelChoice(
-        id="gemma4_e2b",
-        label="최신 — Gemma 4 E2B (Q4_K_M)",
-        tier="standard",
-        hf_repo_id="unsloth/gemma-4-E2B-it-GGUF",
-        hf_filename="gemma-4-E2B-it-Q4_K_M.gguf",
-        notes="Gemma 4 E2B(실효 2.3B). 최신 세대·140개 언어. 용량이 커 RAM 10GB+ 권장. 상업 사용 가능(Apache-2.0).",
-        group="recommended",
-        license="Apache-2.0",
-        commercial=True,
-        min_ram_gb=10.0,
-    ),
-    LocalModelChoice(
-        id="qwen35_4b",
+        id="performance",
         label="성능 — Qwen3 4B Instruct 2507 (Q4_K_M)",
         tier="performance",
         hf_repo_id="unsloth/Qwen3-4B-Instruct-2507-GGUF",
         hf_filename="Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-        notes="Qwen3 4B(텍스트 전용, non-thinking). 다국어 성능 우수, 4B라 다소 느림. 상업 사용 가능(Apache-2.0).",
+        notes="Qwen3 4B(텍스트 전용). 가장 충실한 요약과 다국어 성능. 4B라 다소 느리지만 정확도 우선일 때. RAM 8GB 권장.",
         group="recommended",
         license="Apache-2.0",
         commercial=True,
         min_ram_gb=8.0,
     ),
-    # ── 한국어 특화 (개인·연구용, 비상업 라이선스) ─────────
-    LocalModelChoice(
-        id="exaone40_1.2b",
-        label="초경량 — EXAONE 4.0 1.2B (Q4_K_M)",
-        tier="fast",
-        hf_repo_id="LGAI-EXAONE/EXAONE-4.0-1.2B-GGUF",
-        hf_filename="EXAONE-4.0-1.2B-Q4_K_M.gguf",
-        notes="LG EXAONE 4.0 1.2B. 약 1.7~2배 빠르고 RAM도 절반. 비상업(개인·연구용) 라이선스. non-reasoning 모드 권장.",
-        group="korean_nc",
-        license="EXAONE(비상업)",
-        commercial=False,
-        min_ram_gb=4.0,
-    ),
-    LocalModelChoice(
-        id="fast",
-        label="한국어 — EXAONE 3.5 2.4B (Q4_K_M)",
-        tier="fast",
-        hf_repo_id="LGAI-EXAONE/EXAONE-3.5-2.4B-Instruct-GGUF",
-        hf_filename="EXAONE-3.5-2.4B-Instruct-Q4_K_M.gguf",
-        notes="LG EXAONE 3.5 2.4B. 한국어 특화. 비상업(개인·연구용) 라이선스.",
-        group="korean_nc",
-        license="EXAONE(비상업)",
-        commercial=False,
-        min_ram_gb=6.0,
-    ),
-    LocalModelChoice(
-        id="kanana_nano",
-        label="한국어 — Kakao Kanana Nano 2.1B (Q4_K_M)",
-        tier="fast",
-        hf_repo_id="DevQuasar/kakaocorp.kanana-nano-2.1b-instruct-GGUF",
-        hf_filename="kakaocorp.kanana-nano-2.1b-instruct.Q4_K_M.gguf",
-        notes="Kakao Kanana Nano 2.1B. 한국어 강함. 비상업(CC-BY-NC-4.0) 라이선스.",
-        group="korean_nc",
-        license="CC-BY-NC-4.0",
-        commercial=False,
-        min_ram_gb=4.0,
-    ),
-    # ── 기존 모델 (Legacy) ───────────────────────────────
-    LocalModelChoice(
-        id="performance",
-        label="기존 — Qwen 2.5 3B (Q4_K_M)",
-        tier="performance",
-        hf_repo_id="bartowski/Qwen2.5-3B-Instruct-GGUF",
-        hf_filename="Qwen2.5-3B-Instruct-Q4_K_M.gguf",
-        notes="Qwen 2.5 3B. 짧은 메일에서 빠르게 동작. 상업 사용 가능(Apache-2.0).",
-        group="legacy",
-        license="Apache-2.0",
-        commercial=True,
-        min_ram_gb=6.0,
-    ),
-    # ── MLX 모델 (Apple Silicon 전용) ────────────────────
-    LocalModelChoice(
-        id="mlx_fast",
-        label="MLX 한국어 — EXAONE 3.5 2.4B (4bit)",
-        tier="fast",
-        hf_repo_id="mlx-community/EXAONE-3.5-2.4B-Instruct-4bit",
-        hf_filename="",  # MLX: repo 전체를 다운로드
-        notes="Apple Silicon 전용. EXAONE 3.5 2.4B MLX. 한국어 특화. 비상업 라이선스.",
-        group="mlx",
-        engine="mlx",
-        license="EXAONE(비상업)",
-        commercial=False,
-    ),
-    LocalModelChoice(
-        id="mlx_standard",
-        label="MLX 표준 — Gemma 3 4B (4bit)",
-        tier="standard",
-        hf_repo_id="mlx-community/gemma-3-4b-it-4bit",
-        hf_filename="",
-        notes="Apple Silicon 전용. Gemma 3 4B MLX. 상업 사용 가능(Gemma).",
-        group="mlx",
-        engine="mlx",
-        license="Gemma",
-        commercial=True,
-    ),
 ]
 
-# Models grouped for UI rendering.
+# Models grouped for UI rendering. (현재는 추천 3종만 운영, 나머지 그룹은 비어 있음)
 RECOMMENDED_MODELS = [m for m in LOCAL_MODELS if m.group == "recommended"]
 KOREAN_NC_MODELS = [m for m in LOCAL_MODELS if m.group == "korean_nc"]
 LEGACY_MODELS = [m for m in LOCAL_MODELS if m.group == "legacy"]
 MLX_MODELS = [m for m in LOCAL_MODELS if m.group == "mlx"]
 GGUF_MODELS = [m for m in LOCAL_MODELS if m.engine == "gguf"]
 
-# When a new default model is not yet installed, fall back to the previous one.
-# key = new model id, value = legacy model id to use as fallback.
+# When the preferred default isn't downloaded yet, fall back to a smaller one
+# that runs on tight RAM so existing users are never blocked.
 MIGRATION_FALLBACKS: dict[str, str] = {
-    # If the commercial-safe default isn't downloaded yet, fall back to the
-    # previously-shipped Korean model so existing users are never blocked.
-    "midm_mini": "fast",
+    "standard": "fast",
+    "performance": "fast",
 }
 
 
-# GGUF ↔ MLX model mapping for automatic engine switching.
-_GGUF_TO_MLX: dict[str, str] = {
-    "fast": "mlx_fast",
-    "standard": "mlx_standard",
-}
+# GGUF ↔ MLX 매핑 (현재 MLX 모델 미운영).
+_GGUF_TO_MLX: dict[str, str] = {}
 _MLX_TO_GGUF: dict[str, str] = {v: k for k, v in _GGUF_TO_MLX.items()}
 
 
@@ -181,9 +94,7 @@ def get_counterpart_model_id(model_id: str) -> str | None:
 def recommend_local_model() -> LocalModelChoice:
     """Default model for new installs.
 
-    Commercial-safe (MIT) and small enough for 8GB laptops while staying
-    Korean-strong: KT Mi:dm 2.0 Mini.  Falls back down the size ladder if
-    RAM is unusually tight or the preferred entry is missing.
+    8GB+ 노트북이면 균형 좋은 표준(Gemma 3 4B), RAM이 빠듯하면 빠름(EXAONE 4.0 1.2B).
     """
     try:
         total_gb = psutil.virtual_memory().total / (1024**3)
@@ -191,29 +102,33 @@ def recommend_local_model() -> LocalModelChoice:
         total_gb = 16.0
 
     by_id = {m.id: m for m in LOCAL_MODELS}
-    # Preference order: commercial-safe first, smallest-safe as last resort.
-    for fid in ("midm_mini", "exaone40_1.2b", "fast"):
+    for fid in ("standard", "fast", "performance"):
         m = by_id.get(fid)
         if m is not None and total_gb >= float(m.min_ram_gb or 0):
             return m
-    for fid in ("midm_mini", "exaone40_1.2b", "fast"):
-        m = by_id.get(fid)
-        if m is not None:
-            return m
-    return LOCAL_MODELS[0]
+    return by_id.get("fast") or LOCAL_MODELS[0]
 
 
 def get_local_model(model_id: str) -> LocalModelChoice:
     mid = str(model_id or "").strip().lower()
-    # Backward compatibility for older saved IDs.
+    # Backward compatibility: 옛 저장 ID를 현재 3종(fast/standard/performance)으로 이관.
     aliases = {
         "low": "performance",
         "ultra": "standard",
-        "gemma4_e4b": "standard",          # old Gemma 4 E4B → Gemma 3 4B
-        "exaone35_2.4b": "fast",           # legacy ID → EXAONE 3.5 2.4B
-        "qwen3_4b": "qwen35_4b",           # text Qwen3 4B entry
-        "mlx_gemma4_e4b": "mlx_standard",  # MLX Gemma 4 → MLX Gemma 3
-        "mlx_qwen35_4b": "mlx_standard",   # removed multimodal MLX entry
+        # 제거된 모델 → 가장 가까운 생존 tier
+        "midm_mini": "fast",
+        "exaone40_1.2b": "fast",
+        "exaone35_2.4b": "fast",
+        "kanana_nano": "fast",
+        "gemma4_e2b": "standard",
+        "gemma4_e4b": "standard",
+        "qwen35_4b": "performance",
+        "qwen3_4b": "performance",
+        # 제거된 MLX 항목 → GGUF 대응
+        "mlx_fast": "fast",
+        "mlx_standard": "standard",
+        "mlx_gemma4_e4b": "standard",
+        "mlx_qwen35_4b": "performance",
     }
     mid = aliases.get(mid, mid)
 
