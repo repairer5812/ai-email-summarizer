@@ -352,6 +352,45 @@ def _load_close_behavior(data_dir) -> str:
             pass
 
 
+def _resolve_ui_mode(data_dir) -> str:
+    """Return the desired UI surface: ``native`` | ``browser`` | ``app``.
+
+    Why this exists: on Windows the native window embeds WebView2 through a
+    .NET (pythonnet) bridge. Behavioural anti-ransomware tools (e.g. AppCheck)
+    terminate the WebView2 *renderer* child of an **unsigned** executable a
+    second after it spawns, leaving a blank white window — and crucially WITH
+    NO exception raised, so the existing exception-based browser fallback never
+    fires. Letting the user pin a non-native surface routes the same local UI
+    through the system browser (shell-launched, so no WebView2 child of ours is
+    created for the tool to kill), which those tools do not block. This is a
+    compatibility setting, not a way to disable or evade the security tool.
+
+    Precedence: ``WEBMAIL_SUMMARY_UI_MODE`` env var > ``ui_mode`` setting >
+    ``native`` (default — existing behaviour is unchanged for everyone else).
+    """
+    valid = {"native", "browser", "app"}
+    env = str(os.environ.get("WEBMAIL_SUMMARY_UI_MODE", "")).strip().lower()
+    if env in valid:
+        return env
+    try:
+        conn = sqlite3.connect(str(data_dir / "db.sqlite3"))
+    except Exception:
+        return "native"
+    try:
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", ("ui_mode",)
+        ).fetchone()
+        v = str(row[0] if row else "").strip().lower()
+        return v if v in valid else "native"
+    except Exception:
+        return "native"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def _load_tray_image() -> object:
     """Load the tray icon image from the base64 blob embedded in Python source.
 
@@ -567,6 +606,7 @@ def _open_browser_fallback(
     *,
     app_url_builder=None,
     browser_url_builder=None,
+    prefer_app: bool = True,
 ) -> str:
     if not url:
         return ""
@@ -579,7 +619,12 @@ def _open_browser_fallback(
         base = browser_url_builder(url) if browser_url_builder else url
         return _merge_url_query(base, {"ui_window": "browser"})
 
-    if is_windows():
+    # prefer_app=False forces the plain shell-launched browser route only.
+    # This matters under behavioural anti-ransomware tools: a chrome-less
+    # ``msedge --app`` window spawned directly by this (unsigned) process can
+    # be flagged, whereas ``webbrowser.open``/``os.startfile`` hands the URL to
+    # the shell, which opens the user's browser with no child process of ours.
+    if prefer_app and is_windows():
         app_url = _app_url()
         for browser_path in _windows_app_mode_browsers():
             try:
@@ -924,6 +969,7 @@ def run_ui(*, port: int | None = None) -> None:
         return
 
     data_dir = get_app_data_dir()
+    ui_mode = _resolve_ui_mode(data_dir)
 
     # Acquire the UI lock BEFORE killing anything. If a healthy concurrent
     # launch is already starting up, we must lose this race and bring it to
@@ -1000,6 +1046,45 @@ def run_ui(*, port: int | None = None) -> None:
                 raise RuntimeError("Failed to obtain active_url.txt from server")
 
             _wait_for_http_ready(url, timeout_s=90.0, server_proc=server_proc)
+
+        # Non-native UI surfaces (browser tab / chrome-less app window). On
+        # Windows a behavioural anti-ransomware tool can terminate the WebView2
+        # renderer of this unsigned binary, leaving a blank native window with
+        # NO exception — so the exception-based fallback further below never
+        # fires. When the user pins 'browser'/'app' mode we skip the WebView2
+        # window entirely and open the already-running local server in the
+        # system browser (shell-launched → no WebView2 child of ours for the
+        # tool to kill). A tray icon keeps the server quit-able. We only fall
+        # through to the native window if the browser cannot be opened at all.
+        if ui_mode in ("browser", "app"):
+            def _ext_app_url(u: str) -> str:
+                return u
+
+            def _ext_browser_url(u: str) -> str:
+                return _merge_url_query(u, {"ui_window": "browser"})
+
+            opened = _open_browser_fallback(
+                url,
+                app_url_builder=_ext_app_url,
+                browser_url_builder=_ext_browser_url,
+                prefer_app=(ui_mode == "app"),
+            )
+            if opened:
+                def _reopen_browser() -> str:
+                    return _open_browser_fallback(
+                        url,
+                        app_url_builder=_ext_app_url,
+                        browser_url_builder=_ext_browser_url,
+                        prefer_app=(ui_mode == "app"),
+                    )
+
+                _run_fallback_tray(
+                    url=url,
+                    server_proc=server_proc,
+                    data_dir=data_dir,
+                    reopen_browser=_reopen_browser,
+                )
+                return
 
         native_error: Exception | None = None
         native_attempts = 0
