@@ -614,12 +614,55 @@ def _preload_frozen_cffi_backend() -> None:
     frozen_extensions.preload_cffi_backend()
 
 
+def _coreclr_available() -> bool:
+    """coreclr(.NET 5+/Core Desktop) 런타임이 이 PC에 있는지 best-effort 판별."""
+    try:
+        import shutil
+
+        if shutil.which("dotnet"):
+            return True
+        candidates = []
+        root = os.environ.get("DOTNET_ROOT")
+        if root:
+            candidates.append(Path(root) / "shared" / "Microsoft.NETCore.App")
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        candidates.append(Path(pf) / "dotnet" / "shared" / "Microsoft.NETCore.App")
+        for c in candidates:
+            try:
+                if c.is_dir() and any(c.iterdir()):
+                    return True
+            except Exception:
+                continue
+    except Exception:
+        return False
+    return False
+
+
+def _ensure_pythonnet_runtime() -> None:
+    """Windows: pywebview winforms 백엔드는 pythonnet으로 .NET 런타임을 띄운다.
+
+    기본은 coreclr(.NET Desktop Runtime)인데, 미설치 PC에서는
+    'Failed to create a .NET runtime (coreclr)'로 네이티브 창이 빈 화면이 된다.
+    coreclr이 감지되지 않으면 항상 존재하는 .NET Framework(netfx)로 전환해
+    별도 설치 없이 창이 뜨게 한다. coreclr이 있거나 사용자가 이미 지정했으면
+    그대로 둔다(기존 사용자 동작 불변). pythonnet 로드 전에 호출해야 효과.
+    """
+    if not is_windows():
+        return
+    if os.environ.get("PYTHONNET_RUNTIME"):
+        return  # 사용자/환경이 이미 지정 → 존중
+    if _coreclr_available():
+        return  # coreclr 있으면 기본값(coreclr) 유지
+    os.environ["PYTHONNET_RUNTIME"] = "netfx"
+
+
 def _run_native_window(
     url: str,
     *,
     data_dir,
     server_proc: subprocess.Popen | None,
 ) -> None:
+    _ensure_pythonnet_runtime()
     _preload_frozen_cffi_backend()
     import webview
 
