@@ -929,6 +929,15 @@ label {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  /* Clamp wide spans to the available column count.
+     Without this, a span-3/span-4 card (e.g. the progress card) forces
+     the grid to spawn phantom implicit columns, scattering the day cards
+     and their checkboxes into stray narrow strips. */
+  .span-3,
+  .span-4 {
+    grid-column: span 2;
+  }
+
   .hero__row--day {
     display: flex;
     flex-direction: column;
