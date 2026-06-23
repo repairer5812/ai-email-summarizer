@@ -88,11 +88,11 @@ export default function Home() {
                   className="rounded-2xl border-0 bg-white/55 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.22)]"
                 >
                   <a
-                    href="https://github.com/repairer5812/ai-email-summarizer/releases/latest/download/webmail-summary.exe"
+                    href="https://github.com/repairer5812/ai-email-summarizer/releases/latest/download/webmail-summary-windows-x64.zip"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    포터블(.exe)
+                    포터블(zip)
                   </a>
                 </Button>
 
@@ -385,7 +385,7 @@ export default function Home() {
                 <CardTitle className="text-xl text-slate-900">자주 묻는 질문</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 rounded-3xl p-6 text-base leading-7 text-slate-700 clay-card">
-                <p><span className="font-semibold">Q.</span> 어떤 파일을 받으면 되나요?<br /><span className="text-slate-600">A.</span> 대부분은 <span className="font-semibold">webmail-summary-setup-windows-x64-vX.Y.Z.exe</span> 설치 파일을 권장합니다. 포터블 <span className="font-semibold">webmail-summary.exe</span>도 가능하지만 자동 업데이트는 설치형 기준으로 동작합니다.</p>
+                <p><span className="font-semibold">Q.</span> 어떤 파일을 받으면 되나요?<br /><span className="text-slate-600">A.</span> 대부분은 <span className="font-semibold">webmail-summary-setup-windows-x64-vX.Y.Z.exe</span> 설치 파일을 권장합니다. 포터블 <span className="font-semibold">webmail-summary-windows-x64.zip</span>(압축을 풀고 폴더 안 exe 실행)도 가능하지만 자동 업데이트는 설치형 기준으로 동작합니다.</p>
                 <p><span className="font-semibold">Q.</span> 메일 원문은 어디에 저장되나요?<br /><span className="text-slate-600">A.</span> 내 PC 로컬 저장소에 보관됩니다.</p>
                 <p><span className="font-semibold">Q.</span> API 키는 안전한가요?<br /><span className="text-slate-600">A.</span> Windows Credential Manager를 사용해 저장합니다.</p>
                 <p><span className="font-semibold">Q.</span> Daouoffice만 되나요?<br /><span className="text-slate-600">A.</span> 아니요. IMAP 기반이라 IMAP을 제공하는 메일 서비스면 대부분 사용 가능합니다. (예: Gmail/Google Workspace, Outlook/Exchange(조직 정책상 IMAP 허용 시), 네이버/다음, 개인 도메인 메일)</p>

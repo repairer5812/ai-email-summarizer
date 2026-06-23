@@ -96,11 +96,11 @@ jobs:
           # The icon is now 512x512 (around 33 KB) but explicit add-data
           # remains belt-and-suspenders against PyInstaller collection
           # heuristics. The tray icon is embedded in tray_icon_data.py.
-          pyinstaller --noconfirm --clean --onefile --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --collect-submodules pystray --collect-submodules PIL --add-data "src/webmail_summary/ui/static;webmail_summary/ui/static" --add-data "src/webmail_summary/ui/templates;webmail_summary/ui/templates" --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import pystray._win32 --hidden-import PIL --hidden-import PIL.Image --hidden-import _cffi_backend src/webmail_summary/cli.py
+          pyinstaller --noconfirm --clean --onedir --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --collect-submodules pystray --collect-submodules PIL --add-data "src/webmail_summary/ui/static;webmail_summary/ui/static" --add-data "src/webmail_summary/ui/templates;webmail_summary/ui/templates" --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import pystray._win32 --hidden-import PIL --hidden-import PIL.Image --hidden-import _cffi_backend src/webmail_summary/cli.py
 
       - name: Smoke test — frozen launcher publishes active_url.txt
         shell: pwsh
-        # Catches regressions that only manifest in PyInstaller --onefile
+        # Catches regressions that only manifest in PyInstaller frozen
         # builds, which dev mode (python -m) cannot reproduce. Specifically
         # the launcher → server handshake: server_proc.pid is the bootstrap
         # EXE's PID, not os.getpid() inside the server child, so any PID-
@@ -115,8 +115,8 @@ jobs:
           $env:LOCALAPPDATA = $localAppData
           $env:APPDATA = $appData
           $urlFile = "$localAppData\WebmailSummary\active_url.txt"
-          Write-Host "Launching dist\webmail-summary.exe (LOCALAPPDATA=$localAppData)"
-          $proc = Start-Process -FilePath "dist\webmail-summary.exe" -PassThru -WindowStyle Hidden
+          Write-Host "Launching dist\webmail-summary\webmail-summary.exe (LOCALAPPDATA=$localAppData)"
+          $proc = Start-Process -FilePath "dist\webmail-summary\webmail-summary.exe" -PassThru -WindowStyle Hidden
           try {
             $found = $false
             $content = ""
@@ -135,7 +135,7 @@ jobs:
             if (-not $found) {
               Write-Host "##[error]active_url.txt did not appear within 60s"
               Write-Host "This typically means the launcher → server handshake is broken"
-              Write-Host "in the frozen build (e.g. PID-based handshake under --onefile)."
+              Write-Host "in the frozen build (e.g. a broken launcher to server handshake)."
               if (Test-Path "$localAppData\WebmailSummary\logs\server.log") {
                 Write-Host "--- server.log tail ---"
                 Get-Content "$localAppData\WebmailSummary\logs\server.log" -Tail 30
@@ -221,18 +221,18 @@ jobs:
         run: |
           $ver = "${{ github.ref_name }}".TrimStart('v')
           $installerName = "webmail-summary-setup-windows-x64-v$ver.exe"
-          Copy-Item dist/webmail-summary.exe release/webmail-summary.exe -Force
           Copy-Item release/webmail-summary-setup-windows-x64.exe ("release/" + $installerName) -Force
-          Compress-Archive -Path release/webmail-summary.exe -DestinationPath release/webmail-summary-windows-x64.zip -Force
-          Get-FileHash release/webmail-summary.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary.exe" } | Out-File release/SHA256SUMS.txt -Encoding ascii
-          Get-FileHash ("release/" + $installerName) -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $installerName" } | Add-Content release/SHA256SUMS.txt
+          # --onedir output is a folder (webmail-summary.exe + _internal\). There
+          # is no standalone single-file exe to ship; the portable download is a
+          # zip of that whole folder (extract, then run the exe inside).
+          Compress-Archive -Path dist/webmail-summary -DestinationPath release/webmail-summary-windows-x64.zip -Force
+          Get-FileHash ("release/" + $installerName) -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $installerName" } | Out-File release/SHA256SUMS.txt -Encoding ascii
           Get-FileHash release/webmail-summary-windows-x64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  webmail-summary-windows-x64.zip" } | Add-Content release/SHA256SUMS.txt
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            release/webmail-summary.exe
             release/webmail-summary-setup-windows-x64-v*.exe
             release/webmail-summary-windows-x64.zip
             release/SHA256SUMS.txt
