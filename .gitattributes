@@ -1,0 +1,12 @@
+# Normalize line endings: text stored as LF in the repo, LF on checkout.
+# Prevents Nextcloud/Windows syncs from re-converting files to CRLF and
+# showing the whole tree as "modified".
+* text=auto eol=lf
+
+# Binary assets: never touch.
+*.png binary
+*.ico binary
+
+# Windows batch/script must keep CRLF (LF makes the cmd window close instantly).
+*.bat text eol=crlf
+*.vbs text eol=crlf
