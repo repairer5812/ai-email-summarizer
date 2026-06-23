@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.8.3] - 2026-06-23
+
+.NET 런타임이 없는 PC에서 앱 창이 흰 화면으로 뜨던 문제를 고친 패치 릴리즈.
+DB 마이그레이션 없음.
+
+### Fixed
+
+- **.NET 런타임 미설치 시 빈 화면 (coreclr 자동 폴백)**
+  - pywebview의 winforms 백엔드는 pythonnet으로 .NET 런타임을 띄우는데,
+    기본 coreclr(.NET Desktop Runtime)이 설치돼 있지 않으면
+    `Failed to create a .NET runtime (coreclr)`로 네이티브 창이 흰 화면이 됐다.
+  - coreclr이 감지되지 않으면(`dotnet` 명령·`DOTNET_ROOT`·`Program Files\dotnet\shared` 부재)
+    항상 존재하는 .NET Framework(`PYTHONNET_RUNTIME=netfx`)로 자동 전환해
+    별도 설치 없이 창이 정상 렌더되도록 했다.
+  - coreclr 보유 PC, 사용자가 `PYTHONNET_RUNTIME`을 이미 지정한 경우, 비윈도우는
+    동작 변화 없음. 전환 실패 시 기존 브라우저 폴백이 안전망으로 유지된다.
+
 ## [0.6.8.2] - 2026-06-23
 
 대시보드를 좁은 창 폭에서 열었을 때 레이아웃이 깨지던 문제를 고친 패치 릴리즈.
