@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.9.1] - 2026-06-24
+
+AppCheck 같은 행위 기반 안티랜섬웨어가 설치된 PC에서는 `ui_mode`를 따로 설정하지
+않아도 자동으로 브라우저로 열리도록 한 패치. 사내 배포 시 수신자가 추가 설정 없이
+설치 후 바로 쓸 수 있게 함. DB 마이그레이션 없음.
+
+### Changed
+
+- **UI 모드 자동 감지**: `ui_mode`가 명시(환경변수/설정)되지 않았을 때, WebView2
+  렌더러를 강제 종료하는 안티랜섬웨어(현재 AppCheck/CheckMAL, 설치 폴더
+  `C:\Program Files\CheckMAL` 등으로 감지)가 있으면 기본값을 `browser`로 잡는다.
+  그 외 환경은 종전대로 `native`. 우선순위: 환경변수 > 설정 > 자동감지 > native.
+  명시 설정은 항상 우선이라, native를 원하면 `WEBMAIL_SUMMARY_UI_MODE=native`로 강제 가능.
+
 ## [0.6.9.0] - 2026-06-23
 
 업데이트 후 네이티브 창이 빈 흰 화면으로 뜨는 환경(행위 기반 안티랜섬웨어가

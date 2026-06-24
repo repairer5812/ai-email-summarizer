@@ -352,6 +352,32 @@ def _load_close_behavior(data_dir) -> str:
             pass
 
 
+def _antiransomware_blocks_webview2() -> bool:
+    """Best-effort: is an anti-ransomware tool that kills the embedded WebView2
+    renderer installed on this machine?
+
+    Confirmed case: AppCheck (CheckMAL) terminates the WebView2 renderer child
+    of an unsigned binary ~1s after spawn, leaving a blank window with no
+    exception (see _resolve_ui_mode). When present we default the UI surface to
+    the browser so the app is usable out of the box on such machines. An
+    explicit WEBMAIL_SUMMARY_UI_MODE env var or 'ui_mode' setting still
+    overrides this. This is environment-aware graceful degradation (use the
+    surface the tool does not block), not a way to disable or evade the tool.
+    """
+    if not is_windows():
+        return False
+    for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramData"):
+        base = os.environ.get(var)
+        if not base:
+            continue
+        try:
+            if (Path(base) / "CheckMAL").is_dir():
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _resolve_ui_mode(data_dir) -> str:
     """Return the desired UI surface: ``native`` | ``browser`` | ``app``.
 
@@ -366,29 +392,36 @@ def _resolve_ui_mode(data_dir) -> str:
     compatibility setting, not a way to disable or evade the security tool.
 
     Precedence: ``WEBMAIL_SUMMARY_UI_MODE`` env var > ``ui_mode`` setting >
-    ``native`` (default — existing behaviour is unchanged for everyone else).
+    auto-detect (``browser`` when an anti-ransomware tool that kills WebView2
+    is present) > ``native``. Default stays native where nothing is detected,
+    so behaviour is unchanged for everyone else.
     """
     valid = {"native", "browser", "app"}
     env = str(os.environ.get("WEBMAIL_SUMMARY_UI_MODE", "")).strip().lower()
     if env in valid:
         return env
+    setting = ""
     try:
         conn = sqlite3.connect(str(data_dir / "db.sqlite3"))
-    except Exception:
-        return "native"
-    try:
-        row = conn.execute(
-            "SELECT value FROM settings WHERE key = ?", ("ui_mode",)
-        ).fetchone()
-        v = str(row[0] if row else "").strip().lower()
-        return v if v in valid else "native"
-    except Exception:
-        return "native"
-    finally:
         try:
-            conn.close()
-        except Exception:
-            pass
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", ("ui_mode",)
+            ).fetchone()
+            setting = str(row[0] if row else "").strip().lower()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    except Exception:
+        setting = ""
+    if setting in valid:
+        return setting
+    # No explicit choice → make the app usable out of the box on machines whose
+    # anti-ransomware tool silently kills the embedded WebView2 renderer.
+    if _antiransomware_blocks_webview2():
+        return "browser"
+    return "native"
 
 
 def _load_tray_image() -> object:
