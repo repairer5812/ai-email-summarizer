@@ -2,6 +2,7 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --sans: "Pretendard", "Segoe UI", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
   --transition: all 0.22s ease;
+  --btn-shadow: 0 8px 18px -10px rgba(59, 130, 246, 0.38);
 }
 
 .theme-bento,
@@ -162,10 +163,20 @@ button.nav__link {
   font: inherit;
 }
 
-/* Matches the weight that button.nav__link ends up with via `font: inherit`,
-   so anchors placed among the nav buttons look the same. */
-.nav__link--regular {
+/* For an anchor that sits among the nav buttons. `button, .btn` leaves its
+   chrome on button.nav__link (glow, tighter tracking, flex centring) and the
+   `font: inherit` above drops the weight to 400; an anchor matches none of
+   that, so mirror it here to make the link indistinguishable from its
+   neighbours. Border and padding still come from .nav__link, same as the
+   buttons. */
+.nav__link--btnlike {
+  box-shadow: var(--btn-shadow);
+  letter-spacing: -0.01em;
   font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .developer-card {
@@ -456,7 +467,7 @@ button,
   white-space: nowrap;
   cursor: pointer;
   transition: var(--transition);
-  box-shadow: 0 8px 18px -10px rgba(59, 130, 246, 0.38);
+  box-shadow: var(--btn-shadow);
 }
 
 button:hover,
