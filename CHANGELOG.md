@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.6.9.2] - 2026-07-31
+
+상단 내비게이션에서 배포용 홈페이지(GitHub Pages 랜딩)로 바로 갈 수 있게 링크를
+추가한 UI 패치. 사용자가 설치 파일·릴리즈 노트·설치 가이드를 찾을 때 주소를 따로
+알 필요가 없게 함. 동작 변경이나 DB 마이그레이션 없음.
+
+### Added
+
+- **홈페이지 링크 (상단 내비)**: 개발자정보와 언어 전환 버튼 사이에
+  `https://repairer5812.github.io/ai-email-summarizer/`로 가는 링크를 추가한다.
+  새 탭에서 열리며(`target="_blank"`, `rel="noopener noreferrer"`), 라벨은
+  `nav.homepage` 키로 한국어 "홈페이지" / 영어 "Homepage"를 지원한다.
+  내비 마크업은 `base.html` 한 곳뿐이라 모든 화면에 함께 나온다.
+- **`.nav__link--regular` 수식자**: `button.nav__link`가 `font: inherit`로
+  굵기를 400으로 되돌리는 탓에 내비의 링크(700)와 버튼(400) 굵기가 달랐다.
+  버튼 사이에 놓이는 링크가 양옆과 같아 보이도록 굵기만 맞추는 수식자를 두고
+  홈페이지 링크에 적용한다. 기존 항목의 모양은 그대로다.
+
 ## [0.6.9.1] - 2026-06-24
 
 AppCheck 같은 행위 기반 안티랜섬웨어가 설치된 PC에서는 `ui_mode`를 따로 설정하지

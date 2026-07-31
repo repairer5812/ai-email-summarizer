@@ -162,6 +162,12 @@ button.nav__link {
   font: inherit;
 }
 
+/* Matches the weight that button.nav__link ends up with via `font: inherit`,
+   so anchors placed among the nav buttons look the same. */
+.nav__link--regular {
+  font-weight: 400;
+}
+
 .developer-card {
   position: absolute;
   top: calc(100% + 10px);
