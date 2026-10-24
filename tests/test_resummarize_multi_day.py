@@ -66,7 +66,7 @@ def _seed_message(
 
 def test_resummarize_endpoint_accepts_multiple_dates(tmp_path, monkeypatch):
     app = _mk_app(tmp_path, monkeypatch)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
 
     from webmail_summary.api import routes_jobs
 
@@ -108,7 +108,7 @@ def test_resummarize_endpoint_rejects_message_ids_with_multiple_dates(
     tmp_path, monkeypatch
 ):
     app = _mk_app(tmp_path, monkeypatch)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
 
     r = client.post(
         "/api/jobs/resummarize-day",

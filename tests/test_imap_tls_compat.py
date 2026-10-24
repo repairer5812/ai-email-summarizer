@@ -79,7 +79,7 @@ def test_setup_test_imap_returns_tls_guidance(tmp_path, monkeypatch):
     monkeypatch.setattr(routes_setup, "ImapSession", _BrokenSession)
     monkeypatch.setattr(routes_setup, "write_error_report", lambda **kwargs: report_path)
 
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
     r = client.post(
         "/setup/test-imap",
         data={
@@ -118,7 +118,7 @@ def test_setup_test_imap_network_error_mentions_report_path(tmp_path, monkeypatc
     monkeypatch.setattr(routes_setup, "ImapSession", _BrokenSession)
     monkeypatch.setattr(routes_setup, "write_error_report", lambda **kwargs: report_path)
 
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
     r = client.post(
         "/setup/test-imap",
         data={

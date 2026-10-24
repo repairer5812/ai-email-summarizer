@@ -32,7 +32,7 @@ def test_openrouter_models_requires_key_or_cache(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(routes_openrouter.keyring, "get_password", lambda *a, **k: "")
     monkeypatch.setattr(routes_openrouter.requests, "get", lambda *a, **k: None)
 
-    c = TestClient(app)
+    c = TestClient(app, base_url="http://127.0.0.1")
     r = c.get("/api/openrouter/models")
     assert r.status_code == 409
     j = r.json()
@@ -66,7 +66,7 @@ def test_openrouter_models_uses_cache_file_without_key(tmp_path: Path, monkeypat
         encoding="utf-8",
     )
 
-    c = TestClient(app)
+    c = TestClient(app, base_url="http://127.0.0.1")
     r = c.get("/api/openrouter/models")
     assert r.status_code == 200
     j = r.json()
@@ -113,7 +113,7 @@ def test_openrouter_models_fetches_and_filters(tmp_path: Path, monkeypatch):
         )
 
     monkeypatch.setattr(routes_openrouter.requests, "get", _fake_get)
-    c = TestClient(app)
+    c = TestClient(app, base_url="http://127.0.0.1")
 
     r1 = c.get("/api/openrouter/models")
     assert r1.status_code == 200

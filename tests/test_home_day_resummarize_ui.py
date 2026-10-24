@@ -125,7 +125,7 @@ def _seed_ui_data(tmp_path):
 def test_home_days_api_reports_failed_counts_and_fallback_notice(tmp_path, monkeypatch):
     app = _mk_app(tmp_path, monkeypatch)
     _seed_ui_data(tmp_path)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
 
     r = client.get("/api/ui/days")
 
@@ -148,7 +148,7 @@ def test_home_days_api_reports_failed_counts_and_fallback_notice(tmp_path, monke
 def test_day_view_shows_single_retry_only_for_failed_summary(tmp_path, monkeypatch):
     app = _mk_app(tmp_path, monkeypatch)
     bad_id, good_id = _seed_ui_data(tmp_path)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
 
     r = client.get("/day/2026-04-16")
 
@@ -163,7 +163,7 @@ def test_day_view_shows_single_retry_only_for_failed_summary(tmp_path, monkeypat
 def test_home_retry_failed_button_allows_multi_day_selection(tmp_path, monkeypatch):
     app = _mk_app(tmp_path, monkeypatch)
     _seed_ui_data(tmp_path)
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
 
     home = client.get("/")
 

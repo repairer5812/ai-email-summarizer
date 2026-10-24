@@ -40,7 +40,7 @@ def test_setup_save_partial_persists_ai_selection_and_returns_local_ready(
         ),
     )
 
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://127.0.0.1")
     r = client.post(
         "/setup/save-partial",
         data={

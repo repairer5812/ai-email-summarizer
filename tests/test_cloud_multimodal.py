@@ -39,7 +39,8 @@ def test_cloud_provider_uses_text_only_payload_without_images(monkeypatch):
 
     import webmail_summary.llm.openrouter as mod
 
-    monkeypatch.setattr(mod.requests, "post", _fake_post)
+    # CloudProvider posts through the module-level keep-alive session.
+    monkeypatch.setattr(mod._SESSION, "post", _fake_post)
     provider = CloudProvider(
         CloudConfig(
             api_key="sk-test",
@@ -79,7 +80,8 @@ def test_cloud_provider_uses_image_parts_when_multimodal_supported(
 
     import webmail_summary.llm.openrouter as mod
 
-    monkeypatch.setattr(mod.requests, "post", _fake_post)
+    # CloudProvider posts through the module-level keep-alive session.
+    monkeypatch.setattr(mod._SESSION, "post", _fake_post)
     provider = CloudProvider(
         CloudConfig(
             api_key="sk-test",

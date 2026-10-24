@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+import pytest
 
 import webmail_summary.util.app_data as mod
 
@@ -33,6 +36,9 @@ def test_default_obsidian_root_prefers_documents_on_macos(monkeypatch, tmp_path:
     assert p == tmp_path / "Documents" / "Tekville_Obsidian"
 
 
+@pytest.mark.skipif(
+    os.name != "nt", reason="%VAR% expansion only exists in ntpath.expandvars"
+)
 def test_get_app_data_dir_expands_literal_windows_env_var(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(mod, "_platform_key", lambda: "windows")
     monkeypatch.setenv("TEMP", str(tmp_path / "temp-root"))
