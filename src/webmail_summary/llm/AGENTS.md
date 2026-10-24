@@ -9,6 +9,8 @@
 - **`provider.py`**: The central factory for LLM instances.
     - Orchestrates backend selection: `local` (llama.cpp) or `cloud` (OpenRouter/OpenAI/etc.).
     - **Priority**: Prefers `llama-server.exe` (persistent) over `llama-cli.exe` to eliminate model reload time per mail.
+- **`cloud_registry.py`**: Cloud provider table (OpenAI, Anthropic, Google Gemini, Upstage, OpenRouter), endpoint URLs and auth headers shared by `provider.py`, `openrouter.py` and the setup key test. Gemini keys are sent in the `x-goog-api-key` header.
+- **`mlx_engine.py` / `mlx_server.py`**: MLX (`mlx-lm`) engine on Apple Silicon; `provider.py` prefers it when the engine is `auto` and MLX is installed.
 - **`local_engine.py`**: Automated binary lifecycle management.
     - Downloads/extracts `llama.cpp` Windows x64 binaries directly from GitHub releases.
     - Installs to `%LOCALAPPDATA%\WebmailSummary\engines\llama.cpp\<tag>\`.

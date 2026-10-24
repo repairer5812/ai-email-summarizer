@@ -16,6 +16,7 @@ This directory handles long-running tasks: mail synchronization, LLM summarizati
 ## Task Definitions
 - `tasks_sync.py`: Main entry for periodic and manual IMAP syncing.
 - `tasks_resummarize.py`: Utility for re-running LLM logic on existing archived mail.
+- `llm_call.py`: Cloud pacing, per-tier timeout, heartbeat, deadline call and multimodal image selection shared by sync and resummarize. Change LLM call behavior here, not in one task.
 - `tasks_refresh_overviews.py`: Synthesizes daily overviews from individual email summaries.
 - `runner.py`: The central job runner that manages the queue and subprocess lifecycle.
 - `repo.py`: Database access layer for job status, progress, and event logging.
@@ -30,6 +31,6 @@ This directory handles long-running tasks: mail synchronization, LLM summarizati
 
 ## Implementation Guidelines
 - **No Global State**: Workers should reload settings from the DB at the start of each run.
-- **Database Hygiene**: Use short-lived connections (`get_conn`) within job loops to avoid locking issues with the web server.
+- **Database Hygiene**: Use short-lived connections (`with open_db(db_path) as conn:`) within job loops to avoid locking issues with the web server. `open_db` closes but never commits; keep explicit `conn.commit()` calls.
 - **Zombie Prevention**: Use `worker_probe.py` to identify and cleanup orphaned sync processes on startup.
 - **Post-processing Resilience**: Failure in daily digest generation should not invalidate successful archival.

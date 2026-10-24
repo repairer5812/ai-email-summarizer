@@ -8,7 +8,7 @@
 ## Core Principles
 - **Local-First**: No external CDN dependencies for CSS/JS. Assets must be in `static/`.
 - **Semantic HTML**: Prioritize readability and clean structure in templates.
-- **Theming**: Support "Trust" and "Creative" themes via CSS variables.
+- **Theming**: Support the "bento" and "clay" themes via CSS variables (legacy "trust"/"creative" settings map to them).
 - **I18n**: All UI strings must use the `t(request, key)` helper from `i18n.py`.
 
 ## Template Architecture
@@ -20,7 +20,11 @@
 ## Static Assets
 - `static/app.css`: Central styles. Use CSS variables for theme-specific colors.
 - `static/favicon.svg`: Vector icon source.
-- **Dynamic Favicon**: ICO format is generated on-the-fly in `app/main.py` using `struct` to ensure browser compatibility without disk I/O.
+- **Favicon**: `/favicon.ico` redirects to `static/app-icon.png` (see `app/main.py`). The tray icon is embedded as base64 in `tray_icon_data.py`.
+
+## Windows Launcher and Updater
+- `native_window.py`: starts the server child, opens the pywebview (WebView2) window, retries once, then falls back to the browser and a pystray fallback tray. Windows only; other platforms run `serve()` in browser mode.
+- `updates.py`: GitHub release check and in-app update. It copies `resources/apply_update.ps1` next to the downloaded installer and runs it with `powershell -File`. Keep `resources/` in the PyInstaller `--add-data` list and in pyproject package-data.
 
 ## Dev Guidelines
 - **No JS Frameworks**: Use vanilla JS or lightweight patterns for interactivity (e.g., sync progress polling).
