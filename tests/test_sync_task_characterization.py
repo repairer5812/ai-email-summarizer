@@ -685,3 +685,65 @@ def test_sync_serial_heartbeat_reports_elapsed(tmp_path, monkeypatch):
     assert beats and all(
         (c, m) == (0.5, "[2026-04-16] 요약 중: mail-1 (1/1) (경과 00:00)") for c, m in beats
     )
+
+
+def test_sync_concurrent_cancel_skips_persisting_the_chunk(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    world = _World(
+        tmp_path,
+        monkeypatch,
+        messages=[_msg(1, "mail-1"), _msg(2, "mail-2"), _msg(3, "mail-3")],
+        settings=_settings(vault, cloud_provider="google"),
+        provider=CloudProvider(),
+    )
+    world.cancel_after_llm_subject = "mail-1"
+
+    world.run()
+
+    rows = world.rows()
+    assert [r["uid"] for r in rows] == [1, 2]
+    assert all(r["summary"] is None for r in rows)
+    assert world.email_exports == []
+    assert world.refreshed == []
+    assert [e for e in world.imap_log if e[0] == "mark_seen"] == []
+    assert world.events() == [
+        ("info", "아카이브 시작"),
+        ("info", "아카이브 시작"),
+        ("info", "요약 시작"),
+    ]
+
+
+def test_sync_concurrent_future_timeout_records_fallback(tmp_path, monkeypatch):
+    vault = tmp_path / "vault"
+    world = _World(
+        tmp_path,
+        monkeypatch,
+        messages=[_msg(1, "mail-1"), _msg(2, "mail-2")],
+        settings=_settings(vault, cloud_provider="google"),
+        provider=CloudProvider(),
+    )
+    release = threading.Event()
+
+    def _slow():
+        release.wait(5.0)
+        return LlmResult(summary="late", tags=[], backlinks=[], personal=False)
+
+    world.llm_script["mail-1"] = _slow
+    monkeypatch.setattr(mod, "llm_timeout_seconds", lambda provider: 0.2)
+    # Released well after the 0.5 s cloud pacing delay plus the 0.2 s timeout.
+    timer = threading.Timer(2.0, release.set)
+    timer.start()
+    try:
+        world.run()
+    finally:
+        release.set()
+        timer.cancel()
+
+    events = world.events()
+    assert events[3][0] == "warn"
+    assert events[3][1].startswith("LLM 호출 timeout (1/2, 대기 0초): ")
+    assert ("warn", "LLM 실패 메일 (1/2): 다음 sync 때 자동 재시도합니다") in events
+    rows = {r["uid"]: r for r in world.rows()}
+    assert rows[1]["summary"] == "(LLM timeout)"
+    assert (rows[1]["exported"], rows[1]["seen"]) == (0, 0)
+    assert (rows[2]["exported"], rows[2]["seen"]) == (1, 1)
