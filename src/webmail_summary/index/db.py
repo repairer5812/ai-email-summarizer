@@ -1,7 +1,19 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+from webmail_summary.util.app_data import get_app_data_dir
+
+DB_FILENAME = "db.sqlite3"
+
+
+def app_db_path(data_dir: Path | None = None) -> Path:
+    """Location of the app database inside ``data_dir`` (default: app data dir)."""
+    base = data_dir if data_dir is not None else get_app_data_dir()
+    return base / DB_FILENAME
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -61,6 +73,20 @@ def init_db(db_path: Path) -> None:
 
 def get_conn(db_path: Path) -> sqlite3.Connection:
     return _connect(db_path)
+
+
+@contextmanager
+def open_db(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """``with open_db(path) as conn:`` opens a connection and always closes it.
+
+    Unlike ``with sqlite3.connect(...)`` it never commits or rolls back on
+    its own; callers keep calling ``conn.commit()`` where they did before.
+    """
+    conn = _connect(db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _migrate_0_to_1(conn: sqlite3.Connection) -> None:

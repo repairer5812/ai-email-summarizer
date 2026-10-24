@@ -6,11 +6,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from webmail_summary.index.mail_repo import get_daily_overview
-from webmail_summary.index.settings import load_settings, set_setting
+from webmail_summary.index.db import app_db_path
+from webmail_summary.index.settings import get_setting, load_settings, set_setting
 from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.llm.long_summarize import _is_placeholder_bullet
-from webmail_summary.ui.settings_gateway import db_path, get_setting
 from webmail_summary.ui.setup_service import (
     get_cloud_keys,
     is_ai_ready,
@@ -130,7 +130,7 @@ def _check_model_migration(settings) -> dict | None:
 def home(request: Request):
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         settings = load_settings(conn)
         configured = get_setting(conn, "imap_host") is not None
@@ -229,7 +229,7 @@ def home(request: Request):
 def api_get_days():
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         return _build_day_cards(conn, limit=90)
     finally:
@@ -240,7 +240,7 @@ def api_get_days():
 def dismiss_new_models_popup():
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         set_setting(conn, "new_models_v2_dismissed", "1")
         conn.commit()

@@ -9,11 +9,10 @@ import keyring
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from webmail_summary.index.db import get_conn
+from webmail_summary.index.db import app_db_path, get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.runner import get_runner
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
-from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.jobs.tasks_local_install import local_install_task
 from webmail_summary.llm.local_models import get_local_model, recommend_local_model
 from webmail_summary.llm.local_status import check_local_ready, delete_gguf_and_marker
@@ -32,7 +31,7 @@ router = APIRouter(prefix="/api")
 
 
 def _db_path():
-    return get_app_data_dir() / "db.sqlite3"
+    return app_db_path()
 
 
 def _normalize_date_keys(raw: object) -> list[str]:

@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from webmail_summary.app.main import create_app
+from webmail_summary.index.db import app_db_path
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.single_instance import SingleInstanceLock
 from webmail_summary.util.ui_lifecycle import should_exit_for_ui_close
@@ -26,7 +27,7 @@ def _find_free_port() -> int:
 def _load_close_behavior(data_dir: Path) -> str:
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(data_dir / "db.sqlite3")
+    conn = get_conn(app_db_path(data_dir))
     try:
         row = conn.execute(
             "SELECT value FROM settings WHERE key = ?", ("close_behavior",)
@@ -128,7 +129,7 @@ def serve(opts: ServeOptions = ServeOptions()) -> None:
                 from webmail_summary.index.settings import load_settings
                 from webmail_summary.ui.updates import _check_github_release
 
-                conn = get_conn(data_dir / "db.sqlite3")
+                conn = get_conn(app_db_path(data_dir))
                 try:
                     settings = load_settings(conn)
                     if not settings.update_auto_check_enabled:

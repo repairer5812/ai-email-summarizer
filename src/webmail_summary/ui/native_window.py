@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import requests
 
 from webmail_summary.ui import frozen_extensions
+from webmail_summary.index.db import app_db_path
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.error_reports import write_error_report
 from webmail_summary.util.platform_caps import is_windows, ui_platform_caps
@@ -330,7 +331,7 @@ def _is_persistent_native_error(error: Exception) -> bool:
 
 
 def _load_close_behavior(data_dir) -> str:
-    db_path = data_dir / "db.sqlite3"
+    db_path = app_db_path(data_dir)
     try:
         conn = sqlite3.connect(str(db_path))
     except Exception:
@@ -402,7 +403,7 @@ def _resolve_ui_mode(data_dir) -> str:
         return env
     setting = ""
     try:
-        conn = sqlite3.connect(str(data_dir / "db.sqlite3"))
+        conn = sqlite3.connect(str(app_db_path(data_dir)))
         try:
             row = conn.execute(
                 "SELECT value FROM settings WHERE key = ?", ("ui_mode",)

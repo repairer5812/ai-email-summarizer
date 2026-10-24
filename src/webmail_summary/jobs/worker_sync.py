@@ -5,7 +5,7 @@ import threading
 
 from collections.abc import Sequence
 
-from webmail_summary.index.db import get_conn
+from webmail_summary.index.db import app_db_path, get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
 from webmail_summary.util.app_data import get_app_data_dir
@@ -14,7 +14,7 @@ from webmail_summary.util.error_reports import write_error_report
 
 def run_worker(job_id: str) -> None:
     job_id = str(job_id)
-    db_path = get_app_data_dir() / "db.sqlite3"
+    db_path = app_db_path()
 
     conn = get_conn(db_path)
     try:

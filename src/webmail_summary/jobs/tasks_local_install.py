@@ -4,7 +4,7 @@ import threading
 import time
 from pathlib import Path
 
-from webmail_summary.index.db import get_conn
+from webmail_summary.index.db import app_db_path, get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.llm.hf_download import (
     DownloadCancelled,
@@ -19,7 +19,6 @@ from webmail_summary.llm.local_models import LOCAL_MODELS, get_local_model
 from webmail_summary.llm.local_status import get_local_model_path
 from webmail_summary.llm.local_status import get_local_model_complete_marker
 from webmail_summary.llm.local_status import check_local_ready
-from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.app_data import get_models_dir
 from webmail_summary.util.atomic_io import atomic_write_text
 
@@ -29,7 +28,7 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
     from webmail_summary.llm.mlx_engine import ensure_mlx_installed, MlxNotSupported, MlxInstallError
     from webmail_summary.llm.mlx_status import check_mlx_ready
 
-    db_path = get_app_data_dir() / "db.sqlite3"
+    db_path = app_db_path()
 
     # Check if already cached.
     mlx_ready = check_mlx_ready(model_id=model_id_norm)
@@ -134,7 +133,7 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
 
 def local_install_task(*, model_id: str):
     def run(job_id: str, cancel: threading.Event) -> None:
-        db_path = get_app_data_dir() / "db.sqlite3"
+        db_path = app_db_path()
 
         # Normalize model id.
         model_id_norm = get_local_model(model_id).id

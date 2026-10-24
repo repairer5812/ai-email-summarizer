@@ -21,7 +21,7 @@ from webmail_summary.export.obsidian.exporter import (
     export_topic_note,
 )
 from webmail_summary.imap_client import ImapSession
-from webmail_summary.index.db import get_conn
+from webmail_summary.index.db import app_db_path, get_conn
 from webmail_summary.index.mail_repo import (
     get_max_uid,
     get_incomplete_uids,
@@ -267,7 +267,7 @@ def _build_daily_summary(notes: list[Path]) -> str:
 def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
     def run(job_id: str, cancel: threading.Event) -> None:
         data_dir = get_app_data_dir()
-        db_path = data_dir / "db.sqlite3"
+        db_path = app_db_path(data_dir)
 
         conn = get_conn(db_path)
         try:

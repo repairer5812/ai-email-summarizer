@@ -17,7 +17,8 @@ from webmail_summary.imap_client import (
     is_imap_tls_error,
     parse_mail_search_filter,
 )
-from webmail_summary.index.settings import _normalize_ui_theme, load_settings
+from webmail_summary.index.db import app_db_path
+from webmail_summary.index.settings import _normalize_ui_theme, load_settings, set_setting
 from webmail_summary.llm.local_engine import find_llama_cpp_installed
 from webmail_summary.llm.local_models import (
     KOREAN_NC_MODELS,
@@ -28,7 +29,6 @@ from webmail_summary.llm.local_models import (
     get_local_model,
 )
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
-from webmail_summary.ui.settings_gateway import db_path, set_setting
 from webmail_summary.ui.setup_service import (
     get_cloud_keys,
     pick_directory_dialog,
@@ -212,7 +212,7 @@ def setup_get(request: Request):
 
     tab = str(request.query_params.get("tab") or "profile")
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         settings = load_settings(conn)
         active_jobs = get_active_jobs(conn)
@@ -367,7 +367,7 @@ def setup_test_imap(
             }
         )
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         set_setting(conn, "imap_host", host)
         set_setting(conn, "imap_port", str(port))
@@ -513,7 +513,7 @@ def setup_save(
 ):
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         composed_sender_filter = _compose_mail_filter_value(
             sender_from_filter=sender_from_filter,
@@ -654,7 +654,7 @@ def setup_pick_obsidian():
     if not _is_safe_obsidian_root(picked):
         return RedirectResponse("/setup?error=obsidian_path_unsafe", status_code=302)
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         set_setting(conn, "obsidian_root", picked)
         conn.commit()
@@ -677,7 +677,7 @@ def setup_save_partial(
 ):
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         if ui_theme:
             set_setting(conn, "ui_theme", _normalize_ui_theme(ui_theme))

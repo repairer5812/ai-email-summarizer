@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from webmail_summary.api.routes_jobs import router as api_router
 from webmail_summary.api.routes_openrouter import router as openrouter_router
-from webmail_summary.index.db import get_conn, init_db
+from webmail_summary.index.db import app_db_path, get_conn, init_db
 from webmail_summary.llm.local_status import delete_gguf_and_marker
 from webmail_summary.ui.routes import router as ui_router
 from webmail_summary.util.app_data import get_app_data_dir
@@ -78,7 +78,7 @@ def create_app() -> FastAPI:
     _cleanup_stale_mei_dirs()
 
     data_dir = get_app_data_dir()
-    init_db(data_dir / "db.sqlite3")
+    init_db(app_db_path(data_dir))
 
     # Remove legacy ultra model artifacts (Qwen2.5 0.5B) if present.
     delete_gguf_and_marker(
@@ -93,7 +93,7 @@ def create_app() -> FastAPI:
 
     # On restart, background jobs are not resumed. Mark any previously active
     # jobs as failed so the UI doesn't get stuck watching old job IDs.
-    conn = get_conn(data_dir / "db.sqlite3")
+    conn = get_conn(app_db_path(data_dir))
     try:
         conn.execute(
             "UPDATE jobs SET status='failed', message='recovered on startup', updated_at=datetime('now') "

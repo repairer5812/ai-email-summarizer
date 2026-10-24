@@ -14,7 +14,7 @@ from webmail_summary.export.obsidian.exporter import (
     export_topic_note,
 )
 from webmail_summary.export.obsidian.naming import safe_topic_name
-from webmail_summary.index.db import get_conn
+from webmail_summary.index.db import app_db_path, get_conn
 from webmail_summary.index.mail_repo import (
     get_message_ids_by_topic,
     list_messages_for_resummarize_by_date,
@@ -108,7 +108,7 @@ def resummarize_day_task(
             pass
 
         data_dir = get_app_data_dir()
-        db_path = data_dir / "db.sqlite3"
+        db_path = app_db_path(data_dir)
 
         day_keys = _normalize_date_keys(date_key=date_key, date_keys=date_keys)
         if not day_keys:

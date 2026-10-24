@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable
 
-from webmail_summary.index.db import get_conn
+from webmail_summary.index.db import app_db_path, get_conn
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.worker_probe import kill_sync_worker
 from webmail_summary.util.app_data import get_app_data_dir
@@ -66,7 +66,7 @@ class JobRunner:
     def enqueue(self, *, kind: str, fn: JobFunc) -> str:
         self.start()
         job_id = uuid.uuid4().hex
-        db_path = get_app_data_dir() / "db.sqlite3"
+        db_path = app_db_path()
         conn = get_conn(db_path)
         try:
             repo.create_job(conn, job_id=job_id, kind=kind)
@@ -105,7 +105,7 @@ class JobRunner:
         return True
 
     def _loop(self) -> None:
-        db_path = get_app_data_dir() / "db.sqlite3"
+        db_path = app_db_path()
         while True:
             job = self._q.get()
             cancel = threading.Event()

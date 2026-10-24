@@ -7,9 +7,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from webmail_summary.index.mail_repo import get_message_detail, list_messages_by_date
+from webmail_summary.index.db import app_db_path
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
-from webmail_summary.ui.settings_gateway import db_path
 from webmail_summary.ui.timefmt import format_kst, time_kst
 from webmail_summary.ui.web_shared import fmt_summarize_ms, get_active_jobs, templates
 from webmail_summary.util.jsonish import coerce_summary_text
@@ -25,7 +25,7 @@ def day_view(request: Request, date_key: str):
     if len(dk) != 10 or dk[4] != "-" or dk[7] != "-":
         return RedirectResponse("/", status_code=302)
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         settings = load_settings(conn)
         rows = list_messages_by_date(conn, date_prefix=dk)
@@ -87,7 +87,7 @@ def day_view(request: Request, date_key: str):
 def message_detail(request: Request, message_id: int):
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         settings = load_settings(conn)
         row = get_message_detail(conn, int(message_id))
@@ -158,7 +158,7 @@ def message_detail(request: Request, message_id: int):
 def message_original(request: Request, message_id: int):
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         settings = load_settings(conn)
         row = get_message_detail(conn, int(message_id))
@@ -206,7 +206,7 @@ def serve_message_file(request: Request, message_id: int, path: str):
     from fastapi.responses import FileResponse
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         row = conn.execute(
             "SELECT rendered_html_path FROM messages WHERE id = ?", (int(message_id),)

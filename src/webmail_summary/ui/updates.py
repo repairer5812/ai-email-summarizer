@@ -22,10 +22,8 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, RedirectResponse
 from packaging.version import InvalidVersion, Version
 
-from webmail_summary.index.settings import Settings, load_settings
-from webmail_summary.ui.settings_gateway import db_path
-from webmail_summary.ui.settings_gateway import get_setting
-from webmail_summary.ui.settings_gateway import set_setting
+from webmail_summary.index.db import app_db_path
+from webmail_summary.index.settings import Settings, get_setting, load_settings, set_setting
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.process_control import build_fresh_pyinstaller_env
 from webmail_summary.util.ui_lifecycle import read_ui_pid
@@ -1074,7 +1072,7 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
 def updates_apply_status():
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         return {"ok": True, **_get_update_apply_state(conn)}
     finally:
@@ -1096,7 +1094,7 @@ def updates_apply_start():
     try:
         from webmail_summary.index.db import get_conn
 
-        conn0 = get_conn(db_path())
+        conn0 = get_conn(app_db_path())
         try:
             _set_update_apply_state(
                 conn0,
@@ -1118,7 +1116,7 @@ def updates_apply_start():
             )
         _update_apply_thread = threading.Thread(
             target=_run_update_apply_thread,
-            kwargs={"db_path": db_path()},
+            kwargs={"db_path": app_db_path()},
             daemon=True,
         )
         _update_apply_thread.start()
@@ -1135,7 +1133,7 @@ def updates_apply_now():
 def updates_snooze_week():
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         until = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
         set_setting(conn, "update_snooze_until", until)
@@ -1149,7 +1147,7 @@ def updates_snooze_week():
 def updates_snooze_day():
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         until = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         set_setting(conn, "update_snooze_until", until)
@@ -1163,7 +1161,7 @@ def updates_snooze_day():
 def updates_skip_latest():
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     try:
         latest = (get_setting(conn, "update_latest_version") or "").strip()
         set_setting(conn, "update_skip_version", latest)
@@ -1177,7 +1175,7 @@ def updates_skip_latest():
 def updates_check_now():
     from webmail_summary.index.db import get_conn
 
-    conn = get_conn(db_path())
+    conn = get_conn(app_db_path())
     status = "error"
     try:
         settings = load_settings(conn)

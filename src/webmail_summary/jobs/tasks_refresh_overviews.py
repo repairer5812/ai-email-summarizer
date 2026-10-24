@@ -5,13 +5,12 @@ import threading
 from datetime import datetime
 from collections.abc import Callable
 from pathlib import Path
-from webmail_summary.index.db import get_conn
+from webmail_summary.index.db import app_db_path, get_conn
 from webmail_summary.index.mail_repo import set_daily_overview
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
 from webmail_summary.llm.provider import get_llm_provider
 from webmail_summary.llm.long_summarize import synthesize_daily_overview
-from webmail_summary.util.app_data import get_app_data_dir
 
 
 def refresh_overviews_task(
@@ -34,7 +33,7 @@ def refresh_overviews_task(
         return out
 
     def run(job_id: str, cancel: threading.Event) -> None:
-        db_path = get_app_data_dir() / "db.sqlite3"
+        db_path = app_db_path()
         conn = get_conn(db_path)
         try:
             s = load_settings(conn)
