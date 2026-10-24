@@ -5,7 +5,7 @@ import threading
 
 from collections.abc import Sequence
 
-from webmail_summary.index.db import app_db_path, get_conn
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
 from webmail_summary.util.app_data import get_app_data_dir
@@ -16,12 +16,9 @@ def run_worker(job_id: str) -> None:
     job_id = str(job_id)
     db_path = app_db_path()
 
-    conn = get_conn(db_path)
-    try:
+    with open_db(db_path) as conn:
         repo.set_job_status(conn, job_id=job_id, status="running")
         repo.add_event(conn, job_id=job_id, level="info", text="sync worker started")
-    finally:
-        conn.close()
 
     cancel = threading.Event()
     try:
@@ -35,8 +32,7 @@ def run_worker(job_id: str) -> None:
             details={"job_id": job_id, "job_kind": "sync"},
             related_paths=[get_app_data_dir() / "logs" / "server.log"],
         )
-        conn2 = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn2:
             repo.add_event(conn2, job_id=job_id, level="error", text=str(e))
             repo.add_event(
                 conn2,
@@ -50,17 +46,12 @@ def run_worker(job_id: str) -> None:
                 repo.set_job_status(
                     conn2, job_id=job_id, status="failed", message=str(e)
                 )
-        finally:
-            conn2.close()
         raise
     else:
-        conn3 = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn3:
             job = repo.get_job(conn3, job_id)
             if job is not None and job.status not in {"cancelled"}:
                 repo.set_job_status(conn3, job_id=job_id, status="succeeded")
-        finally:
-            conn3.close()
 
 
 def main(argv: Sequence[str] | None = None) -> None:

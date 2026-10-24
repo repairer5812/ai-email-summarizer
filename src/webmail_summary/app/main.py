@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from webmail_summary.api.routes_jobs import router as api_router
 from webmail_summary.api.routes_openrouter import router as openrouter_router
-from webmail_summary.index.db import app_db_path, get_conn, init_db
+from webmail_summary.index.db import app_db_path, init_db, open_db
 from webmail_summary.llm.local_status import delete_gguf_and_marker
 from webmail_summary.ui.routes import router as ui_router
 from webmail_summary.util.app_data import get_app_data_dir
@@ -93,8 +93,7 @@ def create_app() -> FastAPI:
 
     # On restart, background jobs are not resumed. Mark any previously active
     # jobs as failed so the UI doesn't get stuck watching old job IDs.
-    conn = get_conn(app_db_path(data_dir))
-    try:
+    with open_db(app_db_path(data_dir)) as conn:
         conn.execute(
             "UPDATE jobs SET status='failed', message='recovered on startup', updated_at=datetime('now') "
             "WHERE status IN ('queued','running')"
@@ -104,8 +103,6 @@ def create_app() -> FastAPI:
             "WHERE status IN ('cancel_requested')"
         )
         conn.commit()
-    finally:
-        conn.close()
 
     # Static assets (CSS)
     static_dir = Path(__file__).resolve().parents[1] / "ui" / "static"

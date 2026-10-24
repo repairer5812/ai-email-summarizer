@@ -21,7 +21,7 @@ from webmail_summary.export.obsidian.exporter import (
     export_topic_note,
 )
 from webmail_summary.imap_client import ImapSession
-from webmail_summary.index.db import app_db_path, get_conn
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.mail_repo import (
     get_max_uid,
     get_incomplete_uids,
@@ -123,18 +123,14 @@ def _build_stage_message(*, stage: str, display_date: str, subject: str) -> str:
 
 
 def _add_job_event(*, db_path: Path, job_id: str, level: str, text: str) -> None:
-    conn = get_conn(db_path)
-    try:
+    with open_db(db_path) as conn:
         repo.add_event(conn, job_id=job_id, level=level, text=text)
-    finally:
-        conn.close()
 
 
 def _update_job_progress(
     *, db_path: Path, job_id: str, current: float, total: float, message: str
 ) -> None:
-    conn = get_conn(db_path)
-    try:
+    with open_db(db_path) as conn:
         repo.update_progress(
             conn,
             job_id=job_id,
@@ -142,8 +138,6 @@ def _update_job_progress(
             total=total,
             message=message,
         )
-    finally:
-        conn.close()
 
 
 def _load_body_text_for_llm(
@@ -174,8 +168,7 @@ def _run_llm_summary(
     multimodal_inputs: list[LlmImageInput] | None,
 ) -> LlmResult:
     def _heartbeat_tick(elapsed_s: float) -> None:
-        conn_hb = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn_hb:
             cur_job = repo.get_job(conn_hb, job_id)
             cur_progress = item_index - 0.99
             if cur_job is not None:
@@ -196,8 +189,6 @@ def _run_llm_summary(
                     f"(경과 {format_elapsed(elapsed_s)})"
                 ),
             )
-        finally:
-            conn_hb.close()
 
     llm_timeout_s = llm_timeout_seconds(provider)
 
@@ -269,11 +260,8 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
         data_dir = get_app_data_dir()
         db_path = app_db_path(data_dir)
 
-        conn = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn:
             s = load_settings(conn)
-        finally:
-            conn.close()
 
         if not s.imap_host or not s.imap_user:
             raise RuntimeError("not configured")
@@ -288,14 +276,11 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
         try:
             provider = get_llm_provider(s)
         except LlmNotReady as e:
-            connr = get_conn(db_path)
-            try:
+            with open_db(db_path) as connr:
                 repo.add_event(connr, job_id=job_id, level="error", text=str(e))
                 repo.set_job_status(
                     connr, job_id=job_id, status="failed", message=str(e)
                 )
-            finally:
-                connr.close()
             raise
 
         vault_root = (
@@ -311,8 +296,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
             imap.select_folder(s.imap_folder, readonly=False)
             uidvalidity = imap.get_uidvalidity_for(s.imap_folder)
 
-            conn0 = get_conn(db_path)
-            try:
+            with open_db(db_path) as conn0:
                 last_uid = get_max_uid(
                     conn0,
                     account_id=account_id,
@@ -327,8 +311,6 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     mailbox=s.imap_folder,
                     uidvalidity=uidvalidity,
                 )
-            finally:
-                conn0.close()
 
             # Sync the last 60 days, then filter by UID watermark.
             import datetime as dt
@@ -344,8 +326,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
             retry_set = set(retry_uids)
             uids = retry_uids + [u for u in new_uids if u not in retry_set]
 
-            connp = get_conn(db_path)
-            try:
+            with open_db(db_path) as connp:
                 repo.update_progress(
                     connp,
                     job_id=job_id,
@@ -353,8 +334,6 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     total=max(len(uids), 1),
                     message="동기화 준비 중",
                 )
-            finally:
-                connp.close()
 
             msg_total = int(len(uids))
 
@@ -472,8 +451,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     subject=subject,
                     stage="index",
                 )
-                conn1 = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn1:
                     msg_fk = upsert_message(
                         conn1,
                         account_id=account_id,
@@ -526,8 +504,6 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         ],
                     )
                     conn1.commit()
-                finally:
-                    conn1.close()
 
                 body_text = _load_body_text_for_llm(
                     body_text_path=str(ar.body_text_path)
@@ -652,8 +628,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                 """
                 i_global = ctx["i_global"]
                 msg_fk = ctx["msg_fk"]
-                conn_fb = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn_fb:
                     set_analysis(
                         conn_fb,
                         message_fk=msg_fk,
@@ -664,8 +639,6 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         summarize_ms=int(max(0.0, dt2_s) * 1000.0),
                     )
                     conn_fb.commit()
-                finally:
-                    conn_fb.close()
                 _add_job_event(
                     db_path=db_path,
                     job_id=job_id,
@@ -718,8 +691,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     m.internaldate.date() if m.internaldate else dt.date.today()
                 )
 
-                conn2 = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn2:
                     # set_analysis 먼저: export 실패해도 사용자가 요약 결과를
                     # day list 에서 볼 수 있도록 함.
                     set_analysis(
@@ -765,8 +737,6 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     # 같은 conn 으로 set_exported 까지 묶음 (conn 2개 → 1개).
                     set_exported(conn2, message_fk=msg_fk)
                     conn2.commit()
-                finally:
-                    conn2.close()
                 return note_path
 
             def _mark_one(
@@ -795,23 +765,17 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     _mark_seen_retry(m.uid)
                     if revert_seen and not originally_seen:
                         to_revert.append(int(m.uid))
-                    connm = get_conn(db_path)
-                    try:
+                    with open_db(db_path) as connm:
                         set_seen_marked(connm, message_fk=msg_fk)
                         connm.commit()
-                    finally:
-                        connm.close()
                 except Exception as e:
-                    connm2 = get_conn(db_path)
-                    try:
+                    with open_db(db_path) as connm2:
                         repo.add_event(
                             connm2,
                             job_id=job_id,
                             level="warn",
                             text=f"읽음 처리 실패: {e}",
                         )
-                    finally:
-                        connm2.close()
 
             try:
                 global_counter = 0
@@ -1126,15 +1090,12 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                         try:
                             _clear_seen_retry(int(uid))
                         except Exception as e:
-                            connw = get_conn(db_path)
-                            try:
+                            with open_db(db_path) as connw:
                                 repo.add_event(
                                     connw,
                                     job_id=job_id,
                                     level="warn",
                                     text=f"안읽음 원복 실패: {e}",
                                 )
-                            finally:
-                                connw.close()
 
     return run

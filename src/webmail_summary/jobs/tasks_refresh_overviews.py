@@ -5,7 +5,7 @@ import threading
 from datetime import datetime
 from collections.abc import Callable
 from pathlib import Path
-from webmail_summary.index.db import app_db_path, get_conn
+from webmail_summary.index.db import app_db_path, get_conn, open_db
 from webmail_summary.index.mail_repo import set_daily_overview
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
@@ -34,8 +34,7 @@ def refresh_overviews_task(
 
     def run(job_id: str, cancel: threading.Event) -> None:
         db_path = app_db_path()
-        conn = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn:
             s = load_settings(conn)
             provider = get_llm_provider(s)
 
@@ -101,8 +100,6 @@ def refresh_overviews_task(
                     message=f"[{d}] 날짜별요약 생성 완료",
                 )
 
-        finally:
-            conn.close()
 
     return run
 
@@ -147,8 +144,7 @@ def refresh_overviews_for_dates(
         return []
 
     refreshed: list[str] = []
-    conn = get_conn(db_path)
-    try:
+    with open_db(db_path) as conn:
         for d in normalized_days:
             day_conn = get_conn(db_path)
             try:
@@ -232,7 +228,5 @@ def refresh_overviews_for_dates(
                     )
             finally:
                 day_conn.close()
-    finally:
-        conn.close()
 
     return refreshed

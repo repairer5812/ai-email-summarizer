@@ -17,7 +17,7 @@ from webmail_summary.imap_client import (
     is_imap_tls_error,
     parse_mail_search_filter,
 )
-from webmail_summary.index.db import app_db_path
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.settings import _normalize_ui_theme, load_settings, set_setting
 from webmail_summary.llm.local_engine import find_llama_cpp_installed
 from webmail_summary.llm.local_models import (
@@ -208,12 +208,9 @@ def _compose_mail_filter_value(
 
 @router.get("/setup", response_class=HTMLResponse)
 def setup_get(request: Request):
-    from webmail_summary.index.db import get_conn
-
     tab = str(request.query_params.get("tab") or "profile")
 
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         settings = load_settings(conn)
         active_jobs = get_active_jobs(conn)
 
@@ -315,8 +312,6 @@ def setup_get(request: Request):
             "model_installed": model_installed,
             "model_size": model_size,
         }
-    finally:
-        conn.close()
     return templates.TemplateResponse(request=request, name="setup.html", context=ctx)
 
 
@@ -327,7 +322,6 @@ def setup_test_imap(
     imap_user: str = Form(""),
     imap_password: str = Form(""),
 ):
-    from webmail_summary.index.db import get_conn
 
     host = (imap_host or "").strip()
     user = (imap_user or "").strip()
@@ -367,14 +361,11 @@ def setup_test_imap(
             }
         )
 
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         set_setting(conn, "imap_host", host)
         set_setting(conn, "imap_port", str(port))
         set_setting(conn, "imap_user", user)
         conn.commit()
-    finally:
-        conn.close()
 
     folders: list[str] = []
     try:
@@ -511,10 +502,8 @@ def setup_save(
     close_behavior: str = Form("background"),
     current_tab: str = Form("profile"),
 ):
-    from webmail_summary.index.db import get_conn
 
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         composed_sender_filter = _compose_mail_filter_value(
             sender_from_filter=sender_from_filter,
             sender_domain_filter=sender_domain_filter,
@@ -619,8 +608,6 @@ def setup_save(
 
         set_setting(conn, "configured_at", datetime.now(timezone.utc).isoformat())
         conn.commit()
-    finally:
-        conn.close()
 
     keys_to_store = {
         "openai": openai_api_key,
@@ -646,20 +633,15 @@ def setup_save(
 
 @router.post("/setup/pick-obsidian")
 def setup_pick_obsidian():
-    from webmail_summary.index.db import get_conn
-
     picked = pick_directory_dialog()
     if not picked:
         return RedirectResponse("/setup", status_code=302)
     if not _is_safe_obsidian_root(picked):
         return RedirectResponse("/setup?error=obsidian_path_unsafe", status_code=302)
 
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         set_setting(conn, "obsidian_root", picked)
         conn.commit()
-    finally:
-        conn.close()
     return RedirectResponse("/setup", status_code=302)
 
 
@@ -675,10 +657,8 @@ def setup_save_partial(
     local_threads: str = Form(None),
     openrouter_model: str = Form(None),
 ):
-    from webmail_summary.index.db import get_conn
 
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         if ui_theme:
             set_setting(conn, "ui_theme", _normalize_ui_theme(ui_theme))
         if llm_backend:
@@ -722,8 +702,6 @@ def setup_save_partial(
             set_setting(conn, "openrouter_model", str(openrouter_model).strip())
         conn.commit()
         settings = load_settings(conn)
-    finally:
-        conn.close()
 
     saved = {
         "ui_theme": settings.ui_theme,

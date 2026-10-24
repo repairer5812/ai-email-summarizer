@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from webmail_summary.index.mail_repo import get_message_detail, list_messages_by_date
-from webmail_summary.index.db import app_db_path
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
 from webmail_summary.ui.timefmt import format_kst, time_kst
@@ -19,14 +19,11 @@ router = APIRouter()
 
 @router.get("/day/{date_key}", response_class=HTMLResponse)
 def day_view(request: Request, date_key: str):
-    from webmail_summary.index.db import get_conn
-
     dk = (date_key or "").strip()
     if len(dk) != 10 or dk[4] != "-" or dk[7] != "-":
         return RedirectResponse("/", status_code=302)
 
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         settings = load_settings(conn)
         rows = list_messages_by_date(conn, date_prefix=dk)
         active_jobs = get_active_jobs(conn)
@@ -37,8 +34,6 @@ def day_view(request: Request, date_key: str):
             job = active_jobs["resummarize"]
             if job.get("date_key") == dk:
                 active_resum = job
-    finally:
-        conn.close()
 
     items: list[dict] = []
     for r in rows:
@@ -85,15 +80,10 @@ def day_view(request: Request, date_key: str):
 
 @router.get("/message/{message_id}", response_class=HTMLResponse)
 def message_detail(request: Request, message_id: int):
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         settings = load_settings(conn)
         row = get_message_detail(conn, int(message_id))
         active_jobs = get_active_jobs(conn)
-    finally:
-        conn.close()
     if row is None:
         return RedirectResponse("/", status_code=302)
 
@@ -156,15 +146,10 @@ def message_detail(request: Request, message_id: int):
 
 @router.get("/message/{message_id}/original", response_class=HTMLResponse)
 def message_original(request: Request, message_id: int):
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         settings = load_settings(conn)
         row = get_message_detail(conn, int(message_id))
         active_jobs = get_active_jobs(conn)
-    finally:
-        conn.close()
     if row is None:
         return RedirectResponse("/", status_code=302)
 
@@ -204,15 +189,11 @@ def message_original(request: Request, message_id: int):
 @router.get("/m/{message_id}/{path:path}")
 def serve_message_file(request: Request, message_id: int, path: str):
     from fastapi.responses import FileResponse
-    from webmail_summary.index.db import get_conn
 
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         row = conn.execute(
             "SELECT rendered_html_path FROM messages WHERE id = ?", (int(message_id),)
         ).fetchone()
-    finally:
-        conn.close()
     if not row or not row[0]:
         return RedirectResponse("/", status_code=302)
 

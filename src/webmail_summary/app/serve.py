@@ -12,7 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from webmail_summary.app.main import create_app
-from webmail_summary.index.db import app_db_path
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.single_instance import SingleInstanceLock
 from webmail_summary.util.ui_lifecycle import should_exit_for_ui_close
@@ -25,15 +25,10 @@ def _find_free_port() -> int:
 
 
 def _load_close_behavior(data_dir: Path) -> str:
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path(data_dir))
-    try:
+    with open_db(app_db_path(data_dir)) as conn:
         row = conn.execute(
             "SELECT value FROM settings WHERE key = ?", ("close_behavior",)
         ).fetchone()
-    finally:
-        conn.close()
     v = str(row[0] if row else "background").strip().lower()
     if v not in {"background", "exit"}:
         return "background"
@@ -125,18 +120,14 @@ def serve(opts: ServeOptions = ServeOptions()) -> None:
 
         def _run_update_check() -> None:
             try:
-                from webmail_summary.index.db import get_conn
                 from webmail_summary.index.settings import load_settings
                 from webmail_summary.ui.updates import _check_github_release
 
-                conn = get_conn(app_db_path(data_dir))
-                try:
+                with open_db(app_db_path(data_dir)) as conn:
                     settings = load_settings(conn)
                     if not settings.update_auto_check_enabled:
                         return
                     _check_github_release(conn, settings, force=True)
-                finally:
-                    conn.close()
             except Exception:
                 pass
 

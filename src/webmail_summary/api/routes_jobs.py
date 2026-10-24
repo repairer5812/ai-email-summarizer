@@ -9,7 +9,7 @@ import keyring
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from webmail_summary.index.db import app_db_path, get_conn
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.runner import get_runner
 from webmail_summary.jobs.tasks_sync import sync_mailbox_task
@@ -81,15 +81,12 @@ def _is_stale_active_sync_job(job: repo.JobRow) -> tuple[bool, str]:
     if status == "queued" and age_s > 120:
         # Don't mark as stale if the runner is busy with another job.
         try:
-            conn_check = get_conn(_db_path())
-            try:
+            with open_db(_db_path()) as conn_check:
                 running = conn_check.execute(
                     "SELECT COUNT(*) FROM jobs WHERE status = 'running'"
                 ).fetchone()
                 if running and int(running[0]) > 0:
                     return False, ""  # runner is busy, queue is legitimate
-            finally:
-                conn_check.close()
         except Exception:
             pass
         return True, "stale queued job (no transition for 120s)"
@@ -122,8 +119,7 @@ def local_status(model_id: str = ""):
 @router.post("/jobs/sync")
 def start_sync():
     # Avoid piling up sync jobs if one is already running.
-    conn0 = get_conn(_db_path())
-    try:
+    with open_db(_db_path()) as conn0:
         active = repo.find_active_job(conn0, kind="sync")
         if active is not None:
             stale, stale_reason = _is_stale_active_sync_job(active)
@@ -139,15 +135,10 @@ def start_sync():
                 status="failed",
                 message=stale_reason,
             )
-    finally:
-        conn0.close()
 
     # Preflight AI readiness so users immediately see a clear reason.
-    connp = get_conn(_db_path())
-    try:
+    with open_db(_db_path()) as connp:
         s = load_settings(connp)
-    finally:
-        connp.close()
 
     detail: dict[str, object] = {
         "backend": (s.llm_backend or "").strip().lower(),
@@ -212,8 +203,7 @@ def cancel_job(job_id: str):
     ok = get_runner().cancel(job_id)
 
     # Update DB/UI immediately regardless of whether the worker is currently active.
-    conn = get_conn(_db_path())
-    try:
+    with open_db(_db_path()) as conn:
         job = repo.get_job(conn, job_id)
         if job is None:
             return JSONResponse({"error": "not found"}, status_code=404)
@@ -225,17 +215,12 @@ def cancel_job(job_id: str):
         elif job.status in {"running"}:
             # Two-phase cancellation: request first, then finalize after worker stops.
             repo.set_job_status(conn, job_id=job_id, status="cancel_requested")
-    finally:
-        conn.close()
 
     # Best-effort: for sync jobs, force-kill worker if still running.
     try:
-        connk = get_conn(_db_path())
-        try:
+        with open_db(_db_path()) as connk:
             curk = repo.get_job(connk, job_id)
             kind = curk.kind if curk is not None else ""
-        finally:
-            connk.close()
         if kind == "sync":
             try:
                 kill_sync_worker(job_id=str(job_id))
@@ -243,8 +228,7 @@ def cancel_job(job_id: str):
                 pass
             try:
                 if not is_sync_worker_running(job_id=str(job_id)):
-                    conn2 = get_conn(_db_path())
-                    try:
+                    with open_db(_db_path()) as conn2:
                         cur = repo.get_job(conn2, job_id)
                         if cur is not None and cur.status == "cancel_requested":
                             repo.add_event(
@@ -253,8 +237,6 @@ def cancel_job(job_id: str):
                             repo.set_job_status(
                                 conn2, job_id=job_id, status="cancelled"
                             )
-                    finally:
-                        conn2.close()
             except Exception:
                 pass
     except Exception:
@@ -273,13 +255,10 @@ def start_local_install(payload: dict):
     # Always enqueue the job so the engine can be auto-upgraded to latest.
     # The job itself will skip download if the model is already present.
     try:
-        conn0 = get_conn(_db_path())
-        try:
+        with open_db(_db_path()) as conn0:
             active = repo.find_active_job(conn0, kind="local-install")
             if active is not None:
                 return {"job_id": active.id, "already_running": True}
-        finally:
-            conn0.close()
 
         job_id = get_runner().enqueue(
             kind="local-install", fn=local_install_task(model_id=model_id)
@@ -321,13 +300,10 @@ def start_resummarize_day(payload: dict):
             status_code=400,
         )
 
-    conn0 = get_conn(_db_path())
-    try:
+    with open_db(_db_path()) as conn0:
         active = repo.find_active_job(conn0, kind="resummarize-day")
         if active is not None:
             return {"job_id": active.id, "already_running": True}
-    finally:
-        conn0.close()
 
     job_id = get_runner().enqueue(
         kind="resummarize-day",
@@ -373,8 +349,7 @@ async def start_refresh_overviews(request: Request):
 
 @router.get("/jobs/{job_id}")
 def get_job(job_id: str):
-    conn = get_conn(_db_path())
-    try:
+    with open_db(_db_path()) as conn:
         job = repo.get_job(conn, job_id)
         if (
             job is not None
@@ -404,8 +379,6 @@ def get_job(job_id: str):
                     message=stale_reason,
                 )
                 job = repo.get_job(conn, job_id)
-    finally:
-        conn.close()
     if job is None:
         return JSONResponse({"error": "not found"}, status_code=404)
     return {
@@ -425,12 +398,9 @@ def stream_events(job_id: str, request: Request):
     def gen():
         last_id = _parse_last_event_id(request.headers.get("last-event-id"))
         while True:
-            conn = get_conn(_db_path())
-            try:
+            with open_db(_db_path()) as conn:
                 job = repo.get_job(conn, job_id)
                 evs = repo.get_events_since(conn, job_id=job_id, last_id=last_id)
-            finally:
-                conn.close()
 
             if job is None:
                 yield "event: error\ndata: not_found\n\n"
@@ -482,8 +452,7 @@ def stream_events(job_id: str, request: Request):
             if job.kind == "sync" and job.status == "cancel_requested":
                 try:
                     if not is_sync_worker_running(job_id=str(job_id)):
-                        connx = get_conn(_db_path())
-                        try:
+                        with open_db(_db_path()) as connx:
                             cur = repo.get_job(connx, job_id)
                             if cur is not None and cur.status == "cancel_requested":
                                 repo.add_event(
@@ -495,8 +464,6 @@ def stream_events(job_id: str, request: Request):
                                 repo.set_job_status(
                                     connx, job_id=job_id, status="cancelled"
                                 )
-                        finally:
-                            connx.close()
                 except Exception:
                     pass
 

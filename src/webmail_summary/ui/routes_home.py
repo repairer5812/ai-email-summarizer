@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from webmail_summary.index.mail_repo import get_daily_overview
-from webmail_summary.index.db import app_db_path
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.settings import get_setting, load_settings, set_setting
 from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
@@ -128,10 +128,7 @@ def _check_model_migration(settings) -> dict | None:
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         settings = load_settings(conn)
         configured = get_setting(conn, "imap_host") is not None
         active_jobs = get_active_jobs(conn)
@@ -164,8 +161,6 @@ def home(request: Request):
         update_state = _build_update_state(settings)
 
         day_cards = _build_day_cards(conn, limit=90)
-    finally:
-        conn.close()
 
     saved = str(request.query_params.get("saved") or "").strip() in {"1", "true", "yes"}
     update_checked = (
@@ -227,23 +222,13 @@ def home(request: Request):
 
 @router.get("/api/ui/days")
 def api_get_days():
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         return _build_day_cards(conn, limit=90)
-    finally:
-        conn.close()
 
 
 @router.post("/api/new-models-popup/dismiss")
 def dismiss_new_models_popup():
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         set_setting(conn, "new_models_v2_dismissed", "1")
         conn.commit()
         return {"ok": True}
-    finally:
-        conn.close()

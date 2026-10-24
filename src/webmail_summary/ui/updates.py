@@ -22,7 +22,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, RedirectResponse
 from packaging.version import InvalidVersion, Version
 
-from webmail_summary.index.db import app_db_path
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.settings import Settings, get_setting, load_settings, set_setting
 from webmail_summary.util.app_data import get_app_data_dir
 from webmail_summary.util.process_control import build_fresh_pyinstaller_env
@@ -1070,13 +1070,8 @@ def _run_update_apply_thread(*, db_path: Path) -> None:
 
 @router.get("/updates/apply-status")
 def updates_apply_status():
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         return {"ok": True, **_get_update_apply_state(conn)}
-    finally:
-        conn.close()
 
 
 @router.post("/updates/apply-start")
@@ -1092,18 +1087,14 @@ def updates_apply_start():
 
     global _update_apply_thread
     try:
-        from webmail_summary.index.db import get_conn
 
-        conn0 = get_conn(app_db_path())
-        try:
+        with open_db(app_db_path()) as conn0:
             _set_update_apply_state(
                 conn0,
                 stage="starting",
                 percent=0,
                 message="업데이트 준비 중...",
             )
-        finally:
-            conn0.close()
     except Exception:
         pass
 
@@ -1131,43 +1122,28 @@ def updates_apply_now():
 
 @router.post("/updates/snooze-week")
 def updates_snooze_week():
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         until = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
         set_setting(conn, "update_snooze_until", until)
         conn.commit()
-    finally:
-        conn.close()
     return RedirectResponse("/", status_code=303)
 
 
 @router.post("/updates/snooze-day")
 def updates_snooze_day():
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         until = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         set_setting(conn, "update_snooze_until", until)
         conn.commit()
-    finally:
-        conn.close()
     return RedirectResponse("/", status_code=303)
 
 
 @router.post("/updates/skip-latest")
 def updates_skip_latest():
-    from webmail_summary.index.db import get_conn
-
-    conn = get_conn(app_db_path())
-    try:
+    with open_db(app_db_path()) as conn:
         latest = (get_setting(conn, "update_latest_version") or "").strip()
         set_setting(conn, "update_skip_version", latest)
         conn.commit()
-    finally:
-        conn.close()
     return RedirectResponse("/", status_code=303)
 
 

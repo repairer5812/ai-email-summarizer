@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable
 
-from webmail_summary.index.db import app_db_path, get_conn
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.jobs import repo
 from webmail_summary.jobs.worker_probe import kill_sync_worker
 from webmail_summary.util.app_data import get_app_data_dir
@@ -67,11 +67,8 @@ class JobRunner:
         self.start()
         job_id = uuid.uuid4().hex
         db_path = app_db_path()
-        conn = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn:
             repo.create_job(conn, job_id=job_id, kind=kind)
-        finally:
-            conn.close()
         self._q.put(EnqueuedJob(id=job_id, kind=kind, fn=fn))
         return job_id
 
@@ -113,8 +110,7 @@ class JobRunner:
             with self._lock:
                 if job.id in self._cancelled_queued:
                     self._cancelled_queued.discard(job.id)
-                    connx = get_conn(db_path)
-                    try:
+                    with open_db(db_path) as connx:
                         repo.set_job_status(connx, job_id=job.id, status="cancelled")
                         repo.add_event(
                             connx,
@@ -122,20 +118,15 @@ class JobRunner:
                             level="info",
                             text="cancelled before start",
                         )
-                    finally:
-                        connx.close()
                     continue
 
                 self._active[job.id] = cancel
 
-            conn = get_conn(db_path)
-            try:
+            with open_db(db_path) as conn:
                 repo.set_job_status(conn, job_id=job.id, status="running")
                 repo.add_event(
                     conn, job_id=job.id, level="info", text=f"start {job.kind}"
                 )
-            finally:
-                conn.close()
 
             try:
                 if job.kind == "sync":
@@ -162,14 +153,11 @@ class JobRunner:
                         except subprocess.TimeoutExpired:
                             # If DB already reached a terminal state but worker process
                             # is still alive, terminate it so queue processing can continue.
-                            conn_status = get_conn(db_path)
-                            try:
+                            with open_db(db_path) as conn_status:
                                 cur_status = repo.get_job(conn_status, job.id)
                                 status_after = (
                                     str(cur_status.status or "") if cur_status else ""
                                 )
-                            finally:
-                                conn_status.close()
 
                             terminal = status_after in {
                                 "succeeded",
@@ -177,8 +165,7 @@ class JobRunner:
                                 "cancelled",
                             }
                             if terminal and (time.monotonic() - started_at) > 20.0:
-                                conn_warn = get_conn(db_path)
-                                try:
+                                with open_db(db_path) as conn_warn:
                                     repo.add_event(
                                         conn_warn,
                                         job_id=job.id,
@@ -188,8 +175,6 @@ class JobRunner:
                                             f"status={status_after}; forcing stop"
                                         ),
                                     )
-                                finally:
-                                    conn_warn.close()
 
                                 try:
                                     proc.terminate()
@@ -215,8 +200,7 @@ class JobRunner:
                         cancelled = job.id in self._cancelled_procs
                     if cancelled:
                         # Finalize cancelled state only after the worker has stopped.
-                        connc = get_conn(db_path)
-                        try:
+                        with open_db(db_path) as connc:
                             cur = repo.get_job(connc, job.id)
                             if cur is not None and cur.status == "cancel_requested":
                                 repo.add_event(
@@ -228,14 +212,9 @@ class JobRunner:
                                 repo.set_job_status(
                                     connc, job_id=job.id, status="cancelled"
                                 )
-                        finally:
-                            connc.close()
-                    conn_status2 = get_conn(db_path)
-                    try:
+                    with open_db(db_path) as conn_status2:
                         cur2 = repo.get_job(conn_status2, job.id)
                         latest_status = str(cur2.status or "") if cur2 else ""
-                    finally:
-                        conn_status2.close()
                     if latest_status:
                         status_after = latest_status
 
@@ -251,13 +230,10 @@ class JobRunner:
                     ):
                         raise RuntimeError(f"sync worker failed: exit {rc}")
                     if rc == 0 and not cancelled:
-                        connr = get_conn(db_path)
-                        try:
+                        with open_db(db_path) as connr:
                             active_refresh = repo.find_active_job(
                                 connr, kind="refresh-overviews"
                             )
-                        finally:
-                            connr.close()
 
                         if active_refresh is None:
                             try:
@@ -269,27 +245,21 @@ class JobRunner:
                                     kind="refresh-overviews",
                                     fn=refresh_overviews_task(),
                                 )
-                                conn4 = get_conn(db_path)
-                                try:
+                                with open_db(db_path) as conn4:
                                     repo.add_event(
                                         conn4,
                                         job_id=job.id,
                                         level="info",
                                         text=f"queued refresh-overviews job={refresh_job_id}",
                                     )
-                                finally:
-                                    conn4.close()
                             except Exception as e:
-                                conn5 = get_conn(db_path)
-                                try:
+                                with open_db(db_path) as conn5:
                                     repo.add_event(
                                         conn5,
                                         job_id=job.id,
                                         level="warn",
                                         text=f"failed to queue refresh-overviews: {e}",
                                     )
-                                finally:
-                                    conn5.close()
                 else:
                     job.fn(job.id, cancel)
             except Exception as e:
@@ -304,8 +274,7 @@ class JobRunner:
                     },
                     related_paths=[get_app_data_dir() / "logs" / "server.log"],
                 )
-                conn2 = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn2:
                     repo.add_event(conn2, job_id=job.id, level="error", text=str(e))
                     repo.add_event(
                         conn2,
@@ -324,11 +293,8 @@ class JobRunner:
                         repo.set_job_status(
                             conn2, job_id=job.id, status="failed", message=str(e)
                         )
-                finally:
-                    conn2.close()
             else:
-                conn3 = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn3:
                     if cancel.is_set():
                         repo.set_job_status(conn3, job_id=job.id, status="cancelled")
                     else:
@@ -337,8 +303,6 @@ class JobRunner:
                             repo.set_job_status(
                                 conn3, job_id=job.id, status="succeeded"
                             )
-                finally:
-                    conn3.close()
             finally:
                 with self._lock:
                     self._active.pop(job.id, None)

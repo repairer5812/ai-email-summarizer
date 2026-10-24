@@ -4,7 +4,7 @@ import threading
 import time
 from pathlib import Path
 
-from webmail_summary.index.db import app_db_path, get_conn
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.jobs import repo
 from webmail_summary.llm.hf_download import (
     DownloadCancelled,
@@ -33,29 +33,20 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
     # Check if already cached.
     mlx_ready = check_mlx_ready(model_id=model_id_norm)
     if mlx_ready.mlx_installed and mlx_ready.model_cached:
-        conn0 = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn0:
             repo.update_progress(conn0, job_id=job_id, current=100, total=100, message="installed (MLX)")
             repo.add_event(conn0, job_id=job_id, level="info", text="MLX model already cached")
-        finally:
-            conn0.close()
         return
 
     # 1) Ensure mlx-lm is installed.
-    conn = get_conn(db_path)
-    try:
+    with open_db(db_path) as conn:
         repo.update_progress(conn, job_id=job_id, current=0, total=100, message="install mlx-lm")
-    finally:
-        conn.close()
 
     try:
         mlx_inst = ensure_mlx_installed()
     except (MlxNotSupported, MlxInstallError) as e:
-        conn2 = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn2:
             repo.add_event(conn2, job_id=job_id, level="error", text=str(e))
-        finally:
-            conn2.close()
         raise
 
     if cancel.is_set():
@@ -64,11 +55,8 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
     # 2) Trigger model download via mlx_lm.server dry-run.
     #    mlx_lm.server auto-downloads the model on first request to /v1/models.
     m = get_local_model(model_id_norm)
-    conn3 = get_conn(db_path)
-    try:
+    with open_db(db_path) as conn3:
         repo.update_progress(conn3, job_id=job_id, current=30, total=100, message=f"download MLX model: {m.hf_repo_id}")
-    finally:
-        conn3.close()
 
     import subprocess
     import os
@@ -119,16 +107,13 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
     if cancel.is_set():
         return
 
-    conn4 = get_conn(db_path)
-    try:
+    with open_db(db_path) as conn4:
         if ready:
             repo.update_progress(conn4, job_id=job_id, current=100, total=100, message="installed (MLX)")
             repo.add_event(conn4, job_id=job_id, level="info", text=f"MLX model cached: {m.hf_repo_id}")
         else:
             repo.add_event(conn4, job_id=job_id, level="error", text="MLX model download/load failed")
             repo.update_progress(conn4, job_id=job_id, current=0, total=100, message="MLX install failed")
-    finally:
-        conn4.close()
 
 
 def local_install_task(*, model_id: str):
@@ -148,8 +133,7 @@ def local_install_task(*, model_id: str):
         try:
             ready = check_local_ready(model_id=model_id_norm)
             if bool(ready.engine_ok) and bool(ready.model_ok):
-                conn0 = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn0:
                     repo.update_progress(
                         conn0,
                         job_id=job_id,
@@ -163,26 +147,20 @@ def local_install_task(*, model_id: str):
                         level="info",
                         text="already installed",
                     )
-                finally:
-                    conn0.close()
                 return
         except Exception:
             pass
 
         # 1) Ensure engine
-        conn = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn:
             repo.update_progress(
                 conn, job_id=job_id, current=0, total=100, message="install engine"
             )
-        finally:
-            conn.close()
 
         def _engine_progress(downloaded: int, total: int, msg: str) -> None:
             try:
                 pct = int((downloaded / max(1, total)) * 30)  # engine = 0~30%
-                conn_ep = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn_ep:
                     repo.update_progress(
                         conn_ep,
                         job_id=job_id,
@@ -190,8 +168,6 @@ def local_install_task(*, model_id: str):
                         total=100,
                         message=msg,
                     )
-                finally:
-                    conn_ep.close()
             except Exception:
                 pass
 
@@ -200,11 +176,8 @@ def local_install_task(*, model_id: str):
         try:
             from webmail_summary.index.settings import load_settings
 
-            conn_s = get_conn(db_path)
-            try:
+            with open_db(db_path) as conn_s:
                 _accel = (load_settings(conn_s).local_accel or "cpu").strip().lower()
-            finally:
-                conn_s.close()
         except Exception:
             _accel = "cpu"
 
@@ -213,11 +186,8 @@ def local_install_task(*, model_id: str):
                 on_progress=_engine_progress, prefer=_accel
             )
         except EngineInstallError as e:
-            conn2 = get_conn(db_path)
-            try:
+            with open_db(db_path) as conn2:
                 repo.add_event(conn2, job_id=job_id, level="error", text=str(e))
-            finally:
-                conn2.close()
             raise
 
         # 2) Download model
@@ -232,8 +202,7 @@ def local_install_task(*, model_id: str):
             # Throttle DB writes to avoid slowing downloads.
             nonlocal last_pct, last_emit_ts
             now = time.monotonic()
-            connp = get_conn(db_path)
-            try:
+            with open_db(db_path) as connp:
                 if p.total and p.total > 0:
                     pct = int(p.downloaded * 100 / p.total)
                     if pct == last_pct and (now - last_emit_ts) < 1.0:
@@ -258,8 +227,6 @@ def local_install_task(*, model_id: str):
                         total=100,
                         message=f"download {m.hf_filename}",
                     )
-            finally:
-                connp.close()
 
         last_pct = -1
         last_emit_ts = 0.0
@@ -302,8 +269,7 @@ def local_install_task(*, model_id: str):
             except Exception:
                 pass
 
-        conn3 = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn3:
             repo.add_event(
                 conn3,
                 job_id=job_id,
@@ -316,7 +282,5 @@ def local_install_task(*, model_id: str):
             repo.update_progress(
                 conn3, job_id=job_id, current=100, total=100, message="installed"
             )
-        finally:
-            conn3.close()
 
     return run

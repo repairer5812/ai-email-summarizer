@@ -14,7 +14,7 @@ from webmail_summary.export.obsidian.exporter import (
     export_topic_note,
 )
 from webmail_summary.export.obsidian.naming import safe_topic_name
-from webmail_summary.index.db import app_db_path, get_conn
+from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.mail_repo import (
     get_message_ids_by_topic,
     list_messages_for_resummarize_by_date,
@@ -142,35 +142,26 @@ def resummarize_day_task(
                 return f"{base} {elapsed}"
             return base
 
-        conn = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn:
             settings = load_settings(conn)
-        finally:
-            conn.close()
 
         try:
             provider = get_llm_provider(settings)
         except LlmNotReady as e:
-            connr = get_conn(db_path)
-            try:
+            with open_db(db_path) as connr:
                 repo.add_event(connr, job_id=job_id, level="error", text=str(e))
                 repo.set_job_status(
                     connr, job_id=job_id, status="failed", message=str(e)
                 )
-            finally:
-                connr.close()
             raise
 
-        connpi = get_conn(db_path)
-        try:
+        with open_db(db_path) as connpi:
             repo.add_event(
                 connpi,
                 job_id=job_id,
                 level="info",
                 text=f"llm_provider={provider.__class__.__name__}",
             )
-        finally:
-            connpi.close()
 
         vault_root = (
             Path(settings.obsidian_root)
@@ -179,8 +170,7 @@ def resummarize_day_task(
         )
         vault_root.mkdir(parents=True, exist_ok=True)
 
-        conn0 = get_conn(db_path)
-        try:
+        with open_db(db_path) as conn0:
             if message_ids:
                 rows = list_messages_for_resummarize_by_ids(
                     conn0, message_ids=list(message_ids)
@@ -193,8 +183,6 @@ def resummarize_day_task(
                 rows = list_messages_for_resummarize_by_dates(
                     conn0, date_keys=list(day_keys)
                 )
-        finally:
-            conn0.close()
 
         if message_ids:
             targets = rows
@@ -227,8 +215,7 @@ def resummarize_day_task(
             multi="선택 날짜 다시 요약 완료",
         )
 
-        connp = get_conn(db_path)
-        try:
+        with open_db(db_path) as connp:
             repo.update_progress(
                 connp,
                 job_id=job_id,
@@ -242,8 +229,6 @@ def resummarize_day_task(
                 level="info",
                 text=f"resummarize days={','.join(day_keys)} targets={len(targets)}",
             )
-        finally:
-            connp.close()
 
         processed_notes_by_day: dict[str, list[Path]] = {}
         touched_day_keys: set[str] = set()
@@ -251,8 +236,7 @@ def resummarize_day_task(
         processed_count = 0
 
         if not targets:
-            connz = get_conn(db_path)
-            try:
+            with open_db(db_path) as connz:
                 repo.update_progress(
                     connz,
                     job_id=job_id,
@@ -261,8 +245,6 @@ def resummarize_day_task(
                     message=empty_message,
                 )
                 repo.add_event(connz, job_id=job_id, level="info", text="no targets")
-            finally:
-                connz.close()
             return
 
         for i, r in enumerate(targets, start=1):
@@ -289,8 +271,7 @@ def resummarize_day_task(
             display_date = internal_date[:10] if len(internal_date) >= 10 else single_day_key
             display_sub = (subject[:30] + "...") if len(subject) > 30 else subject
 
-            connx = get_conn(db_path)
-            try:
+            with open_db(db_path) as connx:
                 repo.update_progress(
                     connx,
                     job_id=job_id,
@@ -332,8 +313,6 @@ def resummarize_day_task(
                         {"type": "stage", "stage": "read"}, ensure_ascii=True
                     ),
                 )
-            finally:
-                connx.close()
 
             body_text = ""
             p_txt = Path(body_text_path) if body_text_path else None
@@ -349,18 +328,14 @@ def resummarize_day_task(
             archive_dir = Path(raw_eml_path).parent if raw_eml_path else data_dir
             multimodal_inputs: list[LlmImageInput] | None = None
             if wants_multimodal_inputs(provider, settings):
-                conn_mm = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn_mm:
                     selected_inputs = load_stored_multimodal_inputs(
                         conn_mm, message_fk=msg_id, base_dir=archive_dir
                     )
-                finally:
-                    conn_mm.close()
                 if selected_inputs:
                     multimodal_inputs = selected_inputs
 
-            connw = get_conn(db_path)
-            try:
+            with open_db(db_path) as connw:
                 repo.update_progress(
                     connw,
                     job_id=job_id,
@@ -382,8 +357,6 @@ def resummarize_day_task(
                         {"type": "stage", "stage": "llm"}, ensure_ascii=True
                     ),
                 )
-            finally:
-                connw.close()
 
             frac_lock = threading.Lock()
             last_fraction = 0.0
@@ -402,23 +375,19 @@ def resummarize_day_task(
             def emit_detail(d: dict) -> None:
                 if cancel.is_set():
                     raise _ResummarizeCancelled()
-                conn_d = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn_d:
                     repo.add_event(
                         conn_d,
                         job_id=job_id,
                         level="detail",
                         text=json.dumps(d, ensure_ascii=True),
                     )
-                finally:
-                    conn_d.close()
 
             def update_sub_progress(fraction: float) -> None:
                 if cancel.is_set():
                     raise _ResummarizeCancelled()
                 _set_fraction(fraction)
-                conn_p = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn_p:
                     repo.update_progress(
                         conn_p,
                         job_id=job_id,
@@ -431,8 +400,6 @@ def resummarize_day_task(
                             len(targets),
                         ),
                     )
-                finally:
-                    conn_p.close()
 
             t0 = time.monotonic()
             if provider.__class__.__name__ == "CloudProvider":
@@ -452,8 +419,7 @@ def resummarize_day_task(
                 with frac_lock:
                     frac = float(last_fraction)
                 cur = max(i - 0.95, (i - 1) + frac)
-                conn_hb = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn_hb:
                     repo.update_progress(
                         conn_hb,
                         job_id=job_id,
@@ -468,22 +434,17 @@ def resummarize_day_task(
                             elapsed=f"(경과 {format_elapsed(elapsed_s)})",
                         ),
                     )
-                finally:
-                    conn_hb.close()
 
             llm_timeout_s = llm_timeout_seconds(provider)
 
             def _log_timeout() -> None:
-                conn_to = get_conn(db_path)
-                try:
+                with open_db(db_path) as conn_to:
                     repo.add_event(
                         conn_to,
                         job_id=job_id,
                         level="warn",
                         text=f"LLM timeout: {llm_timeout_s:.0f}s (item {i}/{len(targets)})",
                     )
-                finally:
-                    conn_to.close()
 
             outcome = call_with_deadline(
                 lambda: summarize_email_long_aware(
@@ -509,16 +470,13 @@ def resummarize_day_task(
                         if isinstance(llm_err, _ResummarizeCancelled):
                             cancel.set()
                             break
-                        conn_er = get_conn(db_path)
-                        try:
+                        with open_db(db_path) as conn_er:
                             repo.add_event(
                                 conn_er,
                                 job_id=job_id,
                                 level="warn",
                                 text=f"LLM exception: {str(llm_err)[:180]}",
                             )
-                        finally:
-                            conn_er.close()
                     llm_res = fallback_result("(LLM unavailable)")
 
             if cancel.is_set() or isinstance(llm_err, _ResummarizeCancelled):
@@ -528,8 +486,7 @@ def resummarize_day_task(
             dt_s = time.monotonic() - t0
             topics = llm_res.backlinks
 
-            connw3 = get_conn(db_path)
-            try:
+            with open_db(db_path) as connw3:
                 repo.add_event(
                     connw3,
                     job_id=job_id,
@@ -538,11 +495,8 @@ def resummarize_day_task(
                         {"type": "stage", "stage": "save"}, ensure_ascii=True
                     ),
                 )
-            finally:
-                connw3.close()
 
-            connw2 = get_conn(db_path)
-            try:
+            with open_db(db_path) as connw2:
                 if dt_s > 60:
                     repo.add_event(
                         connw2,
@@ -557,11 +511,8 @@ def resummarize_day_task(
                         level="info",
                         text=f"LLM 완료: {dt_s:.1f}s (item {i}/{len(targets)})",
                     )
-            finally:
-                connw2.close()
 
-            connu = get_conn(db_path)
-            try:
+            with open_db(db_path) as connu:
                 set_analysis(
                     connu,
                     message_fk=msg_id,
@@ -572,15 +523,12 @@ def resummarize_day_task(
                     summarize_ms=int(max(0.0, dt_s) * 1000.0),
                 )
                 connu.commit()
-            finally:
-                connu.close()
 
             if display_date:
                 touched_day_keys.add(display_date)
             processed_count = i
 
-            conne = get_conn(db_path)
-            try:
+            with open_db(db_path) as conne:
                 repo.add_event(
                     conne,
                     job_id=job_id,
@@ -590,11 +538,8 @@ def resummarize_day_task(
                         ensure_ascii=True,
                     ),
                 )
-            finally:
-                conne.close()
 
-            connw4 = get_conn(db_path)
-            try:
+            with open_db(db_path) as connw4:
                 repo.add_event(
                     connw4,
                     job_id=job_id,
@@ -603,8 +548,6 @@ def resummarize_day_task(
                         {"type": "stage", "stage": "export"}, ensure_ascii=True
                     ),
                 )
-            finally:
-                connw4.close()
 
             try:
                 try:
@@ -635,8 +578,7 @@ def resummarize_day_task(
                 continue
 
         if cancel.is_set():
-            connc = get_conn(db_path)
-            try:
+            with open_db(db_path) as connc:
                 repo.update_progress(
                     connc,
                     job_id=job_id,
@@ -645,8 +587,6 @@ def resummarize_day_task(
                     message=cancelled_message,
                 )
                 repo.add_event(connc, job_id=job_id, level="info", text="cancelled")
-            finally:
-                connc.close()
             return
 
         try:
@@ -673,11 +613,8 @@ def resummarize_day_task(
 
             for topic in all_topics:
                 try:
-                    conn_topic = get_conn(db_path)
-                    try:
+                    with open_db(db_path) as conn_topic:
                         remaining = get_message_ids_by_topic(conn_topic, topic=topic)
-                    finally:
-                        conn_topic.close()
 
                     if not remaining:
                         topic_file = vault_root / "Topic" / f"{safe_topic_name(topic)}.md"
@@ -686,8 +623,7 @@ def resummarize_day_task(
                         continue
 
                     topic_notes: list[Path] = []
-                    conn_notes = get_conn(db_path)
-                    try:
+                    with open_db(db_path) as conn_notes:
                         for mid in remaining:
                             row = conn_notes.execute(
                                 "SELECT account_id, uidvalidity, uid, subject, internal_date "
@@ -710,8 +646,6 @@ def resummarize_day_task(
                             note_path = vault_root / "Mail" / f"{m_date:%Y-%m}" / fname
                             if note_path.exists():
                                 topic_notes.append(note_path)
-                    finally:
-                        conn_notes.close()
 
                     export_topic_note(
                         vault_root=vault_root,
@@ -724,8 +658,7 @@ def resummarize_day_task(
         except Exception:
             pass
 
-        connf = get_conn(db_path)
-        try:
+        with open_db(db_path) as connf:
             repo.update_progress(
                 connf,
                 job_id=job_id,
@@ -733,7 +666,5 @@ def resummarize_day_task(
                 total=max(len(targets), 1),
                 message=completed_message,
             )
-        finally:
-            connf.close()
 
     return run
