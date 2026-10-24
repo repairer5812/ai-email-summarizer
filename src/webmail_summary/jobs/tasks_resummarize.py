@@ -24,8 +24,18 @@ from webmail_summary.index.mail_repo import (
 )
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
+from webmail_summary.jobs.llm_call import (
+    Heartbeat,
+    call_with_deadline,
+    cloud_base_delay_seconds,
+    fallback_result,
+    format_elapsed,
+    llm_timeout_seconds,
+    load_stored_multimodal_inputs,
+    wants_multimodal_inputs,
+)
 from webmail_summary.jobs.tasks_refresh_overviews import refresh_overviews_for_dates
-from webmail_summary.llm.base import LlmResult
+from webmail_summary.llm.base import LlmImageInput
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
 from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
@@ -84,19 +94,6 @@ def _needs_resummarize(summary: str) -> bool:
     if s.startswith("{") or s.startswith("```json") or s.startswith("```"):
         return True
     return False
-
-
-def _cloud_base_delay_seconds(cloud_provider: str, model: str) -> float:
-    provider = str(cloud_provider or "").strip().lower()
-    model_name = str(model or "").strip().lower()
-
-    if provider in {"openai", "anthropic", "openrouter"}:
-        return 0.3
-    if provider in {"google", "upstage"}:
-        return 0.5
-    if "gemini" in model_name:
-        return 0.5
-    return 0.4
 
 
 def resummarize_day_task(
@@ -349,6 +346,19 @@ def resummarize_day_task(
 
             body_text = prepare_body_for_llm(body_text)
 
+            archive_dir = Path(raw_eml_path).parent if raw_eml_path else data_dir
+            multimodal_inputs: list[LlmImageInput] | None = None
+            if wants_multimodal_inputs(provider, settings):
+                conn_mm = get_conn(db_path)
+                try:
+                    selected_inputs = load_stored_multimodal_inputs(
+                        conn_mm, message_fk=msg_id, base_dir=archive_dir
+                    )
+                finally:
+                    conn_mm.close()
+                if selected_inputs:
+                    multimodal_inputs = selected_inputs
+
             connw = get_conn(db_path)
             try:
                 repo.update_progress(
@@ -427,7 +437,7 @@ def resummarize_day_task(
             t0 = time.monotonic()
             if provider.__class__.__name__ == "CloudProvider":
                 time.sleep(
-                    _cloud_base_delay_seconds(
+                    cloud_base_delay_seconds(
                         settings.cloud_provider,
                         settings.openrouter_model,
                     )
@@ -437,84 +447,33 @@ def resummarize_day_task(
                 "roles": settings.user_roles,
                 "interests": settings.user_interests,
             }
-            llm_done = threading.Event()
-            llm_result_box: dict[str, LlmResult] = {}
-            llm_err_box: dict[str, Exception] = {}
 
-            def _run_llm_call() -> None:
+            def _heartbeat_tick(elapsed_s: float) -> None:
+                with frac_lock:
+                    frac = float(last_fraction)
+                cur = max(i - 0.95, (i - 1) + frac)
+                conn_hb = get_conn(db_path)
                 try:
-                    llm_result_box["res"] = summarize_email_long_aware(
-                        provider,
-                        subject=sanitize_text_for_llm(subject),
-                        body=sanitize_text_for_llm(body_text),
-                        on_detail=emit_detail,
-                        on_progress=update_sub_progress,
-                        user_profile=user_profile,
+                    repo.update_progress(
+                        conn_hb,
+                        job_id=job_id,
+                        current=cur,
+                        total=max(len(targets), 1),
+                        message=_item_message(
+                            display_date,
+                            display_sub,
+                            i,
+                            len(targets),
+                            llm=True,
+                            elapsed=f"(경과 {format_elapsed(elapsed_s)})",
+                        ),
                     )
-                except _ResummarizeCancelled as ex:
-                    llm_err_box["err"] = ex
-                except Exception as ex:
-                    llm_err_box["err"] = ex
                 finally:
-                    llm_done.set()
+                    conn_hb.close()
 
-            llm_t = threading.Thread(target=_run_llm_call, daemon=True)
-            llm_t.start()
+            llm_timeout_s = llm_timeout_seconds(provider)
 
-            hb_stop = threading.Event()
-
-            def _llm_heartbeat() -> None:
-                started = time.monotonic()
-                while (
-                    not hb_stop.is_set()
-                    and not llm_done.is_set()
-                    and not cancel.is_set()
-                ):
-                    time.sleep(2.0)
-                    if hb_stop.is_set() or llm_done.is_set() or cancel.is_set():
-                        break
-                    dt_s = max(0.0, time.monotonic() - started)
-                    mm = int(dt_s // 60)
-                    ss = int(dt_s % 60)
-                    with frac_lock:
-                        frac = float(last_fraction)
-                    cur = max(i - 0.95, (i - 1) + frac)
-                    conn_hb = get_conn(db_path)
-                    try:
-                        repo.update_progress(
-                            conn_hb,
-                            job_id=job_id,
-                            current=cur,
-                            total=max(len(targets), 1),
-                            message=_item_message(
-                                display_date,
-                                display_sub,
-                                i,
-                                len(targets),
-                                llm=True,
-                                elapsed=f"(경과 {mm:02d}:{ss:02d})",
-                            ),
-                        )
-                    finally:
-                        conn_hb.close()
-
-            hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
-            hb_t.start()
-
-            tier = getattr(provider, "tier", "standard")
-            if tier == "cloud":
-                llm_timeout_s = 420.0
-            elif tier == "fast":
-                llm_timeout_s = 240.0
-            else:
-                llm_timeout_s = 360.0
-
-            if not llm_done.wait(llm_timeout_s):
-                hb_stop.set()
-                try:
-                    hb_t.join(timeout=1.0)
-                except Exception:
-                    pass
+            def _log_timeout() -> None:
                 conn_to = get_conn(db_path)
                 try:
                     repo.add_event(
@@ -525,39 +484,29 @@ def resummarize_day_task(
                     )
                 finally:
                     conn_to.close()
-                llm_done.set()
-                try:
-                    stop_done = threading.Event()
 
-                    def _stop_local_server() -> None:
-                        try:
-                            from webmail_summary.llm.llamacpp_server import stop_server
-
-                            stop_server(force=True)
-                        finally:
-                            stop_done.set()
-
-                    threading.Thread(target=_stop_local_server, daemon=True).start()
-                    stop_done.wait(2.5)
-                except Exception:
-                    pass
-                try:
-                    llm_t.join(timeout=0.2)
-                except Exception:
-                    pass
-                llm_res = LlmResult(
-                    summary="(LLM timeout)", tags=[], backlinks=[], personal=False
-                )
+            outcome = call_with_deadline(
+                lambda: summarize_email_long_aware(
+                    provider,
+                    subject=sanitize_text_for_llm(subject),
+                    body=sanitize_text_for_llm(body_text),
+                    on_detail=emit_detail,
+                    on_progress=update_sub_progress,
+                    user_profile=user_profile,
+                    multimodal_inputs=multimodal_inputs,
+                ),
+                timeout_s=llm_timeout_s,
+                heartbeat=Heartbeat(_heartbeat_tick, cancel=cancel),
+                on_timeout=_log_timeout,
+            )
+            llm_err = outcome.error
+            if outcome.timed_out:
+                llm_res = fallback_result("(LLM timeout)")
             else:
-                hb_stop.set()
-                try:
-                    hb_t.join(timeout=1.0)
-                except Exception:
-                    pass
-                llm_res = llm_result_box.get("res")
+                llm_res = outcome.result
                 if llm_res is None:
-                    if "err" in llm_err_box:
-                        if isinstance(llm_err_box["err"], _ResummarizeCancelled):
+                    if llm_err is not None:
+                        if isinstance(llm_err, _ResummarizeCancelled):
                             cancel.set()
                             break
                         conn_er = get_conn(db_path)
@@ -566,24 +515,13 @@ def resummarize_day_task(
                                 conn_er,
                                 job_id=job_id,
                                 level="warn",
-                                text=f"LLM exception: {str(llm_err_box['err'])[:180]}",
+                                text=f"LLM exception: {str(llm_err)[:180]}",
                             )
                         finally:
                             conn_er.close()
-                    llm_res = LlmResult(
-                        summary="(LLM unavailable)",
-                        tags=[],
-                        backlinks=[],
-                        personal=False,
-                    )
-                try:
-                    llm_t.join(timeout=0.2)
-                except Exception:
-                    pass
+                    llm_res = fallback_result("(LLM unavailable)")
 
-            if cancel.is_set() or isinstance(
-                llm_err_box.get("err"), _ResummarizeCancelled
-            ):
+            if cancel.is_set() or isinstance(llm_err, _ResummarizeCancelled):
                 cancel.set()
                 break
 
@@ -669,7 +607,6 @@ def resummarize_day_task(
                 connw4.close()
 
             try:
-                archive_dir = Path(raw_eml_path).parent if raw_eml_path else data_dir
                 try:
                     email_dt = dt.datetime.fromisoformat(internal_date).date()
                 except Exception:

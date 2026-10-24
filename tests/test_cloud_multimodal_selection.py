@@ -6,7 +6,9 @@ from PIL import Image
 
 from webmail_summary.archive.html_rewrite import ExternalAsset
 from webmail_summary.archive.mime_parts import SavedAttachment
-from webmail_summary.jobs.tasks_sync import _select_multimodal_inputs
+from webmail_summary.jobs.llm_call import (
+    select_multimodal_inputs as _select_multimodal_inputs,
+)
 
 
 def _make_image(path: Path, *, width: int, height: int = 200) -> None:

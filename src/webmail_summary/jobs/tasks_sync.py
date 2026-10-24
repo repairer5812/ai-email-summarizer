@@ -10,13 +10,10 @@ from email.parser import BytesParser
 from pathlib import Path
 
 import keyring
-from PIL import Image
 
 from webmail_summary.archive.paths import get_message_paths
 from webmail_summary.util.timefmt import KST as _KST
 from webmail_summary.archive.pipeline import archive_message
-from webmail_summary.archive.html_rewrite import ExternalAsset
-from webmail_summary.archive.mime_parts import SavedAttachment
 from webmail_summary.export.obsidian.exporter import (
     MessageExportInput,
     export_daily_note,
@@ -37,6 +34,16 @@ from webmail_summary.index.mail_repo import (
 )
 from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
+from webmail_summary.jobs.llm_call import (
+    Heartbeat,
+    call_with_deadline,
+    cloud_base_delay_seconds,
+    fallback_result,
+    format_elapsed,
+    llm_timeout_seconds,
+    select_multimodal_inputs,
+    wants_multimodal_inputs,
+)
 from webmail_summary.jobs.tasks_refresh_overviews import refresh_overviews_for_dates
 from webmail_summary.llm.base import LlmImageInput, LlmResult
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
@@ -70,19 +77,6 @@ def _email_date(internal_date: datetime | None) -> str:
     if internal_date.tzinfo is None:
         return internal_date.replace(tzinfo=_KST).isoformat()
     return internal_date.astimezone(_KST).isoformat()
-
-
-def _cloud_base_delay_seconds(cloud_provider: str, model: str) -> float:
-    provider = str(cloud_provider or "").strip().lower()
-    model_name = str(model or "").strip().lower()
-
-    if provider in {"openai", "anthropic", "openrouter"}:
-        return 0.3
-    if provider in {"google", "upstage"}:
-        return 0.5
-    if "gemini" in model_name:
-        return 0.5
-    return 0.4
 
 
 def _cloud_chunk_size(cloud_provider: str, model: str) -> int:
@@ -164,150 +158,6 @@ def _load_body_text_for_llm(
     return prepare_body_for_llm(body_text)
 
 
-def _llm_timeout_seconds(provider) -> float:
-    tier = getattr(provider, "tier", "standard")
-    if tier == "cloud":
-        return 420.0
-    if tier == "fast":
-        return 240.0
-    return 360.0
-
-
-_SUPPORTED_MM_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
-_MIN_MM_IMAGE_BYTES = 1024
-
-
-def _is_supported_mm_image(*, path: Path, mime_type: str | None) -> bool:
-    mime = str(mime_type or "").strip().lower()
-    if mime.startswith("image/") and mime not in {"image/svg+xml"}:
-        return True
-    return path.suffix.lower() in _SUPPORTED_MM_EXTS
-
-
-def _image_dimensions(path: Path) -> tuple[int, int] | None:
-    try:
-        with Image.open(path) as img:
-            w, h = img.size
-            return int(w), int(h)
-    except Exception:
-        return None
-
-
-def _should_exclude_mm_image(
-    *,
-    path: Path,
-    mime_type: str | None,
-    source: str,
-    dims: tuple[int, int] | None,
-) -> bool:
-    name = path.name.lower()
-    if any(k in name for k in ["logo", "icon", "favicon", "avatar", "sprite", "badge"]):
-        return True
-
-    if dims:
-        width, height = dims
-        if width <= 220 or height <= 120:
-            return True
-        if width >= 600 and height <= 140:
-            return True
-        if height > 0:
-            aspect = width / height
-            if width >= 600 and aspect >= 5.5 and height <= 180:
-                return True
-            if source == "inline_attachment" and aspect >= 4.0 and height <= 160:
-                return True
-
-    mime = str(mime_type or "").strip().lower()
-    if mime == "image/gif" and dims and dims[1] <= 180:
-        return True
-
-    return False
-
-
-def _select_multimodal_inputs(
-    *,
-    base_dir: Path,
-    attachments: list[SavedAttachment],
-    external_assets: list[ExternalAsset],
-    max_images: int = 3,
-    max_total_bytes: int = 4 * 1024 * 1024,
-) -> list[LlmImageInput]:
-    wide_candidates: list[tuple[int, Path, str | None, str]] = []
-    candidates: list[tuple[int, Path, str | None, str]] = []
-
-    for a in attachments or []:
-        p = (base_dir / str(a.rel_path or "")).resolve()
-        if not p.is_file() or not _is_supported_mm_image(path=p, mime_type=a.mime_type):
-            continue
-        size = int(a.size_bytes or 0)
-        source = "inline_attachment" if bool(a.is_inline) else "attachment"
-        dims = _image_dimensions(p)
-        if _should_exclude_mm_image(
-            path=p, mime_type=a.mime_type, source=source, dims=dims
-        ):
-            continue
-        item = (size, p, a.mime_type, source)
-        if dims and dims[0] > 600:
-            wide_candidates.append(item)
-        else:
-            if size <= _MIN_MM_IMAGE_BYTES:
-                continue
-            candidates.append(item)
-
-    for a in external_assets or []:
-        if str(a.status or "").strip().lower() != "downloaded":
-            continue
-        rel = str(a.rel_path or "").strip()
-        if not rel:
-            continue
-        p = (base_dir / rel).resolve()
-        if not p.is_file() or not _is_supported_mm_image(path=p, mime_type=a.mime_type):
-            continue
-        size = int(a.size_bytes or (p.stat().st_size if p.exists() else 0) or 0)
-        dims = _image_dimensions(p)
-        if _should_exclude_mm_image(
-            path=p,
-            mime_type=a.mime_type,
-            source="external_asset",
-            dims=dims,
-        ):
-            continue
-        item = (size, p, a.mime_type, "external_asset")
-        if dims and dims[0] > 600:
-            wide_candidates.append(item)
-        else:
-            if size <= _MIN_MM_IMAGE_BYTES:
-                continue
-            candidates.append(item)
-
-    wide_candidates.sort(key=lambda x: x[0], reverse=True)
-    candidates.sort(key=lambda x: x[0], reverse=True)
-    out: list[LlmImageInput] = []
-    seen: set[str] = set()
-
-    for _size, p, mime, source in wide_candidates:
-        rp = str(p)
-        if rp in seen:
-            continue
-        out.append(LlmImageInput(path=rp, mime_type=mime, detail="low", source=source))
-        seen.add(rp)
-
-    total = sum(p.stat().st_size for p in [Path(x.path) for x in out] if p.exists())
-
-    for size, p, mime, source in candidates:
-        rp = str(p)
-        if rp in seen:
-            continue
-        if len(out) >= int(max_images):
-            break
-        if total + int(size) > int(max_total_bytes):
-            continue
-        out.append(LlmImageInput(path=rp, mime_type=mime, detail="low", source=source))
-        seen.add(rp)
-        total += int(size)
-    return out
-
-
 def _run_llm_summary(
     *,
     db_path: Path,
@@ -323,64 +173,35 @@ def _run_llm_summary(
     display_sub: str,
     multimodal_inputs: list[LlmImageInput] | None,
 ) -> LlmResult:
-    llm_done = threading.Event()
-
-    def _llm_heartbeat() -> None:
-        start_ts = time.monotonic()
-        while not llm_done.wait(5.0):
-            elapsed = time.monotonic() - start_ts
-            mm = int(elapsed // 60)
-            ss = int(elapsed % 60)
-            conn_hb = get_conn(db_path)
-            try:
-                cur_job = repo.get_job(conn_hb, job_id)
-                cur_progress = item_index - 0.99
-                if cur_job is not None:
-                    try:
-                        cur_progress = max(
-                            float(cur_progress),
-                            float(cur_job.progress_current or 0),
-                        )
-                    except Exception:
-                        cur_progress = item_index - 0.99
-                repo.update_progress(
-                    conn_hb,
-                    job_id=job_id,
-                    current=cur_progress,
-                    total=max(item_total, 1),
-                    message=(
-                        f"[{display_date}] 요약 중: {display_sub} ({item_index}/{item_total}) "
-                        f"(경과 {mm:02d}:{ss:02d})"
-                    ),
-                )
-            finally:
-                conn_hb.close()
-
-    hb_t = threading.Thread(target=_llm_heartbeat, daemon=True)
-    hb_t.start()
-    llm_result_box: dict[str, LlmResult] = {}
-    llm_err_box: dict[str, Exception] = {}
-
-    def _run_llm_call() -> None:
+    def _heartbeat_tick(elapsed_s: float) -> None:
+        conn_hb = get_conn(db_path)
         try:
-            llm_result_box["res"] = summarize_email_long_aware(
-                provider,
-                subject=sanitize_text_for_llm(str(subject)),
-                body=sanitize_text_for_llm(body_text),
-                on_progress=update_sub_progress,
-                user_profile=user_profile,
-                multimodal_inputs=multimodal_inputs,
+            cur_job = repo.get_job(conn_hb, job_id)
+            cur_progress = item_index - 0.99
+            if cur_job is not None:
+                try:
+                    cur_progress = max(
+                        float(cur_progress),
+                        float(cur_job.progress_current or 0),
+                    )
+                except Exception:
+                    cur_progress = item_index - 0.99
+            repo.update_progress(
+                conn_hb,
+                job_id=job_id,
+                current=cur_progress,
+                total=max(item_total, 1),
+                message=(
+                    f"[{display_date}] 요약 중: {display_sub} ({item_index}/{item_total}) "
+                    f"(경과 {format_elapsed(elapsed_s)})"
+                ),
             )
-        except Exception as ex:
-            llm_err_box["err"] = ex
         finally:
-            llm_done.set()
+            conn_hb.close()
 
-    llm_t = threading.Thread(target=_run_llm_call, daemon=True)
-    llm_t.start()
+    llm_timeout_s = llm_timeout_seconds(provider)
 
-    llm_timeout_s = _llm_timeout_seconds(provider)
-    if not llm_done.wait(llm_timeout_s):
+    def _log_timeout() -> None:
         _add_job_event(
             db_path=db_path,
             job_id=job_id,
@@ -388,62 +209,31 @@ def _run_llm_summary(
             text=f"LLM timeout: {llm_timeout_s:.0f}s (item {item_index}/{item_total})",
         )
 
-        llm_done.set()
-        try:
-            hb_t.join(timeout=1.0)
-        except Exception:
-            pass
-
-        try:
-            stop_done = threading.Event()
-
-            def _stop_local_server() -> None:
-                try:
-                    from webmail_summary.llm.llamacpp_server import stop_server
-
-                    stop_server(force=True)
-                finally:
-                    stop_done.set()
-
-            threading.Thread(target=_stop_local_server, daemon=True).start()
-            stop_done.wait(2.5)
-        except Exception:
-            pass
-
-        try:
-            llm_t.join(timeout=0.2)
-        except Exception:
-            pass
-
-        return LlmResult(
-            summary="(LLM timeout)",
-            tags=[],
-            backlinks=[],
-            personal=False,
+    outcome = call_with_deadline(
+        lambda: summarize_email_long_aware(
+            provider,
+            subject=sanitize_text_for_llm(str(subject)),
+            body=sanitize_text_for_llm(body_text),
+            on_progress=update_sub_progress,
+            user_profile=user_profile,
+            multimodal_inputs=multimodal_inputs,
+        ),
+        timeout_s=llm_timeout_s,
+        heartbeat=Heartbeat(_heartbeat_tick),
+        on_timeout=_log_timeout,
+    )
+    if outcome.timed_out:
+        return fallback_result("(LLM timeout)")
+    if outcome.result is not None:
+        return outcome.result
+    if outcome.error is not None:
+        _add_job_event(
+            db_path=db_path,
+            job_id=job_id,
+            level="warn",
+            text=f"LLM exception: {str(outcome.error)[:180]}",
         )
-
-    llm_res = llm_result_box.get("res")
-    if llm_res is None:
-        if "err" in llm_err_box:
-            _add_job_event(
-                db_path=db_path,
-                job_id=job_id,
-                level="warn",
-                text=f"LLM exception: {str(llm_err_box['err'])[:180]}",
-            )
-        llm_res = LlmResult(
-            summary="(LLM unavailable)",
-            tags=[],
-            backlinks=[],
-            personal=False,
-        )
-
-    llm_done.set()
-    try:
-        hb_t.join(timeout=1.0)
-    except Exception:
-        pass
-    return llm_res
+    return fallback_result("(LLM unavailable)")
 
 
 def _chunked(iterable: Iterable, n: int) -> Iterator[list]:
@@ -748,10 +538,8 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     else None,
                 )
                 multimodal_inputs: list[LlmImageInput] | None = None
-                if provider.supports_multimodal_inputs() and bool(
-                    getattr(s, "cloud_multimodal_enabled", False)
-                ):
-                    selected_inputs = _select_multimodal_inputs(
+                if wants_multimodal_inputs(provider, s):
+                    selected_inputs = select_multimodal_inputs(
                         base_dir=paths.base_dir,
                         attachments=list(ar.attachments or []),
                         external_assets=list(ar.external_assets or []),
@@ -1054,7 +842,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                     # Cloud pacing applied once per chunk (shared rate budget).
                     if provider.__class__.__name__ == "CloudProvider":
                         time.sleep(
-                            _cloud_base_delay_seconds(
+                            cloud_base_delay_seconds(
                                 s.cloud_provider,
                                 s.openrouter_model,
                             )
@@ -1121,46 +909,37 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                             message=chunk_msg_base,
                         )
 
-                        llm_timeout_s = _llm_timeout_seconds(provider)
+                        llm_timeout_s = llm_timeout_seconds(provider)
 
                         def _worker(ctx: dict) -> tuple[LlmResult, float]:
                             return _call_llm_direct(ctx=ctx)
 
                         # Heartbeat: cloud LLM 호출이 길어도 사용자에게
-                        # 진행 중임을 알려준다. 5초마다 elapsed + 완료 카운트
+                        # 진행 중임을 알려준다. 주기마다 elapsed + 완료 카운트
                         # 표시. ThreadPool 종료 시 자동 정지.
                         chunk_done_count = [0]
-                        chunk_hb_stop = threading.Event()
-                        chunk_t0 = time.monotonic()
 
-                        def _chunk_heartbeat() -> None:
-                            while not chunk_hb_stop.wait(5.0):
-                                elapsed = time.monotonic() - chunk_t0
-                                mm = int(elapsed // 60)
-                                ss = int(elapsed % 60)
-                                done = int(chunk_done_count[0])
-                                _update_job_progress(
-                                    db_path=db_path,
-                                    job_id=job_id,
-                                    current=(
-                                        first["i_global"]
-                                        - 0.99
-                                        + 0.99 * (done / max(len(chunk_ctxs), 1))
-                                    ),
-                                    total=max(msg_total, 1),
-                                    message=(
-                                        f"{chunk_msg_base} "
-                                        f"({done}/{len(chunk_ctxs)} 완료, "
-                                        f"경과 {mm:02d}:{ss:02d})"
-                                    ),
-                                )
+                        def _chunk_heartbeat_tick(elapsed_s: float) -> None:
+                            done = int(chunk_done_count[0])
+                            _update_job_progress(
+                                db_path=db_path,
+                                job_id=job_id,
+                                current=(
+                                    first["i_global"]
+                                    - 0.99
+                                    + 0.99 * (done / max(len(chunk_ctxs), 1))
+                                ),
+                                total=max(msg_total, 1),
+                                message=(
+                                    f"{chunk_msg_base} "
+                                    f"({done}/{len(chunk_ctxs)} 완료, "
+                                    f"경과 {format_elapsed(elapsed_s)})"
+                                ),
+                            )
 
-                        chunk_hb_t = threading.Thread(
-                            target=_chunk_heartbeat,
-                            daemon=True,
-                            name="chunk-heartbeat",
-                        )
-                        chunk_hb_t.start()
+                        chunk_hb = Heartbeat(
+                            _chunk_heartbeat_tick, name="chunk-heartbeat"
+                        ).start()
 
                         try:
                             with ThreadPoolExecutor(
@@ -1223,11 +1002,7 @@ def sync_mailbox_task() -> Callable[[str, threading.Event], None]:
                                     llm_outputs.append(res_pair)
                                     chunk_done_count[0] += 1
                         finally:
-                            chunk_hb_stop.set()
-                            try:
-                                chunk_hb_t.join(timeout=1.0)
-                            except Exception:
-                                pass
+                            chunk_hb.stop()
 
                     # Phase 3: Persist, export, mark in chunk order.
                     # LLM fallback (timeout / unavailable) detection: skip

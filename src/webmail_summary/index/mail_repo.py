@@ -156,6 +156,30 @@ def replace_external_assets(
         )
 
 
+def list_attachments(
+    conn: sqlite3.Connection, *, message_fk: int
+) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            "SELECT filename, mime_type, size_bytes, rel_path, content_id, is_inline "
+            "FROM attachments WHERE message_fk = ? ORDER BY id",
+            (int(message_fk),),
+        ).fetchall()
+    )
+
+
+def list_external_assets(
+    conn: sqlite3.Connection, *, message_fk: int
+) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            "SELECT original_url, rel_path, mime_type, size_bytes, status "
+            "FROM external_assets WHERE message_fk = ? ORDER BY id",
+            (int(message_fk),),
+        ).fetchall()
+    )
+
+
 def set_analysis(
     conn: sqlite3.Connection,
     *,

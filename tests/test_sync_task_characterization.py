@@ -586,7 +586,7 @@ def test_sync_serial_timeout_records_fallback_and_stops_local_server(tmp_path, m
         return LlmResult(summary="late", tags=[], backlinks=[], personal=False)
 
     world.llm_script["mail-1"] = _slow
-    monkeypatch.setattr(mod, "_llm_timeout_seconds", lambda provider: 0.2)
+    monkeypatch.setattr(mod, "llm_timeout_seconds", lambda provider: 0.2)
     try:
         world.run()
     finally:
@@ -656,3 +656,32 @@ def test_sync_requires_configuration_password_and_provider(tmp_path, monkeypatch
         conn.close()
     assert job is not None and job.status == "failed"
     assert world.imap_log == []
+
+
+def test_sync_serial_heartbeat_reports_elapsed(tmp_path, monkeypatch):
+    from webmail_summary.jobs import llm_call
+
+    monkeypatch.setattr(llm_call, "HEARTBEAT_INTERVAL_S", 0.05)
+    vault = tmp_path / "vault"
+    world = _World(
+        tmp_path,
+        monkeypatch,
+        messages=[_msg(1, "mail-1")],
+        settings=_settings(vault),
+        provider=_LocalProvider(),
+    )
+
+    def _long():
+        import time as _time
+
+        _time.sleep(0.4)
+        return LlmResult(summary="- done", tags=[], backlinks=["t"], personal=False)
+
+    world.llm_script["mail-1"] = _long
+    world.run()
+
+    beats = [(c, m) for c, _t, m in world.progress if "(경과 00:00)" in m]
+    # The heartbeat never moves progress backwards: on_progress already set 0.5.
+    assert beats and all(
+        (c, m) == (0.5, "[2026-04-16] 요약 중: mail-1 (1/1) (경과 00:00)") for c, m in beats
+    )

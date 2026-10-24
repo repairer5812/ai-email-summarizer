@@ -197,7 +197,9 @@ def test_multi_day_failed_resummarize_processes_only_failed_messages(
         on_detail,
         on_progress,
         user_profile,
+        multimodal_inputs=None,
     ):
+        assert multimodal_inputs is None
         summarized_subjects.append(subject)
         on_progress(1.0)
         return LlmResult(

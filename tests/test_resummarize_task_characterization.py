@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -413,3 +414,107 @@ def test_resummarize_provider_not_ready_fails_job(tmp_path, monkeypatch):
     finally:
         conn.close()
     assert job is not None and job.status == "failed"
+
+
+class _VisionProvider:
+    tier = "cloud"
+
+    def supports_multimodal_inputs(self) -> bool:
+        return True
+
+
+def _seed_attachment(world: _World, *, message_fk: int, uid: int) -> None:
+    from webmail_summary.index.mail_repo import replace_attachments
+
+    msg_dir = world.archive_root / f"msg-{uid}"
+    (msg_dir / "attachments").mkdir(parents=True, exist_ok=True)
+    (msg_dir / "attachments" / "chart.png").write_bytes(b"0" * 4096)
+    conn = get_conn(world.db_path)
+    try:
+        replace_attachments(
+            conn,
+            message_fk=message_fk,
+            items=[
+                {
+                    "filename": "chart.png",
+                    "mime_type": "image/png",
+                    "size_bytes": 4096,
+                    "rel_path": "attachments/chart.png",
+                    "content_id": None,
+                    "is_inline": False,
+                }
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_resummarize_passes_saved_images_when_multimodal_is_on(tmp_path, monkeypatch, enabled):
+    settings = SimpleNamespace(
+        obsidian_root=str(tmp_path / "vault"),
+        sender_filter="",
+        cloud_provider="openai",
+        openrouter_model="gpt-4o-mini",
+        cloud_multimodal_enabled=enabled,
+        user_roles=[],
+        user_interests="",
+    )
+    world = _World(tmp_path, monkeypatch, settings=settings, provider=_VisionProvider())
+    fk = world.seed(uid=1, day="2026-04-16", subject="chart mail", summary="(no summary)")
+    _seed_attachment(world, message_fk=fk, uid=1)
+
+    world.run(date_key="2026-04-16")
+
+    inputs = world.llm_calls[0]["multimodal_inputs"]
+    if enabled:
+        assert [(Path(x.path).name, x.mime_type, x.detail, x.source) for x in inputs] == [
+            ("chart.png", "image/png", "low", "attachment")
+        ]
+    else:
+        assert inputs is None
+
+
+def test_resummarize_timeout_saves_placeholder_and_stops_local_server(tmp_path, monkeypatch):
+    import webmail_summary.llm.llamacpp_server as llamacpp_server
+
+    world = _World(tmp_path, monkeypatch)
+    world.seed(uid=1, day="2026-04-16", subject="slow", summary="(no summary)")
+    release = threading.Event()
+    stops: list[bool] = []
+
+    def _slow_summarize(_provider, **kwargs):
+        release.wait(5.0)
+        return LlmResult(summary="late", tags=[], backlinks=[], personal=False)
+
+    monkeypatch.setattr(mod, "summarize_email_long_aware", _slow_summarize)
+    monkeypatch.setattr(mod, "llm_timeout_seconds", lambda provider: 0.2)
+    monkeypatch.setattr(llamacpp_server, "stop_server", lambda force=False: stops.append(force))
+    try:
+        world.run(date_key="2026-04-16")
+    finally:
+        release.set()
+
+    assert ("warn", "LLM timeout: 0s (item 1/1)") in world.events()
+    assert stops == [True]
+    assert world.summaries()["slow"][0] == "(LLM timeout)"
+    assert world.progress[-1] == (1.0, 1.0, "[2026-04-16] 다시 요약 완료")
+
+
+def test_resummarize_and_sync_share_the_heartbeat_cadence(tmp_path, monkeypatch):
+    from webmail_summary.jobs import llm_call
+
+    monkeypatch.setattr(llm_call, "HEARTBEAT_INTERVAL_S", 0.05)
+    world = _World(tmp_path, monkeypatch)
+    world.seed(uid=1, day="2026-04-16", subject="long", summary="(no summary)")
+
+    def _long_summarize(_provider, *, on_progress, **kwargs):
+        time.sleep(0.4)
+        return LlmResult(summary="- done", tags=[], backlinks=[], personal=False)
+
+    monkeypatch.setattr(mod, "summarize_email_long_aware", _long_summarize)
+    world.run(date_key="2026-04-16")
+
+    beats = [m for _c, _t, m in world.progress if "(경과 00:00)" in m]
+    assert beats and all(m == "[2026-04-16] LLM 호출 중 long (1/1) (경과 00:00)" for m in beats)
