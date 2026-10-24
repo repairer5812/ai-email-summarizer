@@ -33,7 +33,7 @@ dependencies = [
 webmail-summary = "webmail_summary.cli:main"
 
 [tool.setuptools.package-data]
-"webmail_summary" = ["_version.txt", "ui/templates/*.html", "ui/static/*"]
+"webmail_summary" = ["_version.txt", "ui/templates/*.html", "ui/static/*", "ui/resources/*.ps1"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

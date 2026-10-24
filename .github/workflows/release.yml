@@ -96,7 +96,9 @@ jobs:
           # The icon is now 512x512 (around 33 KB) but explicit add-data
           # remains belt-and-suspenders against PyInstaller collection
           # heuristics. The tray icon is embedded in tray_icon_data.py.
-          pyinstaller --noconfirm --clean --onedir --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --collect-submodules pystray --collect-submodules PIL --add-data "src/webmail_summary/ui/static;webmail_summary/ui/static" --add-data "src/webmail_summary/ui/templates;webmail_summary/ui/templates" --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import pystray._win32 --hidden-import PIL --hidden-import PIL.Image --hidden-import _cffi_backend src/webmail_summary/cli.py
+          # ui/resources holds apply_update.ps1, which the in-app updater
+          # writes next to the installer; without it updates cannot apply.
+          pyinstaller --noconfirm --clean --onedir --noconsole --name webmail-summary --icon landing/app/favicon.ico --version-file version_info.txt --collect-data webmail_summary --collect-data certifi --collect-submodules webmail_summary --collect-submodules pystray --collect-submodules PIL --add-data "src/webmail_summary/ui/static;webmail_summary/ui/static" --add-data "src/webmail_summary/ui/templates;webmail_summary/ui/templates" --add-data "src/webmail_summary/ui/resources;webmail_summary/ui/resources" --runtime-hook installer/pyinstaller_rth_cffi.py --hidden-import webview --hidden-import pystray --hidden-import pystray._win32 --hidden-import PIL --hidden-import PIL.Image --hidden-import _cffi_backend src/webmail_summary/cli.py
 
       - name: Smoke test — frozen launcher publishes active_url.txt
         shell: pwsh

@@ -41,3 +41,31 @@ def test_written_updater_script_is_unchanged(tmp_path: Path):
     assert text.count(b"\n") == EXPECTED_LINES
     assert text.endswith(b"}\n")
     assert hashlib.sha256(text).hexdigest() == EXPECTED_TEXT_SHA256
+
+
+RESOURCE = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "webmail_summary"
+    / "ui"
+    / "resources"
+    / "apply_update.ps1"
+)
+
+
+def test_resource_file_is_plain_utf8_with_lf():
+    raw = RESOURCE.read_bytes()
+    assert not raw.startswith(codecs.BOM_UTF8)
+    assert b"\r" not in raw
+    assert hashlib.sha256(raw).hexdigest() == EXPECTED_TEXT_SHA256
+
+
+def test_resource_is_listed_for_packaging():
+    root = Path(__file__).resolve().parents[1]
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"ui/resources/*.ps1"' in pyproject
+    workflow = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert (
+        '--add-data "src/webmail_summary/ui/resources;webmail_summary/ui/resources"'
+        in workflow
+    )
