@@ -10,6 +10,7 @@ import requests
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from webmail_summary.llm.cloud_registry import PROVIDERS
 from webmail_summary.util.app_data import get_app_data_dir
 
 
@@ -163,7 +164,7 @@ def _is_free_variant(model_id: str) -> bool:
 
 
 def _fetch_openrouter_models(*, api_key: str) -> list[OpenRouterModel]:
-    url = "https://openrouter.ai/api/v1/models"
+    url = f"{PROVIDERS['openrouter'].base_url}/models"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",

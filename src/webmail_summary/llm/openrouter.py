@@ -12,6 +12,18 @@ from pathlib import Path
 import requests
 
 from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
+from webmail_summary.llm.cloud_registry import (
+    ANTHROPIC_MESSAGES_URL,
+    API_ANTHROPIC,
+    API_GEMINI,
+    PROVIDERS,
+    anthropic_headers,
+    api_for_base_url,
+    chat_completions_url,
+    gemini_generate_content_url,
+    gemini_headers,
+    openai_compatible_headers,
+)
 from webmail_summary.util.jsonish import (
     coerce_summary_text,
     coerce_summary_value,
@@ -30,7 +42,7 @@ _SESSION = requests.Session()
 class CloudConfig:
     api_key: str
     model: str
-    base_url: str = "https://openrouter.ai/api/v1"
+    base_url: str = PROVIDERS["openrouter"].base_url
 
 
 class CloudProvider(LlmProvider):
@@ -45,9 +57,8 @@ class CloudProvider(LlmProvider):
         return self._supports_multimodal()
 
     def _supports_multimodal(self) -> bool:
-        base = str(self._cfg.base_url or "").lower()
         model = str(self._cfg.model or "").lower()
-        if "generativelanguage.googleapis.com" in base:
+        if api_for_base_url(str(self._cfg.base_url or "").lower()) == API_GEMINI:
             return True
         allow = [
             "gpt-4o",
@@ -121,22 +132,19 @@ class CloudProvider(LlmProvider):
         parts.extend([f"Subject: {subject}\n\n", f"Body:\n{body[:12000]}\n"])
         prompt = "".join(parts)
 
-        # Handle Google Gemini Native API
-        if "generativelanguage.googleapis.com" in self._cfg.base_url:
+        api = api_for_base_url(self._cfg.base_url)
+        # Google Gemini native API
+        if api == API_GEMINI:
             return self._summarize_gemini(prompt, multimodal_inputs=multimodal_inputs)
 
-        # Handle Anthropic Native API (/v1/messages, not OpenAI-compatible)
-        if "api.anthropic.com" in self._cfg.base_url:
+        # Anthropic native API (/v1/messages, not OpenAI-compatible)
+        if api == API_ANTHROPIC:
             return self._summarize_anthropic(prompt, multimodal_inputs=multimodal_inputs)
 
-        url = f"{self._cfg.base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self._cfg.api_key}",
-            "Content-Type": "application/json",
-        }
-        # Add headers for specific providers
-        if "openrouter.ai" in self._cfg.base_url:
-            headers["X-Title"] = "WebmailSummary"
+        url = chat_completions_url(self._cfg.base_url)
+        headers = openai_compatible_headers(
+            self._cfg.api_key, base_url=self._cfg.base_url
+        )
 
         image_parts = self._build_image_parts(multimodal_inputs)
         user_content: str | list[dict]
@@ -252,12 +260,8 @@ class CloudProvider(LlmProvider):
         multimodal_inputs: list[LlmImageInput] | None = None,
     ) -> LlmResult:
         """Call Anthropic's native /v1/messages API."""
-        url = "https://api.anthropic.com/v1/messages"
-        headers = {
-            "x-api-key": self._cfg.api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
+        url = ANTHROPIC_MESSAGES_URL
+        headers = anthropic_headers(self._cfg.api_key)
 
         user_content: str | list[dict]
         image_parts = self._build_image_parts(multimodal_inputs)
@@ -296,11 +300,8 @@ class CloudProvider(LlmProvider):
         prompt: str,
         multimodal_inputs: list[LlmImageInput] | None = None,
     ) -> LlmResult:
-        model_id = self._cfg.model
-        if not model_id.startswith("models/"):
-            model_id = f"models/{model_id}"
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/{model_id}:generateContent?key={self._cfg.api_key}"
+        url = gemini_generate_content_url(self._cfg.model)
+        headers = gemini_headers(self._cfg.api_key)
         gemini_parts: list[dict] = [{"text": prompt}]
         for item in multimodal_inputs or []:
             try:
@@ -340,7 +341,7 @@ class CloudProvider(LlmProvider):
 
         for attempt in range(3):
             try:
-                r = _SESSION.post(url, json=payload, timeout=120)
+                r = _SESSION.post(url, headers=headers, json=payload, timeout=120)
                 last_status = r.status_code
                 last_resp = r.text
 

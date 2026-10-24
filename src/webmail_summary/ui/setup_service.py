@@ -4,47 +4,70 @@ import keyring
 import requests
 
 from webmail_summary.index.settings import Settings
+from webmail_summary.llm.cloud_registry import (
+    ANTHROPIC_MESSAGES_URL,
+    API_ANTHROPIC,
+    API_GEMINI,
+    KEYRING_USERNAME,
+    PROVIDER_IDS,
+    PROVIDERS,
+    anthropic_headers,
+    chat_completions_url,
+    gemini_generate_content_url,
+    gemini_headers,
+    get_provider,
+    keyring_service,
+    openai_compatible_headers,
+)
 from webmail_summary.llm.local_status import check_local_ready
 
 
 def get_cloud_keys() -> dict[str, bool]:
     cloud_keys = {}
-    for p in ["openai", "anthropic", "google", "upstage", "openrouter"]:
+    for p in PROVIDER_IDS:
         try:
-            svc = f"webmail-summary::{p}"
-            val = keyring.get_password(svc, "api_key")
+            val = keyring.get_password(keyring_service(p), KEYRING_USERNAME)
             cloud_keys[p] = bool(val and val.strip())
         except Exception:
             cloud_keys[p] = False
     return cloud_keys
 
 
+def _ping_openai_compatible(url: str, headers: dict[str, str], model: str):
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "temperature": 0,
+        "max_tokens": 8,
+    }
+    return requests.post(url, headers=headers, json=payload, timeout=25)
+
+
 def test_cloud_api_key(
     provider_name: str, api_key: str, model: str
 ) -> tuple[bool, str]:
     provider = (provider_name or "openai").strip().lower()
+    spec = get_provider(provider)
     chosen_model = (model or "").strip()
-
-    defaults = {
-        "openai": "gpt-4o-mini",
-        "google": "gemini-2.5-flash",
-        "upstage": "solar-mini",
-        "anthropic": "claude-3-5-haiku-20241022",
-        "openrouter": "openai/gpt-4o-mini",
-    }
-    selected_model = chosen_model or defaults.get(provider, "gpt-4o-mini")
+    selected_model = chosen_model or (
+        spec.default_model if spec else PROVIDERS["openai"].default_model
+    )
 
     try:
-        if provider == "google":
-            model_id = selected_model
-            if not model_id.startswith("models/"):
-                model_id = f"models/{model_id}"
-            url = f"https://generativelanguage.googleapis.com/v1beta/{model_id}:generateContent?key={api_key}"
+        if spec is None:
+            return False, "실패: 지원하지 않는 클라우드 제공자입니다."
+
+        if spec.api == API_GEMINI:
             payload = {
                 "contents": [{"parts": [{"text": "ping"}]}],
                 "generationConfig": {"temperature": 0.0, "maxOutputTokens": 8},
             }
-            r = requests.post(url, json=payload, timeout=25)
+            r = requests.post(
+                gemini_generate_content_url(selected_model),
+                headers=gemini_headers(api_key),
+                json=payload,
+                timeout=25,
+            )
             if r.status_code == 200:
                 return (
                     True,
@@ -52,19 +75,18 @@ def test_cloud_api_key(
                 )
             return False, f"실패: Google API 오류 {r.status_code}"
 
-        if provider == "anthropic":
-            url = "https://api.anthropic.com/v1/messages"
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            }
+        if spec.api == API_ANTHROPIC:
             payload = {
                 "model": selected_model,
                 "max_tokens": 8,
                 "messages": [{"role": "user", "content": "ping"}],
             }
-            r = requests.post(url, headers=headers, json=payload, timeout=25)
+            r = requests.post(
+                ANTHROPIC_MESSAGES_URL,
+                headers=anthropic_headers(api_key),
+                json=payload,
+                timeout=25,
+            )
             if r.status_code == 200:
                 return (
                     True,
@@ -72,49 +94,18 @@ def test_cloud_api_key(
                 )
             return False, f"실패: Anthropic API 오류 {r.status_code}"
 
-        base_urls = {
-            "openai": "https://api.openai.com/v1",
-            "upstage": "https://api.upstage.ai/v1/solar",
-            "openrouter": "https://openrouter.ai/api/v1",
-        }
-        if provider not in base_urls:
-            return False, "실패: 지원하지 않는 클라우드 제공자입니다."
-
-        url = f"{base_urls[provider]}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        if provider == "openrouter":
-            headers["X-Title"] = "WebmailSummary"
-        payload = {
-            "model": selected_model,
-            "messages": [{"role": "user", "content": "ping"}],
-            "temperature": 0,
-            "max_tokens": 8,
-        }
-        if provider == "upstage":
-            upstage_urls = [
-                "https://api.upstage.ai/v1/solar/chat/completions",
-                "https://api.upstage.ai/v1/chat/completions",
-            ]
+        headers = openai_compatible_headers(api_key, base_url=spec.base_url)
+        if spec.key_test_urls:
+            # Upstage: try both chat endpoints and the fallback models.
             model_candidates = [selected_model]
-            for m in ["solar-mini", "solar-pro"]:
+            for m in spec.key_test_models:
                 if m not in model_candidates:
                     model_candidates.append(m)
 
             last_code = 0
-            for test_url in upstage_urls:
+            for test_url in spec.key_test_urls:
                 for test_model in model_candidates:
-                    test_payload = {
-                        "model": test_model,
-                        "messages": [{"role": "user", "content": "ping"}],
-                        "temperature": 0,
-                        "max_tokens": 8,
-                    }
-                    r = requests.post(
-                        test_url, headers=headers, json=test_payload, timeout=25
-                    )
+                    r = _ping_openai_compatible(test_url, headers, test_model)
                     last_code = r.status_code
                     if r.status_code == 200:
                         return (
@@ -125,7 +116,9 @@ def test_cloud_api_key(
                         return False, "실패: Upstage API 키 인증에 실패했습니다."
             return False, f"실패: Upstage API 오류 {last_code}"
 
-        r = requests.post(url, headers=headers, json=payload, timeout=25)
+        r = _ping_openai_compatible(
+            chat_completions_url(spec.base_url), headers, selected_model
+        )
         if r.status_code == 200:
             return (
                 True,

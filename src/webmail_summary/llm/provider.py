@@ -6,6 +6,11 @@ import keyring
 
 from webmail_summary.index.settings import Settings
 from webmail_summary.llm.base import LlmProvider
+from webmail_summary.llm.cloud_registry import (
+    KEYRING_USERNAME,
+    keyring_service,
+    resolve_provider,
+)
 from webmail_summary.llm.llamacpp_bin import LlamaCppBinConfig, LlamaCppBinProvider
 from webmail_summary.llm.local_engine import find_llama_cpp_installed, _dir_has_vulkan
 from webmail_summary.llm.llamacpp_server import (
@@ -240,41 +245,17 @@ def get_llm_provider(settings: Settings) -> LlmProvider:
         )
 
     if backend == "openrouter" or backend == "cloud":
-        provider_name = (settings.cloud_provider or "openai").strip().lower()
+        # Unknown provider names fall back to OpenAI, as before.
+        spec = resolve_provider(settings.cloud_provider)
         selected_model = (settings.openrouter_model or "").strip()
-
-        # Map internal provider names to base URLs and models
-        # OpenAI, Google, Upstage are OpenAI-compatible.
-        # Anthropic would need a separate adapter if we use their native SDK,
-        # but for now we recommend OpenRouter for Anthropic or stick to OpenAI-compatible ones.
-        defaults = {
-            "openai": "gpt-4o-mini",
-            "google": "gemini-2.5-flash",
-            "upstage": "solar-mini",
-            "anthropic": "claude-3-5-haiku-20241022",
-            "openrouter": "openai/gpt-4o-mini",
-        }
-        base_urls = {
-            "openai": "https://api.openai.com/v1",
-            "google": "https://generativelanguage.googleapis.com",
-            "upstage": "https://api.upstage.ai/v1/solar",
-            "anthropic": "https://api.anthropic.com/v1",
-            "openrouter": "https://openrouter.ai/api/v1",
-        }
-
-        if provider_name not in base_urls:
-            provider_name = "openai"
-
-        base_url = base_urls[provider_name]
-        model = selected_model or defaults[provider_name]
-        api_key_service = f"webmail-summary::{provider_name}"
-        api_key = keyring.get_password(api_key_service, "api_key")
+        model = selected_model or spec.default_model
+        api_key = keyring.get_password(keyring_service(spec.id), KEYRING_USERNAME)
 
         if not api_key:
-            raise LlmNotReady(f"{provider_name.upper()} API key not set in setup")
+            raise LlmNotReady(f"{spec.id.upper()} API key not set in setup")
 
         return CloudProvider(
-            CloudConfig(api_key=api_key, model=model, base_url=base_url)
+            CloudConfig(api_key=api_key, model=model, base_url=spec.base_url)
         )
 
     raise LlmNotReady(f"Unsupported LLM backend: {backend}")
