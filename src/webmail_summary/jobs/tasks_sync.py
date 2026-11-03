@@ -402,8 +402,10 @@ def _start_sync_run(job_id: str, cancel: threading.Event) -> _SyncRun:
 def _fetch_messages(run: _SyncRun) -> Iterator[ImapMessage]:
     """Pick the UIDs to process and return the fetch iterator.
 
-    Mails archived by an earlier run but not finished come first, then new
-    mails above the UID watermark from the last 60 days.
+    Incomplete UIDs and new UIDs are combined and processed in ascending UID
+    order. A higher incomplete UID used to be marked seen before a lower new
+    UID was archived; if the process died there, the watermark moved past the
+    lower UID and the next sync never fetched it.
     """
     s = run.settings
     imap = run.imap
@@ -435,9 +437,10 @@ def _fetch_messages(run: _SyncRun) -> Iterator[ImapMessage]:
         unseen_only=False,
         min_uid_exclusive=last_uid,
     )
-    # Merge: retry incomplete UIDs first, then new ones.
-    retry_set = set(retry_uids)
-    uids = retry_uids + [u for u in new_uids if u not in retry_set]
+    # One ascending pass. Putting a higher incomplete UID ahead of a lower
+    # new UID marks the higher one seen first; a crash then skips the lower
+    # UID forever because it is neither incomplete nor above the watermark.
+    uids = sorted({int(u) for u in retry_uids} | {int(u) for u in new_uids})
 
     with open_db(run.db_path) as connp:
         repo.update_progress(
