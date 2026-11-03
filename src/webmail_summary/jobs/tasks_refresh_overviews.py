@@ -11,34 +11,68 @@ from webmail_summary.index.settings import load_settings
 from webmail_summary.jobs import repo
 from webmail_summary.llm.provider import get_llm_provider
 from webmail_summary.llm.long_summarize import synthesize_daily_overview
+from webmail_summary.llm.summary_quality import is_failed_summary
+
+_DAY_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+OVERVIEW_DATES_PREFIX = "refresh-overviews-dates:"
+
+
+def normalize_overview_days(raw_days: list[str] | None) -> list[str]:
+    """Keep unique ``YYYY-MM-DD`` values in first-seen order."""
+    if not raw_days:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for d in raw_days:
+        day = str(d or "").strip()
+        if not _DAY_RE.fullmatch(day):
+            continue
+        if day in seen:
+            continue
+        seen.add(day)
+        out.append(day)
+    return out
+
+
+def format_overview_dates_event(date_keys: list[str]) -> str:
+    """Job event the sync worker writes so the runner can refresh those days."""
+    days = sorted(normalize_overview_days(date_keys))
+    return f"{OVERVIEW_DATES_PREFIX} " + ", ".join(days)
+
+
+def parse_overview_dates_event(text: str) -> list[str]:
+    raw = str(text or "").strip()
+    if not raw.startswith(OVERVIEW_DATES_PREFIX):
+        return []
+    body = raw[len(OVERVIEW_DATES_PREFIX) :].strip()
+    if not body:
+        return []
+    return normalize_overview_days([part.strip() for part in body.split(",")])
+
+
+def overview_dates_for_sync_job(conn, job_id: str) -> list[str]:
+    """Dates recorded by a sync job, in chronological order."""
+    rows = conn.execute(
+        "SELECT text FROM job_events WHERE job_id = ? AND text LIKE ? ORDER BY id",
+        (str(job_id), OVERVIEW_DATES_PREFIX + "%"),
+    ).fetchall()
+    found: list[str] = []
+    for row in rows:
+        found.extend(parse_overview_dates_event(str(row[0])))
+    return sorted(normalize_overview_days(found))
 
 
 def refresh_overviews_task(
     date_keys: list[str] | None = None,
     force_refresh: bool = False,
 ) -> Callable[[str, threading.Event], None]:
-    def _normalize_days(raw_days: list[str] | None) -> list[str]:
-        if not raw_days:
-            return []
-        out: list[str] = []
-        seen: set[str] = set()
-        for d in raw_days:
-            day = str(d or "").strip()
-            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
-                continue
-            if day in seen:
-                continue
-            seen.add(day)
-            out.append(day)
-        return out
-
     def run(job_id: str, cancel: threading.Event) -> None:
         db_path = app_db_path()
         with open_db(db_path) as conn:
             s = load_settings(conn)
             provider = get_llm_provider(s)
 
-            normalized_days = _normalize_days(date_keys)
+            normalized_days = normalize_overview_days(date_keys)
 
             if normalized_days:
                 days = normalized_days
@@ -113,21 +147,6 @@ def refresh_overviews_for_dates(
     force_refresh: bool = True,
     job_id: str | None = None,
 ) -> list[str]:
-    def _normalize_days(raw_days: list[str] | None) -> list[str]:
-        if not raw_days:
-            return []
-        out: list[str] = []
-        seen: set[str] = set()
-        for d in raw_days:
-            day = str(d or "").strip()
-            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
-                continue
-            if day in seen:
-                continue
-            seen.add(day)
-            out.append(day)
-        return out
-
     def _parse_iso(ts: str | None) -> datetime | None:
         if not ts:
             return None
@@ -139,7 +158,7 @@ def refresh_overviews_for_dates(
         except Exception:
             return None
 
-    normalized_days = _normalize_days(date_keys)
+    normalized_days = normalize_overview_days(date_keys)
     if not normalized_days:
         return []
 
@@ -177,14 +196,10 @@ def refresh_overviews_for_dates(
                     "ORDER BY internal_date ASC",
                     (f"{d}%",),
                 ).fetchall()
-                # Exclude failed/placeholder summaries from the overview
-                # input — otherwise the daily digest inherits those strings.
-                from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
-
                 all_sums = [
                     str(r[0] or "")
                     for r in rows
-                    if r[0] and not _needs_resummarize(str(r[0] or ""))
+                    if r[0] and not is_failed_summary(str(r[0] or ""))
                 ]
 
                 if not all_sums:

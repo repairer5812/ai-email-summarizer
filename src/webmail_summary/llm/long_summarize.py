@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from collections.abc import Callable
-
 from webmail_summary.llm.base import LlmImageInput, LlmProvider, LlmResult
-import re
+from webmail_summary.llm.summary_quality import is_failed_summary
 
 
 @dataclass(frozen=True)
@@ -1374,17 +1374,6 @@ def synthesize_daily_overview(
     max_item_chars = 220
     max_total_chars = 8000
 
-    # Placeholder/error strings that must never reach the daily digest.
-    # Prefix-only entries (no closing paren) catch variants like
-    # "(LLM error: HTTP 400)" / "(LLM unavailable: ConnectionError ...)".
-    _bad_markers = (
-        "(no summary)",
-        "(llm timeout)",
-        "(llm unavailable",
-        "(llm error",
-        "요약없음",
-    )
-
     compact_summaries: list[str] = []
     seen: set[str] = set()
     total_chars = 0
@@ -1399,7 +1388,7 @@ def synthesize_daily_overview(
             continue
         seen.add(key)
         # Skip summaries that are just placeholder/error strings.
-        if any(marker in key for marker in _bad_markers):
+        if is_failed_summary(s):
             continue
 
         clipped = s[:max_item_chars]

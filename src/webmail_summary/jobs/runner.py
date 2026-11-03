@@ -101,6 +101,30 @@ class JobRunner:
             pass
         return True
 
+    def schedule_overview_refresh(self, sync_job_id: str) -> str | None:
+        """Queue one overview job for the dates a successful sync recorded.
+
+        The sync worker writes ``refresh-overviews-dates:`` and does not call
+        the model. No dates means this sync exported nothing, so the old
+        90-day follow-up is not queued.
+        """
+        from webmail_summary.jobs.tasks_refresh_overviews import (
+            overview_dates_for_sync_job,
+            refresh_overviews_task,
+        )
+
+        db_path = app_db_path()
+        with open_db(db_path) as conn:
+            if repo.find_active_job(conn, kind="refresh-overviews") is not None:
+                return None
+            dates = overview_dates_for_sync_job(conn, sync_job_id)
+        if not dates:
+            return None
+        return self.enqueue(
+            kind="refresh-overviews",
+            fn=refresh_overviews_task(date_keys=dates, force_refresh=True),
+        )
+
     def _loop(self) -> None:
         db_path = app_db_path()
         while True:
@@ -230,21 +254,9 @@ class JobRunner:
                     ):
                         raise RuntimeError(f"sync worker failed: exit {rc}")
                     if rc == 0 and not cancelled:
-                        with open_db(db_path) as connr:
-                            active_refresh = repo.find_active_job(
-                                connr, kind="refresh-overviews"
-                            )
-
-                        if active_refresh is None:
-                            try:
-                                from webmail_summary.jobs.tasks_refresh_overviews import (
-                                    refresh_overviews_task,
-                                )
-
-                                refresh_job_id = self.enqueue(
-                                    kind="refresh-overviews",
-                                    fn=refresh_overviews_task(),
-                                )
+                        try:
+                            refresh_job_id = self.schedule_overview_refresh(job.id)
+                            if refresh_job_id:
                                 with open_db(db_path) as conn4:
                                     repo.add_event(
                                         conn4,
@@ -252,14 +264,14 @@ class JobRunner:
                                         level="info",
                                         text=f"queued refresh-overviews job={refresh_job_id}",
                                     )
-                            except Exception as e:
-                                with open_db(db_path) as conn5:
-                                    repo.add_event(
-                                        conn5,
-                                        job_id=job.id,
-                                        level="warn",
-                                        text=f"failed to queue refresh-overviews: {e}",
-                                    )
+                        except Exception as e:
+                            with open_db(db_path) as conn5:
+                                repo.add_event(
+                                    conn5,
+                                    job_id=job.id,
+                                    level="warn",
+                                    text=f"failed to queue refresh-overviews: {e}",
+                                )
                 else:
                     job.fn(job.id, cancel)
             except Exception as e:

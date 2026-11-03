@@ -41,6 +41,11 @@ from webmail_summary.jobs.tasks_refresh_overviews import refresh_overviews_for_d
 from webmail_summary.llm.base import LlmImageInput, LlmResult
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
+from webmail_summary.llm.summary_quality import (
+    SUMMARY_LLM_TIMEOUT,
+    SUMMARY_LLM_UNAVAILABLE,
+    is_failed_summary,
+)
 from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
 from webmail_summary.util.text_sanitize import (
     html_to_visible_text,
@@ -77,29 +82,10 @@ def _normalize_date_keys(
 
 
 def _needs_resummarize(summary: str) -> bool:
-    s = (summary or "").strip().lower()
-    if not s:
-        return True
-    compact = "".join(ch for ch in s if ch.isalnum() or ("\uac00" <= ch <= "\ud7a3"))
-    if "nosummary" in compact or "?붿빟?놁쓬" in compact:
-        return True
-    if "?곸꽭?붿빟??ぉ?대?議깊빀?덈떎" in compact:
-        return True
-    if "\uc694\uc57d\ud56d\ubaa9\uc774\ubd80\uc871\ud569\ub2c8\ub2e4" in compact:
-        return True
-    if "llm timeout" in s or "(llm timeout)" in s:
-        return True
-    if "llm unavailable" in s:
-        return True
-    if "llm error" in s or "(llm error" in s:
-        return True
-    if "failed to format input" in s or "invalid codepoint" in s:
-        return True
-    if "loading model" in s or "available commands" in s:
-        return True
-    if s.startswith("{") or s.startswith("```json") or s.startswith("```"):
-        return True
-    return False
+    """Backward-compatible name for :func:`is_failed_summary`."""
+    return is_failed_summary(summary)
+
+
 
 
 class _ResummarizeCancelled(Exception):
@@ -535,7 +521,7 @@ def _summarize_item(
     )
     llm_err = outcome.error
     if outcome.timed_out:
-        llm_res = fallback_result("(LLM timeout)")
+        llm_res = fallback_result(SUMMARY_LLM_TIMEOUT)
     else:
         llm_res = outcome.result
         if llm_res is None:
@@ -544,7 +530,7 @@ def _summarize_item(
                     cancel.set()
                     return None
                 run.add_event("warn", f"LLM exception: {str(llm_err)[:180]}")
-            llm_res = fallback_result("(LLM unavailable)")
+            llm_res = fallback_result(SUMMARY_LLM_UNAVAILABLE)
 
     if cancel.is_set() or isinstance(llm_err, _ResummarizeCancelled):
         cancel.set()
