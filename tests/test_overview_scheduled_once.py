@@ -13,6 +13,7 @@ from webmail_summary.jobs.tasks_refresh_overviews import (
     overview_dates_for_sync_job,
     refresh_overviews_task,
 )
+from webmail_summary.llm.base import LlmProvider
 from webmail_summary.llm.long_summarize import synthesize_daily_overview
 from webmail_summary.llm.summary_quality import SUMMARY_LLM_CALL_FAILED
 
@@ -128,7 +129,7 @@ def test_runner_queues_recorded_dates_and_not_a_second_job(monkeypatch):
 
 
 def test_daily_overview_drops_korean_fallback_without_calling_model():
-    class _Boom:
+    class _Boom(LlmProvider):
         def summarize(self, *, subject, body, multimodal_inputs=None):
             raise AssertionError(body)
 

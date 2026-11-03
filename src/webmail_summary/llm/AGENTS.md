@@ -18,6 +18,7 @@
     - **Chunking**: Split-aware logic (paragraph boundaries) for bodies exceeding token limits.
     - **Synthesis**: Tiered prompt strategy (Fast/Standard/Cloud) based on model capability.
     - **Noise Stripping**: Post-processing to remove common newsletter cruft (unsubscribe links, legal footers).
+    - `summarize_email_long_aware` only chooses the path. Short mail goes through `summarize_short`, long mail through `summarize_chunked`, and the shared ending is `postprocess_summary`.
 
 ## Authentication & Security
 - **Keyring Enforcement**: API keys MUST NEVER be written to the database or plaintext configs.
