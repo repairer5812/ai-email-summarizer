@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from webmail_summary.index.mail_repo import get_message_detail, list_messages_by_date
 from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.settings import load_settings
-from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
+from webmail_summary.llm.summary_quality import is_failed_summary
 from webmail_summary.ui.timefmt import format_kst, time_kst
 from webmail_summary.ui.web_shared import fmt_summarize_ms, get_active_jobs, templates
 from webmail_summary.util.jsonish import coerce_summary_text
@@ -57,7 +57,7 @@ def day_view(request: Request, date_key: str):
                 "topics": topics if isinstance(topics, list) else [],
                 "has_rendered": bool(r[8]),
                 "summarize_ms": fmt_summarize_ms(r[10] if len(r) > 10 else None),
-                "needs_resummarize": _needs_resummarize(
+                "needs_resummarize": is_failed_summary(
                     coerce_summary_text(str(r[4] or ""))
                 ),
             }

@@ -48,10 +48,20 @@ from webmail_summary.jobs.llm_call import (
     select_multimodal_inputs,
     wants_multimodal_inputs,
 )
-from webmail_summary.jobs.tasks_refresh_overviews import refresh_overviews_for_dates
+from webmail_summary.jobs.tasks_refresh_overviews import format_overview_dates_event
 from webmail_summary.llm.base import LlmImageInput, LlmResult
 from webmail_summary.llm.provider import LlmNotReady, get_llm_provider
 from webmail_summary.llm.long_summarize import summarize_email_long_aware
+from webmail_summary.llm.summary_quality import (
+    SUMMARY_LLM_CALL_FAILED,
+    SUMMARY_LLM_CANCELLED,
+    SUMMARY_LLM_HTTP,
+    SUMMARY_LLM_NETWORK,
+    SUMMARY_LLM_PARSE,
+    SUMMARY_LLM_RESPONSE_TIMEOUT,
+    SUMMARY_LLM_TIMEOUT,
+    SUMMARY_LLM_UNAVAILABLE,
+)
 from webmail_summary.util.app_data import default_obsidian_root, get_app_data_dir
 from webmail_summary.util.text_sanitize import (
     html_to_visible_text,
@@ -221,7 +231,7 @@ def _run_llm_summary(
         on_timeout=_log_timeout,
     )
     if outcome.timed_out:
-        return fallback_result("(LLM timeout)")
+        return fallback_result(SUMMARY_LLM_TIMEOUT)
     if outcome.result is not None:
         return outcome.result
     if outcome.error is not None:
@@ -231,7 +241,7 @@ def _run_llm_summary(
             level="warn",
             text=f"LLM exception: {str(outcome.error)[:180]}",
         )
-    return fallback_result("(LLM unavailable)")
+    return fallback_result(SUMMARY_LLM_UNAVAILABLE)
 
 
 def _chunked(iterable: Iterable, n: int) -> Iterator[list]:
@@ -656,17 +666,17 @@ def _call_llm_direct(run: _SyncRun, item: _SyncItem) -> tuple[LlmResult, float]:
     except Exception as ex:
         # 예외 타입별 한국어 메시지 분기. _is_llm_fallback 은
         # '(LLM ' startswith 로 매칭하므로 모두 통과.
-        fallback_summary = "(LLM 호출 실패)"
+        fallback_summary = SUMMARY_LLM_CALL_FAILED
         if _rex is not None and isinstance(ex, _rex.Timeout):
-            fallback_summary = "(LLM 응답 timeout)"
+            fallback_summary = SUMMARY_LLM_RESPONSE_TIMEOUT
         elif isinstance(ex, _FutTimeout):
-            fallback_summary = "(LLM 응답 timeout)"
+            fallback_summary = SUMMARY_LLM_RESPONSE_TIMEOUT
         elif _rex is not None and isinstance(ex, _rex.ConnectionError):
-            fallback_summary = "(LLM 네트워크 오류)"
+            fallback_summary = SUMMARY_LLM_NETWORK
         elif _rex is not None and isinstance(ex, _rex.HTTPError):
-            fallback_summary = "(LLM HTTP 오류)"
+            fallback_summary = SUMMARY_LLM_HTTP
         elif isinstance(ex, _json.JSONDecodeError):
-            fallback_summary = "(LLM 응답 파싱 실패)"
+            fallback_summary = SUMMARY_LLM_PARSE
         run.event("warn", f"LLM exception ({type(ex).__name__}): {str(ex)[:160]}")
         res = fallback_result(fallback_summary)
     return res, time.monotonic() - t1
@@ -717,7 +727,7 @@ def _summarize_concurrent(
                     # Fill outputs for the rest as
                     # fallback so Phase 3 zip works.
                     for _ in futures[idx:]:
-                        outputs.append((fallback_result("(LLM cancelled)"), 0.0))
+                        outputs.append((fallback_result(SUMMARY_LLM_CANCELLED), 0.0))
                     break
                 try:
                     res_pair = fut.result(timeout=llm_timeout_s)
@@ -729,7 +739,7 @@ def _summarize_concurrent(
                         f"대기 {llm_timeout_s:.0f}초): "
                         f"{str(ex)[:140]}",
                     )
-                    res_pair = (fallback_result("(LLM timeout)"), float(llm_timeout_s))
+                    res_pair = (fallback_result(SUMMARY_LLM_TIMEOUT), float(llm_timeout_s))
                 outputs.append(res_pair)
                 chunk_done_count[0] += 1
     finally:
@@ -954,7 +964,11 @@ def _save_export_and_mark(
 
 
 def _export_digests(run: _SyncRun) -> None:
-    """Daily digests, topic notes and the daily overview refresh."""
+    """Daily notes, topic notes, and the dates for one follow-up overview.
+
+    The overview model runs in the refresh job the runner queues from the
+    date event. Calling it here as well summarized the same day twice.
+    """
     by_date, by_topic = _group_processed_notes(run.processed_notes)
 
     for d, notes in by_date.items():
@@ -976,21 +990,7 @@ def _export_digests(run: _SyncRun) -> None:
             run.event("warn", f"Obsidian topic export failed: {e}")
 
     if by_date:
-        try:
-            refreshed_days = refresh_overviews_for_dates(
-                db_path=run.db_path,
-                provider=run.provider,
-                settings=run.settings,
-                date_keys=list(by_date.keys()),
-                force_refresh=True,
-                job_id=run.job_id,
-            )
-            if refreshed_days:
-                run.event(
-                    "info", "daily_overview refreshed: " + ", ".join(refreshed_days)
-                )
-        except Exception as e:
-            run.event("warn", f"daily_overview refresh failed: {e}")
+        run.event("info", format_overview_dates_event(list(by_date.keys())))
 
 
 def _revert_seen_flags(run: _SyncRun) -> None:

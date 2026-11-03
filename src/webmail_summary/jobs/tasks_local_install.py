@@ -22,6 +22,12 @@ from webmail_summary.llm.local_status import check_local_ready
 from webmail_summary.util.app_data import get_models_dir
 from webmail_summary.util.atomic_io import atomic_write_text
 
+# Install probe only. The runtime MLX server uses port 4892 and llama-server
+# uses 4891, so a dry-run download does not take the port a summary needs.
+_MLX_INSTALL_PROBE_HOST = "127.0.0.1"
+_MLX_INSTALL_PROBE_PORT = 4899
+_MLX_INSTALL_PROBE_DEADLINE_S = 600
+
 
 def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -> None:
     """Install MLX engine + trigger model cache via a test server start."""
@@ -60,14 +66,22 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
 
     import subprocess
     import os
-    cmd = [*mlx_inst.server_cmd, "--model", m.hf_repo_id, "--host", "127.0.0.1", "--port", "4899"]
+    cmd = [
+        *mlx_inst.server_cmd,
+        "--model",
+        m.hf_repo_id,
+        "--host",
+        _MLX_INSTALL_PROBE_HOST,
+        "--port",
+        str(_MLX_INSTALL_PROBE_PORT),
+    ]
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
 
     # Wait for server to become ready (downloads model on first start).
     import requests as req
-    deadline = time.monotonic() + 600  # 10 min for large model download
+    deadline = time.monotonic() + _MLX_INSTALL_PROBE_DEADLINE_S
     ready = False
     try:
         while time.monotonic() < deadline:
@@ -76,7 +90,10 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
             if proc.poll() is not None:
                 break
             try:
-                r = req.get("http://127.0.0.1:4899/v1/models", timeout=2)
+                r = req.get(
+                    f"http://{_MLX_INSTALL_PROBE_HOST}:{_MLX_INSTALL_PROBE_PORT}/v1/models",
+                    timeout=2,
+                )
                 if r.status_code == 200:
                     ready = True
                     break
@@ -114,6 +131,9 @@ def _run_mlx_install(job_id: str, cancel: threading.Event, model_id_norm: str) -
         else:
             repo.add_event(conn4, job_id=job_id, level="error", text="MLX model download/load failed")
             repo.update_progress(conn4, job_id=job_id, current=0, total=100, message="MLX install failed")
+            # The runner marks a job succeeded when the task returns. A failed
+            # MLX install has to raise, the same way a GGUF engine install does.
+            raise RuntimeError("MLX model download/load failed")
 
 
 def local_install_task(*, model_id: str):

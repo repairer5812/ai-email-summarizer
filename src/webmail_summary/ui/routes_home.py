@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from webmail_summary.index.mail_repo import get_daily_overview
 from webmail_summary.index.db import app_db_path, open_db
 from webmail_summary.index.settings import get_setting, load_settings, set_setting
-from webmail_summary.jobs.tasks_resummarize import _needs_resummarize
+from webmail_summary.llm.summary_quality import is_failed_summary
 from webmail_summary.llm.local_status import check_local_ready, get_gguf_path_for_repo_file
 from webmail_summary.llm.long_summarize import _is_placeholder_bullet
 from webmail_summary.ui.setup_service import (
@@ -67,7 +67,7 @@ def _build_day_cards(conn, *, limit: int = 90) -> list[dict]:
         ).fetchall()
         for r in rows_summaries:
             day = str(r[0] or "")
-            if day and _needs_resummarize(str(r[1] or "")):
+            if day and is_failed_summary(str(r[1] or "")):
                 failed_by_day[day] = int(failed_by_day.get(day, 0)) + 1
 
     return [

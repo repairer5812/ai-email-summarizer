@@ -17,7 +17,7 @@ This directory handles long-running tasks: mail synchronization, LLM summarizati
 - `tasks_sync.py`: Main entry for periodic and manual IMAP syncing.
 - `tasks_resummarize.py`: Utility for re-running LLM logic on existing archived mail.
 - `llm_call.py`: Cloud pacing, per-tier timeout, heartbeat, deadline call and multimodal image selection shared by sync and resummarize. Change LLM call behavior here, not in one task.
-- `tasks_refresh_overviews.py`: Synthesizes daily overviews from individual email summaries.
+- `tasks_refresh_overviews.py`: Synthesizes daily overviews from individual email summaries. Sync records the touched dates and the runner queues one refresh for those dates; sync does not call the overview model itself. Resummarize still refreshes only its own dates in-process.
 - `runner.py`: The central job runner that manages the queue and subprocess lifecycle.
 - `repo.py`: Database access layer for job status, progress, and event logging.
 - `worker_sync.py`: The standalone script used as the entry point for subprocess-based sync workers.

@@ -253,10 +253,6 @@ class _World:
             )
             return Path(vault_root) / "Topic" / f"{topic}.md"
 
-        def fake_refresh(*, db_path, provider, settings, date_keys, force_refresh, job_id):
-            world.refreshed.append(sorted(date_keys))
-            return sorted(date_keys)
-
         original_update_progress = repo.update_progress
 
         def capture_progress(conn, *, job_id, current, total, message):
@@ -276,7 +272,6 @@ class _World:
         monkeypatch.setattr(mod, "export_email_note", fake_export_email_note)
         monkeypatch.setattr(mod, "export_daily_note", fake_export_daily_note)
         monkeypatch.setattr(mod, "export_topic_note", fake_export_topic_note)
-        monkeypatch.setattr(mod, "refresh_overviews_for_dates", fake_refresh)
         monkeypatch.setattr(repo, "update_progress", capture_progress)
         monkeypatch.setattr(
             llamacpp_server,
@@ -393,7 +388,7 @@ def test_sync_serial_path_archives_summarizes_exports_and_marks(tmp_path, monkey
         ("info", "요약 시작"),
         ("info", "아카이브 시작"),
         ("info", "요약 시작"),
-        ("info", "daily_overview refreshed: 2026-04-16, 2026-04-17"),
+        ("info", "refresh-overviews-dates: 2026-04-16, 2026-04-17"),
     ]
     assert world.email_exports == [
         {
@@ -421,7 +416,7 @@ def test_sync_serial_path_archives_summarizes_exports_and_marks(tmp_path, monkey
         {"topic": "topic-2", "notes": ["mail-2.md"]},
         {"topic": "topic-3", "notes": ["mail-3.md"]},
     ]
-    assert world.refreshed == [["2026-04-16", "2026-04-17"]]
+    assert world.refreshed == []
     rows = world.rows()
     assert [(r["uid"], r["summary"], r["exported"], r["seen"]) for r in rows] == [
         (1, "- summary of mail-1", 1, 1),
@@ -502,7 +497,7 @@ def test_sync_serial_path_keeps_failed_llm_and_export_mail_for_retry(tmp_path, m
         ("error", "Obsidian export failed (continuing): disk full for mail-5"),
         ("info", "아카이브 시작"),
         ("info", "요약 시작"),
-        ("info", "daily_overview refreshed: 2026-04-15, 2026-04-16"),
+        ("info", "refresh-overviews-dates: 2026-04-15, 2026-04-16"),
     ]
     assert (3.0, 4.0, "[2026-04-16] Obsidian 내보내기 실패 (계속): mail-5 (3/4)") in world.progress
     rows = {r["uid"]: r for r in world.rows()}
@@ -513,7 +508,7 @@ def test_sync_serial_path_keeps_failed_llm_and_export_mail_for_retry(tmp_path, m
     assert (rows[5]["exported"], rows[5]["seen"]) == (0, 0)
     assert (rows[6]["exported"], rows[6]["seen"]) == (1, 1)
     assert [d["date"] for d in world.daily_exports] == ["2026-04-15", "2026-04-16"]
-    assert world.refreshed == [["2026-04-15", "2026-04-16"]]
+    assert world.refreshed == []
 
 
 def test_sync_concurrent_cloud_path_chunks_and_passes_images(tmp_path, monkeypatch):
