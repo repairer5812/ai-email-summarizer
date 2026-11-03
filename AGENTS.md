@@ -81,7 +81,7 @@ webmail-summary ui        # native window (Windows)
 webmail-summary serve     # browser mode, any OS
 ```
 ```bash
-# Tests (CI only runs compileall; run pytest locally)
+# Tests (CI runs this after compileall)
 python -m pytest -p no:cacheprovider
 ruff check --no-cache src tests
 ```

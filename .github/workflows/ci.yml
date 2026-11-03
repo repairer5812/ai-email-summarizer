@@ -20,14 +20,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
+          pip install -e ".[dev]"
 
       - name: Verify pydantic runtime pair
         run: |
           python -c "import pydantic, pydantic_core; print('pydantic', pydantic.__version__); print('pydantic_core', pydantic_core.__version__)"
 
-
       - name: Syntax check
         run: |
           python -m compileall src
+
+      - name: Test
+        run: |
+          python -m pytest -p no:cacheprovider
