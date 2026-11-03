@@ -134,7 +134,10 @@ class _World:
                 world.imap_log.append(
                     ("search", sender_filter, unseen_only, min_uid_exclusive)
                 )
-                return list(world.search_result)
+                uids = [int(u) for u in world.search_result]
+                if min_uid_exclusive is not None:
+                    uids = [u for u in uids if u > int(min_uid_exclusive)]
+                return uids
 
             def iter_messages(self, uids, *, chunk_size, on_progress):
                 uids = [int(u) for u in uids]
@@ -509,6 +512,70 @@ def test_sync_serial_path_keeps_failed_llm_and_export_mail_for_retry(tmp_path, m
     assert (rows[6]["exported"], rows[6]["seen"]) == (1, 1)
     assert [d["date"] for d in world.daily_exports] == ["2026-04-15", "2026-04-16"]
     assert world.refreshed == []
+
+
+def test_crash_after_higher_uid_does_not_drop_lower_unarchived_mail(tmp_path, monkeypatch):
+    """A higher incomplete UID must not advance the watermark past lower mail.
+
+    Retry used to run before new UIDs. Marking that higher UID seen and then
+    dying left the lower UIDs below the watermark and out of the database, so
+    the next sync never fetched them.
+    """
+    vault = tmp_path / "vault"
+    world = _World(
+        tmp_path,
+        monkeypatch,
+        messages=[_msg(4, "mail-4"), _msg(5, "mail-5"), _msg(6, "mail-6")],
+        settings=_settings(vault),
+        provider=_LocalProvider(),
+    )
+    conn = get_conn(world.db_path)
+    try:
+        for uid, done in ((3, True), (6, False)):
+            fk = upsert_message(
+                conn,
+                account_id=ACCOUNT,
+                mailbox="INBOX",
+                uidvalidity=UIDVALIDITY,
+                uid=uid,
+                message_id=None,
+                internal_date="2026-04-15T09:00:00+09:00",
+                from_addr="sender@example.com",
+                to_addr="me@example.com",
+                subject=f"old-{uid}",
+                raw_eml_path="x",
+                body_html_path=None,
+                body_text_path=None,
+                rendered_html_path=None,
+            )
+            if done:
+                set_seen_marked(conn, message_fk=fk)
+        conn.commit()
+    finally:
+        conn.close()
+    world.search_result = [4, 5, 6]
+    world.messages[6] = _msg(6, "mail-6")
+
+    real_mark = mod._mark_seen
+    deaths = {"n": 0}
+
+    def mark_then_die(run, item, suppress_stage_update=False):
+        real_mark(run, item, suppress_stage_update=suppress_stage_update)
+        deaths["n"] += 1
+        if deaths["n"] == 1:
+            world.cancel.set()
+
+    monkeypatch.setattr(mod, "_mark_seen", mark_then_die)
+    world.run()
+    world.cancel.clear()
+    world.run()
+
+    subjects = [c["subject"] for c in world.llm_calls]
+    assert subjects.count("mail-4") == 1
+    assert subjects.count("mail-5") == 1
+    assert subjects.count("mail-6") == 1
+    rows = {r["uid"]: r for r in world.rows()}
+    assert (rows[4]["seen"], rows[5]["seen"], rows[6]["seen"]) == (1, 1, 1)
 
 
 def test_sync_concurrent_cloud_path_chunks_and_passes_images(tmp_path, monkeypatch):
