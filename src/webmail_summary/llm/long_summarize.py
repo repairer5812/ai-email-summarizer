@@ -964,24 +964,8 @@ def _ensure_core_detail_sections(text: str) -> str:
     return f"### 핵심 요약\n{core_text}\n\n### 상세 요약\n{detail_text}".strip()
 
 
-def summarize_email_long_aware(
-    provider: LlmProvider,
-    *,
-    subject: str,
-    body: str,
-    cfg: LongSummarizeConfig = LongSummarizeConfig(),
-    on_detail: Callable[[dict], None] | None = None,
-    on_progress: Callable[[float], None] | None = None,
-    user_profile: dict | None = None,
-    multimodal_inputs: list[LlmImageInput] | None = None,
-) -> LlmResult:
-    body_s = str(body or "")
-
-    # Tier-aware, context-aware dynamic chunk configuration.
-    tier = getattr(provider, "tier", "standard")
-    active_cfg = _build_dynamic_cfg(provider, body_len=len(body_s), tier=tier, cfg=cfg)
-
-    skip_headers_norm = {
+_SKIP_HEADER_NORMS = frozenset(
+    {
         "핵심요약",
         "상세요약",
         "핵심결론",
@@ -991,138 +975,190 @@ def summarize_email_long_aware(
         "심층구조화",
         "구조화",
     }
+)
 
-    def _is_header_line(x: str) -> bool:
-        n = str(x or "").lower().replace(" ", "").strip("[]").strip()
-        return n in skip_headers_norm
 
-    article_like = _is_article_like(subject=subject, body=body_s)
-    force_chunked_coverage = len(body_s) >= 900 and (
-        _has_strong_section_boundaries(body_s) or article_like
+def _is_summary_header_line(text: str) -> bool:
+    n = str(text or "").lower().replace(" ", "").strip("[]").strip()
+    return n in _SKIP_HEADER_NORMS
+
+
+def _selected_bullets(
+    bullets,
+    *,
+    drop_replacement: bool,
+    drop_header: bool,
+) -> list[str]:
+    kept: list[str] = []
+    for b in bullets:
+        if not b:
+            continue
+        if drop_replacement and "\ufffd" in b:
+            continue
+        if _is_placeholder_bullet(b):
+            continue
+        if drop_header and _is_summary_header_line(b):
+            continue
+        if _is_noise_bullet(b):
+            continue
+        kept.append(b)
+    return kept
+
+
+def _user_profile_block(user_profile: dict | None) -> str:
+    if not user_profile:
+        return ""
+    roles = ", ".join(user_profile.get("roles", []))
+    interests = user_profile.get("interests", "")
+    return f"\n[User Profile]\n- Role: {roles}\n- Interests: {interests}\n"
+
+
+def _synthesis_role_and_guidelines(tier: str, *, article_like: bool) -> tuple[str, str]:
+    if tier == "fast":
+        # Lite version for smaller local models (e.g., Gemma 3 4B)
+        system_role = "뉴스레터를 요약하는 어시스턴트"
+        guidelines = (
+            "1. 형식 고정: 반드시 '### 핵심 요약' 섹션과 '### 상세 요약' 섹션 2개로 작성하세요.\n"
+            "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
+            f"3. 상세 요약: 본문 사실에 충실하게 {'8~12개 불릿으로 최대한 폭넓게' if article_like else '최대 7개 불릿으로'} 작성하세요.\n"
+            "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
+            "5. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
+        )
+        return system_role, guidelines
+    if tier == "cloud":
+        # Executive version for high-capability models (Gemini, OpenAI etc)
+        system_role = "전문적인 전략 분석가 및 수석 에디터"
+        article_line = (
+            "6. 앞부분 요지만 반복하지 말고 후반부 정보와 사례도 반드시 포함하세요.\n"
+            if article_like
+            else ""
+        )
+        guidelines = (
+            "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
+            f"2. 핵심 요약: 최상단에 전체를 관통하는 핵심 결론 {'3~4개' if article_like else '3~5개'}를 불릿으로 작성하세요.\n"
+            f"3. 상세 요약: 본문 사실에 근거해 주제별 핵심 사실을 {'8~12개 불릿으로 최대한 폭넓게 정리' if article_like else '최대 7개 불릿으로 정리'}하세요.\n"
+            "4. 데이터 밀도: 수치, 인물, 결정 사항을 포함하되 과장/추측은 금지하세요.\n"
+            "5. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
+            f"{article_line}7. 반드시 한국어로만 격식 있는 문체로 작성하세요."
+        )
+        return system_role, guidelines
+    # Standard version (EXAONE, Qwen 3B etc)
+    system_role = "뉴스레터를 요약하는 전문 에디터"
+    guidelines = (
+        "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
+        "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿으로 작성하세요.\n"
+        f"3. 상세 요약: 본문 사실에 충실하게 {'8~12개 불릿으로 최대한 폭넓게' if article_like else '최대 7개 불릿으로'} 작성하세요.\n"
+        "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
+        "5. 반드시 한국어로 작성하고 모든 문장은 마침표(.)로 끝맺으세요."
+    )
+    return system_role, guidelines
+
+
+def summarize_short(
+    provider: LlmProvider,
+    *,
+    subject: str,
+    body_s: str,
+    active_cfg: LongSummarizeConfig,
+    multimodal_inputs: list[LlmImageInput] | None,
+) -> LlmResult:
+    res = provider.summarize(
+        subject=subject,
+        body=body_s,
+        multimodal_inputs=multimodal_inputs,
+    )
+    raw_bullets = _dedupe_keep_order(
+        _selected_bullets(
+            _extract_bullets(res.summary),
+            drop_replacement=True,
+            drop_header=True,
+        )
+    )
+    min_keep = _target_min_bullets(subject=subject, body=body_s, bullets=raw_bullets)
+    bullets = _validate_summary_bullets(
+        subject=subject,
+        body=body_s,
+        bullets=raw_bullets,
+        min_keep=min_keep,
+        max_keep=active_cfg.max_bullets,
+    )
+    summary_text = "\n".join(["- " + b for b in bullets if b]).strip() or res.summary
+    # For newsletters, prefer a multi-section structure.
+    bullets2 = _dedupe_keep_order(
+        _selected_bullets(
+            _extract_bullets(summary_text),
+            drop_replacement=True,
+            drop_header=False,
+        )
+    )
+    if _is_newsletter_like(subject=subject, body=body_s, bullets=bullets2):
+        summary_out = _structure_newsletter_summary(
+            subject=subject, body=body_s, bullets=bullets2
+        )
+    else:
+        summary_out = _ensure_core_detail_sections(summary_text)
+
+    return LlmResult(
+        summary=summary_out,
+        tags=list(res.tags or []),
+        backlinks=list(res.backlinks or []),
+        personal=bool(res.personal),
     )
 
-    if (
-        not force_chunked_coverage
-        and len(body_s) <= active_cfg.chunk_if_body_chars_over
-    ):
-        res = provider.summarize(
-            subject=subject,
-            body=body_s,
-            multimodal_inputs=multimodal_inputs,
-        )
-        raw_bullets = _dedupe_keep_order(
-            [
-                b
-                for b in _extract_bullets(res.summary)
-                if b
-                and ("\ufffd" not in b)
-                and (not _is_placeholder_bullet(b))
-                and (not _is_header_line(b))
-                and (not _is_noise_bullet(b))
-            ]
-        )
-        min_keep = _target_min_bullets(
-            subject=subject, body=body_s, bullets=raw_bullets
-        )
-        bullets = _validate_summary_bullets(
-            subject=subject,
-            body=body_s,
-            bullets=raw_bullets,
-            min_keep=min_keep,
-            max_keep=active_cfg.max_bullets,
-        )
-        summary_text = (
-            "\n".join(["- " + b for b in bullets if b]).strip() or res.summary
-        )
-        # For newsletters, prefer a multi-section structure.
-        bullets2 = _dedupe_keep_order(
-            [
-                b
-                for b in _extract_bullets(summary_text)
-                if b
-                and ("\ufffd" not in b)
-                and (not _is_placeholder_bullet(b))
-                and (not _is_noise_bullet(b))
-            ]
-        )
-        if _is_newsletter_like(subject=subject, body=body_s, bullets=bullets2):
-            summary_out = _structure_newsletter_summary(
-                subject=subject, body=body_s, bullets=bullets2
-            )
-        else:
-            summary_out = _ensure_core_detail_sections(summary_text)
 
-        return LlmResult(
-            summary=summary_out,
-            tags=list(res.tags or []),
-            backlinks=list(res.backlinks or []),
-            personal=bool(res.personal),
-        )
-
-    chunk_chars = active_cfg.chunk_chars
-    if force_chunked_coverage:
-        chunk_chars = min(chunk_chars, 900)
-
-    chunks = _chunk_text(
-        body_s,
-        chunk_chars=chunk_chars,
-        max_chunks=active_cfg.max_chunks,
+def _summarize_without_chunks(
+    provider: LlmProvider,
+    *,
+    subject: str,
+    body_s: str,
+    active_cfg: LongSummarizeConfig,
+    multimodal_inputs: list[LlmImageInput] | None,
+) -> LlmResult:
+    res = provider.summarize(
+        subject=subject,
+        body=body_s[: active_cfg.chunk_chars],
+        multimodal_inputs=multimodal_inputs,
     )
-    if not chunks:
-        res = provider.summarize(
-            subject=subject,
-            body=body_s[: active_cfg.chunk_chars],
-            multimodal_inputs=multimodal_inputs,
+    raw_bullets = _dedupe_keep_order(
+        _selected_bullets(
+            _extract_bullets(res.summary),
+            drop_replacement=True,
+            drop_header=True,
         )
-        raw_bullets = _dedupe_keep_order(
-            [
-                b
-                for b in _extract_bullets(res.summary)
-                if b
-                and ("\ufffd" not in b)
-                and (not _is_placeholder_bullet(b))
-                and (not _is_header_line(b))
-                and (not _is_noise_bullet(b))
-            ]
-        )
-        min_keep = _target_min_bullets(
-            subject=subject, body=body_s, bullets=raw_bullets
-        )
-        checked = _validate_summary_bullets(
-            subject=subject,
-            body=body_s,
-            bullets=raw_bullets,
-            min_keep=min_keep,
-            max_keep=active_cfg.max_bullets,
-        )
-        summary_text = (
-            "\n".join(["- " + b for b in checked if b]).strip() or res.summary
-        )
-        return LlmResult(
-            summary=_ensure_core_detail_sections(summary_text),
-            tags=list(res.tags or []),
-            backlinks=list(res.backlinks or []),
-            personal=bool(res.personal),
-        )
+    )
+    min_keep = _target_min_bullets(subject=subject, body=body_s, bullets=raw_bullets)
+    checked = _validate_summary_bullets(
+        subject=subject,
+        body=body_s,
+        bullets=raw_bullets,
+        min_keep=min_keep,
+        max_keep=active_cfg.max_bullets,
+    )
+    summary_text = "\n".join(["- " + b for b in checked if b]).strip() or res.summary
+    return LlmResult(
+        summary=_ensure_core_detail_sections(summary_text),
+        tags=list(res.tags or []),
+        backlinks=list(res.backlinks or []),
+        personal=bool(res.personal),
+    )
 
+
+def _collect_part_summaries(
+    provider: LlmProvider,
+    *,
+    subject: str,
+    chunks: list[str],
+    active_cfg: LongSummarizeConfig,
+    article_like: bool,
+    on_detail: Callable[[dict], None] | None,
+    on_progress: Callable[[float], None] | None,
+    total_units: int,
+) -> tuple[list[str], list[str], list[str], list[str], bool]:
     detailed_parts: list[str] = []
     all_bullets: list[str] = []
     tags: list[str] = []
     backlinks: list[str] = []
     personal = False
-
-    # Synthesis adds one extra LLM call but significantly improves output quality
-    # for long newsletters (chunked body). Keep it enabled for all tiers.
-    skip_synthesis = False
-    # Total units: chunks + (optional) synthesis
-    total_units = len(chunks) + (0 if skip_synthesis else 1)
-
-    # Format user profile for prompt
-    profile_info = ""
-    if user_profile:
-        roles = ", ".join(user_profile.get("roles", []))
-        interests = user_profile.get("interests", "")
-        profile_info = f"\n[User Profile]\n- Role: {roles}\n- Interests: {interests}\n"
 
     for i, ch in enumerate(chunks, start=1):
         if on_detail is not None:
@@ -1133,15 +1169,11 @@ def summarize_email_long_aware(
 
         part_body = f"[Part {i}/{len(chunks)}]\n{ch}"
         res = provider.summarize(subject=subject, body=part_body)
-        part_bullets = [
-            b
-            for b in _extract_bullets(res.summary)
-            if b
-            and ("\ufffd" not in b)
-            and (not _is_placeholder_bullet(b))
-            and (not _is_header_line(b))
-            and (not _is_noise_bullet(b))
-        ]
+        part_bullets = _selected_bullets(
+            _extract_bullets(res.summary),
+            drop_replacement=True,
+            drop_header=True,
+        )
         all_bullets.extend(part_bullets)
         tags.extend(list(res.tags or []))
         backlinks.extend(list(res.backlinks or []))
@@ -1162,156 +1194,109 @@ def summarize_email_long_aware(
             except Exception:
                 pass
 
-    # Synthesize a compact, structured report from the part summaries.
+    return detailed_parts, all_bullets, tags, backlinks, personal
+
+
+def _synthesize_parts(
+    provider: LlmProvider,
+    *,
+    subject: str,
+    body_s: str,
+    detailed_parts: list[str],
+    all_bullets: list[str],
+    article_like: bool,
+    profile_info: str,
+    on_detail: Callable[[dict], None] | None,
+    multimodal_inputs: list[LlmImageInput] | None,
+) -> tuple[str, list[str], list[str], bool]:
     final_summary_text = ""
-    if not skip_synthesis:
-        try:
-            if on_detail:
-                on_detail({"type": "stage", "stage": "synthesis"})
+    tags: list[str] = []
+    backlinks: list[str] = []
+    personal = False
+    try:
+        if on_detail:
+            on_detail({"type": "stage", "stage": "synthesis"})
 
-            synth_body = "\n\n---\n\n".join(detailed_parts)
+        synth_body = "\n\n---\n\n".join(detailed_parts)
 
-            # Branch prompts based on provider tier
-            tier = getattr(provider, "tier", "standard")
+        # Branch prompts based on provider tier
+        tier = getattr(provider, "tier", "standard")
 
-            custom_tailor = ""
-            if profile_info:
-                custom_tailor = f"\n중요: 아래 사용자 프로필에 맞춰 사용자가 특히 관심있어 할 내용을 강조하여 요약하세요.{profile_info}"
-
-            if tier == "fast":
-                # Lite version for smaller local models (e.g., Gemma 3 4B)
-                system_role = "뉴스레터를 요약하는 어시스턴트"
-                guidelines = (
-                    "1. 형식 고정: 반드시 '### 핵심 요약' 섹션과 '### 상세 요약' 섹션 2개로 작성하세요.\n"
-                    "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿 포인트로 작성하세요.\n"
-                    f"3. 상세 요약: 본문 사실에 충실하게 {'8~12개 불릿으로 최대한 폭넓게' if article_like else '최대 7개 불릿으로'} 작성하세요.\n"
-                    "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 무시하세요.\n"
-                    "5. 반드시 한국어로만 작성하고 문장을 마침표로 끝내세요."
-                )
-            elif tier == "cloud":
-                # Executive version for high-capability models (Gemini, OpenAI etc)
-                system_role = "전문적인 전략 분석가 및 수석 에디터"
-                article_line = (
-                    "6. 앞부분 요지만 반복하지 말고 후반부 정보와 사례도 반드시 포함하세요.\n"
-                    if article_like
-                    else ""
-                )
-                guidelines = (
-                    "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
-                    f"2. 핵심 요약: 최상단에 전체를 관통하는 핵심 결론 {'3~4개' if article_like else '3~5개'}를 불릿으로 작성하세요.\n"
-                    f"3. 상세 요약: 본문 사실에 근거해 주제별 핵심 사실을 {'8~12개 불릿으로 최대한 폭넓게 정리' if article_like else '최대 7개 불릿으로 정리'}하세요.\n"
-                    "4. 데이터 밀도: 수치, 인물, 결정 사항을 포함하되 과장/추측은 금지하세요.\n"
-                    "5. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
-                    f"{article_line}7. 반드시 한국어로만 격식 있는 문체로 작성하세요."
-                )
-            else:
-                # Standard version (EXAONE, Qwen 3B etc)
-                system_role = "뉴스레터를 요약하는 전문 에디터"
-                guidelines = (
-                    "1. 형식 고정: 반드시 '### 핵심 요약'과 '### 상세 요약' 머리말을 사용하세요.\n"
-                    "2. 핵심 요약: 가장 중요한 내용 3~5개를 불릿으로 작성하세요.\n"
-                    f"3. 상세 요약: 본문 사실에 충실하게 {'8~12개 불릿으로 최대한 폭넓게' if article_like else '최대 7개 불릿으로'} 작성하세요.\n"
-                    "4. 노이즈 제거: 주소, 저작권, 구독 취소 안내 등은 포함하지 마세요.\n"
-                    "5. 반드시 한국어로 작성하고 모든 문장은 마침표(.)로 끝맺으세요."
-                )
-
-            synth = provider.summarize(
-                subject=subject,
-                body=(
-                    f"[System Role: {system_role}]\n"
-                    "아래 초안들을 바탕으로 최종 리포트를 작성하세요.\n\n"
-                    f"작성 지침:\n{guidelines}{custom_tailor}\n\n"
-                    "요약 초안 목록:\n" + synth_body
-                ),
-                multimodal_inputs=multimodal_inputs,
+        custom_tailor = ""
+        if profile_info:
+            custom_tailor = (
+                "\n중요: 아래 사용자 프로필에 맞춰 사용자가 특히 관심있어 할 내용을 강조하여 요약하세요."
+                f"{profile_info}"
             )
 
-            # Preserve original formatting (headers/bold) if it looks structured
-            raw_synth = _ensure_core_detail_sections(synth.summary.strip())
-            if _is_structured(raw_synth):
-                final_summary_text = raw_synth
-            else:
-                merged_bullets = _extract_bullets(raw_synth)
-                final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
-
-            synth_bullets = _dedupe_keep_order(
-                [
-                    b
-                    for b in _extract_bullets(final_summary_text)
-                    if b
-                    and (not _is_placeholder_bullet(b))
-                    and (not _is_header_line(b))
-                    and (not _is_noise_bullet(b))
-                ]
-            )
-            target_min = _target_min_bullets(
-                subject=subject,
-                body=body_s,
-                bullets=synth_bullets,
-            )
-            merged_chunk_bullets = _dedupe_keep_order(
-                [
-                    b
-                    for b in all_bullets
-                    if b
-                    and (not _is_placeholder_bullet(b))
-                    and (not _is_header_line(b))
-                    and (not _is_noise_bullet(b))
-                ]
-            )
-            if (
-                len(synth_bullets) < target_min
-                and len(merged_chunk_bullets) >= target_min
-            ):
-                final_summary_text = "\n".join(
-                    ["- " + b for b in merged_chunk_bullets if b]
-                )
-
-            tags.extend(list(synth.tags or []))
-            backlinks.extend(list(synth.backlinks or []))
-            personal = personal or bool(synth.personal)
-        except Exception:
-            final_summary_text = ""
-
-    if on_progress:
-        try:
-            on_progress(1.0)
-        except Exception:
-            pass
-
-    if not final_summary_text:
-        merged_bullets = _dedupe_keep_order(
-            [
-                b
-                for b in all_bullets
-                if b
-                and (not _is_placeholder_bullet(b))
-                and (not _is_header_line(b))
-                and (not _is_noise_bullet(b))
-            ]
+        system_role, guidelines = _synthesis_role_and_guidelines(
+            tier, article_like=article_like
         )
-        min_keep = _target_min_bullets(
-            subject=subject, body=body_s, bullets=merged_bullets
+
+        synth = provider.summarize(
+            subject=subject,
+            body=(
+                f"[System Role: {system_role}]\n"
+                "아래 초안들을 바탕으로 최종 리포트를 작성하세요.\n\n"
+                f"작성 지침:\n{guidelines}{custom_tailor}\n\n"
+                "요약 초안 목록:\n" + synth_body
+            ),
+            multimodal_inputs=multimodal_inputs,
         )
-        merged_bullets = _validate_summary_bullets(
+
+        # Preserve original formatting (headers/bold) if it looks structured
+        raw_synth = _ensure_core_detail_sections(synth.summary.strip())
+        if _is_structured(raw_synth):
+            final_summary_text = raw_synth
+        else:
+            merged_bullets = _extract_bullets(raw_synth)
+            final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
+
+        synth_bullets = _dedupe_keep_order(
+            _selected_bullets(
+                _extract_bullets(final_summary_text),
+                drop_replacement=False,
+                drop_header=True,
+            )
+        )
+        target_min = _target_min_bullets(
             subject=subject,
             body=body_s,
-            bullets=merged_bullets,
-            min_keep=min_keep,
-            max_keep=active_cfg.max_bullets,
+            bullets=synth_bullets,
         )
-        final_summary_text = "\n".join(["- " + b for b in merged_bullets if b])
+        merged_chunk_bullets = _dedupe_keep_order(
+            _selected_bullets(
+                all_bullets,
+                drop_replacement=False,
+                drop_header=True,
+            )
+        )
+        if len(synth_bullets) < target_min and len(merged_chunk_bullets) >= target_min:
+            final_summary_text = "\n".join(["- " + b for b in merged_chunk_bullets if b])
 
+        tags.extend(list(synth.tags or []))
+        backlinks.extend(list(synth.backlinks or []))
+        personal = personal or bool(synth.personal)
+    except Exception:
+        final_summary_text = ""
+    return final_summary_text, tags, backlinks, personal
+
+
+def postprocess_summary(
+    *,
+    subject: str,
+    body_s: str,
+    final_summary_text: str,
+    active_cfg: LongSummarizeConfig,
+) -> str:
+    """Newsletter layout or the core/detail sections, after the model call."""
     # Prefer newsletter-style sections when the content looks like a newsletter.
     final_bullets = _dedupe_keep_order(
-        [
-            b
-            for b in _extract_bullets(final_summary_text)
-            if b
-            and ("\ufffd" not in b)
-            and (not _is_placeholder_bullet(b))
-            and (not _is_noise_bullet(b))
-        ]
+        _selected_bullets(
+            _extract_bullets(final_summary_text),
+            drop_replacement=True,
+            drop_header=False,
+        )
     )
     min_keep = _target_min_bullets(subject=subject, body=body_s, bullets=final_bullets)
     final_bullets = _validate_summary_bullets(
@@ -1322,26 +1307,133 @@ def summarize_email_long_aware(
         max_keep=active_cfg.max_bullets,
     )
     display_bullets = _dedupe_keep_order(
-        [
-            b
-            for b in _extract_bullets(final_summary_text)
-            if b
-            and ("\ufffd" not in b)
-            and (not _is_placeholder_bullet(b))
-            and (not _is_header_line(b))
-            and (not _is_noise_bullet(b))
-        ]
+        _selected_bullets(
+            _extract_bullets(final_summary_text),
+            drop_replacement=True,
+            drop_header=True,
+        )
         + list(final_bullets)
     )[: active_cfg.max_bullets]
     rebuilt_summary_text = "\n".join(["- " + b for b in display_bullets if b]).strip()
     if _is_newsletter_like(subject=subject, body=body_s, bullets=final_bullets):
-        final_summary_text = _structure_newsletter_summary(
+        return _structure_newsletter_summary(
             subject=subject, body=body_s, bullets=final_bullets
         )
-    else:
-        final_summary_text = _ensure_core_detail_sections(
-            rebuilt_summary_text or final_summary_text
+    return _ensure_core_detail_sections(rebuilt_summary_text or final_summary_text)
+
+
+def _fallback_summary_from_parts(
+    *,
+    subject: str,
+    body_s: str,
+    all_bullets: list[str],
+    active_cfg: LongSummarizeConfig,
+) -> str:
+    merged_bullets = _dedupe_keep_order(
+        _selected_bullets(
+            all_bullets,
+            drop_replacement=False,
+            drop_header=True,
         )
+    )
+    min_keep = _target_min_bullets(subject=subject, body=body_s, bullets=merged_bullets)
+    merged_bullets = _validate_summary_bullets(
+        subject=subject,
+        body=body_s,
+        bullets=merged_bullets,
+        min_keep=min_keep,
+        max_keep=active_cfg.max_bullets,
+    )
+    return "\n".join(["- " + b for b in merged_bullets if b])
+
+
+def summarize_chunked(
+    provider: LlmProvider,
+    *,
+    subject: str,
+    body_s: str,
+    active_cfg: LongSummarizeConfig,
+    article_like: bool,
+    force_chunked_coverage: bool,
+    on_detail: Callable[[dict], None] | None,
+    on_progress: Callable[[float], None] | None,
+    user_profile: dict | None,
+    multimodal_inputs: list[LlmImageInput] | None,
+) -> LlmResult:
+    chunk_chars = active_cfg.chunk_chars
+    if force_chunked_coverage:
+        chunk_chars = min(chunk_chars, 900)
+
+    chunks = _chunk_text(
+        body_s,
+        chunk_chars=chunk_chars,
+        max_chunks=active_cfg.max_chunks,
+    )
+    if not chunks:
+        return _summarize_without_chunks(
+            provider,
+            subject=subject,
+            body_s=body_s,
+            active_cfg=active_cfg,
+            multimodal_inputs=multimodal_inputs,
+        )
+
+    # Synthesis adds one extra LLM call but significantly improves output quality
+    # for long newsletters (chunked body). Keep it enabled for all tiers.
+    skip_synthesis = False
+    # Total units: chunks + (optional) synthesis
+    total_units = len(chunks) + (0 if skip_synthesis else 1)
+    profile_info = _user_profile_block(user_profile)
+
+    detailed_parts, all_bullets, tags, backlinks, personal = _collect_part_summaries(
+        provider,
+        subject=subject,
+        chunks=chunks,
+        active_cfg=active_cfg,
+        article_like=article_like,
+        on_detail=on_detail,
+        on_progress=on_progress,
+        total_units=total_units,
+    )
+
+    final_summary_text = ""
+    if not skip_synthesis:
+        synth_text, synth_tags, synth_links, synth_personal = _synthesize_parts(
+            provider,
+            subject=subject,
+            body_s=body_s,
+            detailed_parts=detailed_parts,
+            all_bullets=all_bullets,
+            article_like=article_like,
+            profile_info=profile_info,
+            on_detail=on_detail,
+            multimodal_inputs=multimodal_inputs,
+        )
+        final_summary_text = synth_text
+        tags.extend(synth_tags)
+        backlinks.extend(synth_links)
+        personal = personal or synth_personal
+
+    if on_progress:
+        try:
+            on_progress(1.0)
+        except Exception:
+            pass
+
+    if not final_summary_text:
+        final_summary_text = _fallback_summary_from_parts(
+            subject=subject,
+            body_s=body_s,
+            all_bullets=all_bullets,
+            active_cfg=active_cfg,
+        )
+
+    final_summary_text = postprocess_summary(
+        subject=subject,
+        body_s=body_s,
+        final_summary_text=final_summary_text,
+        active_cfg=active_cfg,
+    )
 
     tags = _dedupe_keep_order([str(x) for x in tags])[: active_cfg.max_tags]
     backlinks = _dedupe_keep_order([str(x) for x in backlinks])[
@@ -1356,6 +1448,53 @@ def summarize_email_long_aware(
         tags=tags,
         backlinks=backlinks,
         personal=personal,
+    )
+
+
+def summarize_email_long_aware(
+    provider: LlmProvider,
+    *,
+    subject: str,
+    body: str,
+    cfg: LongSummarizeConfig = LongSummarizeConfig(),
+    on_detail: Callable[[dict], None] | None = None,
+    on_progress: Callable[[float], None] | None = None,
+    user_profile: dict | None = None,
+    multimodal_inputs: list[LlmImageInput] | None = None,
+) -> LlmResult:
+    body_s = str(body or "")
+
+    # Tier-aware, context-aware dynamic chunk configuration.
+    tier = getattr(provider, "tier", "standard")
+    active_cfg = _build_dynamic_cfg(provider, body_len=len(body_s), tier=tier, cfg=cfg)
+
+    article_like = _is_article_like(subject=subject, body=body_s)
+    force_chunked_coverage = len(body_s) >= 900 and (
+        _has_strong_section_boundaries(body_s) or article_like
+    )
+
+    if (
+        not force_chunked_coverage
+        and len(body_s) <= active_cfg.chunk_if_body_chars_over
+    ):
+        return summarize_short(
+            provider,
+            subject=subject,
+            body_s=body_s,
+            active_cfg=active_cfg,
+            multimodal_inputs=multimodal_inputs,
+        )
+    return summarize_chunked(
+        provider,
+        subject=subject,
+        body_s=body_s,
+        active_cfg=active_cfg,
+        article_like=article_like,
+        force_chunked_coverage=force_chunked_coverage,
+        on_detail=on_detail,
+        on_progress=on_progress,
+        user_profile=user_profile,
+        multimodal_inputs=multimodal_inputs,
     )
 
 
