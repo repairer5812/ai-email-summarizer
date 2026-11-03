@@ -124,7 +124,124 @@ def test_runner_queues_recorded_dates_and_not_a_second_job(monkeypatch):
 
     with open_db(app_db_path()) as conn:
         repo.create_job(conn, job_id="refresh-busy", kind="refresh-overviews")
-    assert runner.schedule_overview_refresh("sync-1") is None
+    second = runner.schedule_overview_refresh("sync-1")
+    assert second
+    assert second != job_id
+
+
+class _ImmediateProc:
+    def __init__(self, rc: int) -> None:
+        self.rc = rc
+        self.pid = 4242
+
+    def wait(self, timeout=None):
+        return self.rc
+
+    def poll(self):
+        return self.rc
+
+    def terminate(self) -> None:
+        return None
+
+    def kill(self) -> None:
+        return None
+
+
+def _wait_for(predicate, timeout: float = 3.0):
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(0.02)
+    return predicate()
+
+
+def _run_sync_until_refresh(monkeypatch, *, rc: int, status: str, day: str):
+    """Finish one sync worker with a chosen exit code and job status."""
+    import webmail_summary.jobs.runner as runner_mod
+    import webmail_summary.jobs.tasks_refresh_overviews as ov
+
+    seen: dict = {}
+
+    def _task(date_keys=None, force_refresh=False):
+        seen["dates"] = list(date_keys or [])
+        seen["force"] = force_refresh
+
+        def run(job_id, cancel):
+            return None
+
+        return run
+
+    def _popen(cmd, **kwargs):
+        job_id = cmd[cmd.index("--job-id") + 1]
+        with open_db(app_db_path()) as conn:
+            repo.add_event(
+                conn,
+                job_id=job_id,
+                level="info",
+                text=format_overview_dates_event([day]),
+            )
+            repo.set_job_status(conn, job_id=job_id, status=status)
+        return _ImmediateProc(rc)
+
+    monkeypatch.setattr(ov, "refresh_overviews_task", _task)
+    monkeypatch.setattr(runner_mod.subprocess, "Popen", _popen)
+    runner = JobRunner()
+    sync_id = runner.enqueue(kind="sync", fn=lambda job_id, cancel: None)
+    queued = _wait_for(lambda: seen.get("dates"))
+    return sync_id, queued, seen
+
+
+def test_sync_dates_refresh_while_manual_overview_is_queued(monkeypatch):
+    init_db(app_db_path())
+    with open_db(app_db_path()) as conn:
+        repo.create_job(conn, job_id="manual-refresh", kind="refresh-overviews")
+        repo.create_job(conn, job_id="sync-1", kind="sync")
+        repo.add_event(
+            conn,
+            job_id="sync-1",
+            level="info",
+            text=format_overview_dates_event(["2026-04-18"]),
+        )
+
+    seen: dict = {}
+
+    def _task(date_keys=None, force_refresh=False):
+        seen.setdefault("calls", []).append(list(date_keys or []))
+
+        def run(job_id, cancel):
+            return None
+
+        return run
+
+    import webmail_summary.jobs.tasks_refresh_overviews as ov
+
+    monkeypatch.setattr(ov, "refresh_overviews_task", _task)
+    job_id = JobRunner().schedule_overview_refresh("sync-1")
+    assert job_id
+    assert job_id != "manual-refresh"
+    assert seen["calls"] == [["2026-04-18"]]
+
+
+def test_cancelled_sync_still_refreshes_exported_dates(monkeypatch):
+    init_db(app_db_path())
+    _sync_id, queued, seen = _run_sync_until_refresh(
+        monkeypatch, rc=1, status="cancelled", day="2026-04-19"
+    )
+    assert queued == ["2026-04-19"]
+    assert seen["force"] is True
+
+
+def test_succeeded_sync_refreshes_when_worker_exit_is_nonzero(monkeypatch):
+    init_db(app_db_path())
+    _sync_id, queued, seen = _run_sync_until_refresh(
+        monkeypatch, rc=-9, status="succeeded", day="2026-04-20"
+    )
+    assert queued == ["2026-04-20"]
+    assert seen["force"] is True
 
 
 def test_daily_overview_drops_korean_fallback_without_calling_model():

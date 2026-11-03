@@ -102,11 +102,13 @@ class JobRunner:
         return True
 
     def schedule_overview_refresh(self, sync_job_id: str) -> str | None:
-        """Queue one overview job for the dates a successful sync recorded.
+        """Queue one overview job for the dates a sync recorded.
 
         The sync worker writes ``refresh-overviews-dates:`` and does not call
-        the model. No dates means this sync exported nothing, so the old
-        90-day follow-up is not queued.
+        the model. No dates means this sync exported nothing, so nothing is
+        queued. Another refresh-overviews job may already be queued; the
+        runner still runs this one after it, because each job carries its
+        own dates.
         """
         from webmail_summary.jobs.tasks_refresh_overviews import (
             overview_dates_for_sync_job,
@@ -115,8 +117,6 @@ class JobRunner:
 
         db_path = app_db_path()
         with open_db(db_path) as conn:
-            if repo.find_active_job(conn, kind="refresh-overviews") is not None:
-                return None
             dates = overview_dates_for_sync_job(conn, sync_job_id)
         if not dates:
             return None
@@ -253,7 +253,18 @@ class JobRunner:
                         }
                     ):
                         raise RuntimeError(f"sync worker failed: exit {rc}")
-                    if rc == 0 and not cancelled:
+                    # Exit code 0 is not the only successful export. A cancel,
+                    # or a worker that already stored succeeded and was then
+                    # stopped, can still have written refresh-overviews-dates.
+                    from webmail_summary.jobs.tasks_refresh_overviews import (
+                        overview_dates_for_sync_job,
+                    )
+
+                    with open_db(db_path) as conn_dates:
+                        has_overview_dates = bool(
+                            overview_dates_for_sync_job(conn_dates, job.id)
+                        )
+                    if has_overview_dates or status_after == "succeeded":
                         try:
                             refresh_job_id = self.schedule_overview_refresh(job.id)
                             if refresh_job_id:
