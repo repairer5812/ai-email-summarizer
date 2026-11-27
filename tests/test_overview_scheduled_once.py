@@ -93,7 +93,7 @@ def test_sync_dates_are_summarized_once(monkeypatch):
     assert [day for day, _sums in calls] == ["2026-04-16", "2026-04-17"]
 
 
-def test_runner_queues_recorded_dates_and_not_a_second_job(monkeypatch):
+def test_runner_queues_sync_dates_even_when_a_refresh_is_queued(monkeypatch):
     init_db(app_db_path())
     with open_db(app_db_path()) as conn:
         repo.create_job(conn, job_id="sync-1", kind="sync")
